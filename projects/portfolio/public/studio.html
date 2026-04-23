@@ -296,16 +296,25 @@ async function initAuth() {
     const res  = await fetch('/portfolio/api/auth/check');
     const data = await res.json();
     if (!data.required) {
-      // 비밀번호 미설정 → 오버레이 숨기고 바로 진입
       hideOverlay();
       return;
     }
     if (getToken()) {
-      hideOverlay();
+      // 기존 토큰을 서버에서 검증
+      const vRes  = await fetch('/portfolio/api/auth/verify', {
+        headers: { 'x-auth-token': getToken() }
+      });
+      const vData = await vRes.json();
+      if (vData.valid) {
+        hideOverlay();
+        return;
+      }
+      // 토큰 무효 → 제거 후 오버레이 유지
+      clearToken();
     }
-    // 토큰 없으면 오버레이 유지 (autofocus로 입력 대기)
+    // 토큰 없거나 무효 → 오버레이 유지 (비밀번호 입력 대기)
   } catch (e) {
-    hideOverlay(); // 서버 오류 시 오버레이 제거 (fail-open)
+    hideOverlay(); // 서버 오류 시 fail-open
   }
 }
 

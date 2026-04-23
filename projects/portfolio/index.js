@@ -74,6 +74,11 @@ router.get('/auth/check', (req, res) => {
   res.json({ required: !!getPassword() });
 });
 
+router.get('/auth/verify', (req, res) => {
+  const token = req.headers['x-auth-token'];
+  res.json({ valid: verifyToken(token) });
+});
+
 router.post('/auth', (req, res) => {
   const pwd = getPassword();
   if (!pwd) return res.json({ success: true, token: '' });
