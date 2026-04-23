@@ -16,7 +16,6 @@ app.use(cors({
   origin: (origin, cb) => {
     // origin 없으면 같은 도메인 요청 (Railway 자체 서빙) → 허용
     if (!origin) return cb(null, true);
-    if (origin === `https://${req?.headers?.host}`) return cb(null, true);
     if (allowedOrigins.includes(origin)) return cb(null, true);
     cb(new Error(`CORS blocked: ${origin}`));
   },
