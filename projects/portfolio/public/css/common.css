@@ -1,0 +1,78 @@
+/* ==========================================
+   common.css - 4가지 컬러 테마 정의
+   portfolio 기반 CSS 변수 체계
+   ========================================== */
+
+/* === Blue Theme === */
+[data-theme="blue"] {
+  --bg: #f5f8fc;
+  --surface: #ffffff;
+  --border: #d6e0eb;
+  --text: #16243c;
+  --muted: #556a85;
+  --accent: #2e5c9e;
+  --accent2: #4e7cc0;
+  --accent-light: #dae8f5;
+  --accent-soft: #96b8d4;
+  --green: #3a7a5a;
+  --green-light: #e6f3ed;
+  --hero-gradient: linear-gradient(160deg, #f5f8fc 60%, #dae8f5 100%);
+  --primary-gradient: linear-gradient(135deg, #2e5c9e, #4e7cc0);
+}
+
+/* === Green Theme === */
+[data-theme="green"] {
+  --bg: #f5faf5;
+  --surface: #ffffff;
+  --border: #d6e6d6;
+  --text: #1a2e1a;
+  --muted: #557a55;
+  --accent: #2e7c3e;
+  --accent2: #4ea65e;
+  --accent-light: #dcf0dc;
+  --accent-soft: #96c4a0;
+  --green: #2e7c3e;
+  --green-light: #e6f3e8;
+  --hero-gradient: linear-gradient(160deg, #f5faf5 60%, #dcf0dc 100%);
+  --primary-gradient: linear-gradient(135deg, #2e7c3e, #4ea65e);
+}
+
+/* === Brown Theme === */
+[data-theme="brown"] {
+  --bg: #faf8f5;
+  --surface: #ffffff;
+  --border: #e6dfd6;
+  --text: #2c2416;
+  --muted: #7a6a55;
+  --accent: #7c5c2e;
+  --accent2: #a67c4e;
+  --accent-light: #f0e8da;
+  --accent-soft: #d4b896;
+  --green: #5a7a3a;
+  --green-light: #edf3e6;
+  --hero-gradient: linear-gradient(160deg, #faf8f5 60%, #f0e8da 100%);
+  --primary-gradient: linear-gradient(135deg, #7c5c2e, #a67c4e);
+}
+
+/* === Pink Theme === */
+[data-theme="pink"] {
+  --bg: #fdf5f8;
+  --surface: #ffffff;
+  --border: #ebd6df;
+  --text: #3c1628;
+  --muted: #856070;
+  --accent: #9e2e5c;
+  --accent2: #c04e7c;
+  --accent-light: #f5dae8;
+  --accent-soft: #d496b8;
+  --green: #5a7a3a;
+  --green-light: #edf3e6;
+  --hero-gradient: linear-gradient(160deg, #fdf5f8 60%, #f5dae8 100%);
+  --primary-gradient: linear-gradient(135deg, #9e2e5c, #c04e7c);
+}
+
+/* === Admin-only overrides (sidebar) === */
+[data-theme="blue"]  { --sidebar-bg: #1e293b; --sidebar-hover: rgba(46,92,158,0.2); }
+[data-theme="green"] { --sidebar-bg: #14332d; --sidebar-hover: rgba(46,124,62,0.2); }
+[data-theme="brown"] { --sidebar-bg: #2c1a03; --sidebar-hover: rgba(124,92,46,0.2); }
+[data-theme="pink"]  { --sidebar-bg: #3c0e2b; --sidebar-hover: rgba(158,46,92,0.2); }

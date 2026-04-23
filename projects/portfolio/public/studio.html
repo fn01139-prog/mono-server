@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>페이지 관리자</title>
+  <link rel="stylesheet" href="/portfolio/css/common.css">
+  <link rel="stylesheet" href="/portfolio/css/admin.css">
+  <style>
+    /* ── 인증 오버레이 ───────────────────────────────────────── */
+    .auth-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #0f172a;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .auth-overlay.hidden { display: none; }
+
+    .auth-box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 40px 48px;
+      width: 360px;
+      text-align: center;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+    .auth-box-icon { font-size: 40px; margin-bottom: 16px; }
+    .auth-box h2 {
+      color: #f1f5f9; font-size: 20px; font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .auth-box p {
+      color: #94a3b8; font-size: 13px; margin-bottom: 28px;
+    }
+    .auth-box input[type="password"] {
+      width: 100%; box-sizing: border-box;
+      padding: 11px 14px;
+      background: #0f172a; border: 1px solid #334155;
+      border-radius: 8px; color: #f1f5f9; font-size: 14px;
+      outline: none; margin-bottom: 12px;
+      transition: border-color 0.15s;
+    }
+    .auth-box input[type="password"]:focus { border-color: #3b82f6; }
+    .auth-box button {
+      width: 100%; padding: 11px;
+      background: #3b82f6; color: #fff;
+      border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .auth-box button:hover { background: #2563eb; }
+    .auth-error {
+      color: #f87171; font-size: 12px; margin-top: 10px;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── 인증 오버레이 ────────────────────────────────────────── -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-box">
+    <div class="auth-box-icon">🔐</div>
+    <h2>관리자 인증</h2>
+    <p>이 페이지에 접근하려면 비밀번호가 필요합니다.</p>
+    <input
+      type="password"
+      id="authInput"
+      placeholder="비밀번호 입력"
+      onkeydown="if(event.key==='Enter') submitAuth()"
+      autofocus
+    >
+    <button onclick="submitAuth()">확인</button>
+    <div class="auth-error" id="authError"></div>
+  </div>
+</div>
+
+<div class="app" data-theme="blue">
+<div class="toast" id="toast"><span id="toastMsg"></span></div>
+  <!-- ===== Sidebar ===== -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h1>📄 페이지 관리</h1>
+      <div class="theme-dots">
+        <div class="theme-dot active" data-t="blue" onclick="Admin.setTheme('blue')"></div>
+        <div class="theme-dot" data-t="green" onclick="Admin.setTheme('green')"></div>
+        <div class="theme-dot" data-t="brown" onclick="Admin.setTheme('brown')"></div>
+        <div class="theme-dot" data-t="pink" onclick="Admin.setTheme('pink')"></div>
+      </div>
+    </div>
+    <div class="sidebar-section-title">등록된 페이지</div>
+    <div class="page-list" id="pageList"></div>
+    <div class="sidebar-footer">
+      <button class="btn-new" onclick="Admin.openNewModal()">+ 새 페이지 추가</button>
+    </div>
+  </div>
+
+  <!-- ===== Main ===== -->
+  <div class="main">
+    <!-- Editor View -->
+    <div id="editorView" style="display:none; flex-direction:column; flex:1;">
+      <div class="main-header">
+        <div class="header-left">
+          <h2 id="editorTitle">/ysg1 편집</h2>
+          <span class="badge draft" id="editorBadge">초안</span>
+        </div>
+        <div class="header-actions">
+          <button class="btn btn-danger btn-sm" onclick="Admin.deletePage()">삭제</button>
+          <button class="btn btn-outline btn-sm" onclick="Admin.openQRModal()">QR코드</button>
+          <button class="btn btn-outline btn-sm" onclick="Admin.togglePublish()" id="btnPublish">공개하기</button>
+          <button class="btn btn-primary" onclick="Admin.savePage()">💾 저장</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="editor-grid">
+          <!-- Left Column -->
+          <div>
+            <!-- 기본 정보 -->
+            <div class="panel">
+              <div class="panel-header"><h3>기본 정보</h3></div>
+              <div class="panel-body">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>사람 코드</label>
+                    <input type="text" id="personCode" class="readonly" readonly>
+                  </div>
+                  <div class="form-group">
+                    <label>페이지 번호</label>
+                    <input type="number" id="pageNum" class="readonly" readonly>
+                  </div>
+                </div>
+                <div class="url-preview" id="urlPreview">접속 URL: /ysg1</div>
+              </div>
+            </div>
+
+            <!-- 템플릿 선택 -->
+            <div class="panel">
+              <div class="panel-header"><h3>템플릿 선택</h3></div>
+              <div class="panel-body">
+                <div class="template-cards" id="templateCards">
+                  <div class="tpl-card selected" data-tpl="profile" onclick="Admin.selectTemplate('profile',this)">
+                    <div class="tpl-icon">👤</div>
+                    <div class="tpl-name">프로필</div>
+                    <div class="tpl-desc">인물 소개</div>
+                  </div>
+                  <div class="tpl-card" data-tpl="portfolio" onclick="Admin.selectTemplate('portfolio',this)">
+                    <div class="tpl-icon">🎨</div>
+                    <div class="tpl-name">포트폴리오</div>
+                    <div class="tpl-desc">작업물 갤러리</div>
+                  </div>
+                  <div class="tpl-card" data-tpl="landing" onclick="Admin.selectTemplate('landing',this)">
+                    <div class="tpl-icon">🚀</div>
+                    <div class="tpl-name">랜딩</div>
+                    <div class="tpl-desc">홍보/안내</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 콘텐츠 블록 -->
+            <div class="panel">
+              <div class="panel-header">
+                <h3>콘텐츠 구성</h3>
+                <span style="font-size:11px; color:#9ca3af;" id="contentCount">0개 섹션</span>
+              </div>
+              <div class="panel-body">
+                <div id="contentBlocks"></div>
+                <div class="content-picker" id="contentPicker">
+                  <div class="content-picker-menu" id="pickerMenu">
+                    <div class="cp-item" onclick="Admin.addContent('greeting')">
+                      <div class="cp-icon">👋</div>
+                      <div class="cp-info"><div class="cp-name">인사말</div><div class="cp-desc">이름, 직함, 소개글</div></div>
+                    </div>
+                    <div class="cp-item" onclick="Admin.addContent('skills')">
+                      <div class="cp-icon">⚡</div>
+                      <div class="cp-info"><div class="cp-name">기술스택</div><div class="cp-desc">기술 태그 목록</div></div>
+                    </div>
+                    <div class="cp-item" onclick="Admin.addContent('portfolio')">
+                      <div class="cp-icon">📁</div>
+                      <div class="cp-info"><div class="cp-name">포트폴리오</div><div class="cp-desc">프로젝트/작업물</div></div>
+                    </div>
+                    <div class="cp-item" onclick="Admin.addContent('contact')">
+                      <div class="cp-icon">📞</div>
+                      <div class="cp-info"><div class="cp-name">연락처</div><div class="cp-desc">이메일, 전화, 링크</div></div>
+                    </div>
+                    <div class="cp-item" onclick="Admin.addContent('freetext')">
+                      <div class="cp-icon">📝</div>
+                      <div class="cp-info"><div class="cp-name">자유 텍스트</div><div class="cp-desc">자유 서식 콘텐츠</div></div>
+                    </div>
+                    <div class="cp-item" onclick="Admin.addContent('project')">
+                      <div class="cp-icon">🗂️</div>
+                      <div class="cp-info"><div class="cp-name">프로젝트</div><div class="cp-desc">수행기간, 역할, 성과</div></div>
+                    </div>
+                  </div>
+                  <button class="btn-add-content" onclick="Admin.togglePicker()">+ 콘텐츠 추가</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: 미리보기 + QR -->
+          <div>
+            <div class="panel" style="position:sticky; top:0;">
+              <div class="panel-header">
+                <h3>미리보기</h3>
+                <button class="btn btn-outline btn-sm" onclick="Admin.updatePreview()">🔄 새로고침</button>
+              </div>
+              <div class="panel-body" style="padding:0;">
+                <div class="preview-frame">
+                  <div class="preview-bar">
+                    <div class="preview-dot" style="background:#ff5f57;"></div>
+                    <div class="preview-dot" style="background:#febc2e;"></div>
+                    <div class="preview-dot" style="background:#28c840;"></div>
+                    <div class="preview-url-bar" id="previewUrl">yoursite.com/ysg1</div>
+                  </div>
+                  <div class="preview-body" id="previewBody">
+                    <div style="color:#bbb;text-align:center;padding:40px;">콘텐츠를 추가하면 미리보기가 표시됩니다</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty View -->
+    <div id="emptyView" style="flex:1; display:flex;">
+      <div class="empty-state" style="flex:1;">
+        <div class="icon">📋</div>
+        <h3>페이지를 선택하세요</h3>
+        <p>좌측 목록에서 편집할 페이지를 선택하거나, 새 페이지를 추가하세요.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- QR 코드 모달 -->
+<div class="modal-overlay" id="qrModal">
+  <div class="modal">
+    <div class="modal-header"><h3>QR 코드</h3></div>
+    <div class="modal-body" style="text-align:center;">
+      <div id="qrCanvas" style="display:inline-block;"></div>
+      <div id="qrUrl" style="margin-top:12px;font-size:12px;color:#9ca3af;word-break:break-all;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="Admin.closeQRModal()">닫기</button>
+      <button class="btn btn-primary" onclick="Admin.downloadQR()">⬇ 이미지 저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 새 페이지 모달 -->
+<div class="modal-overlay" id="newModal">
+  <div class="modal">
+    <div class="modal-header"><h3>새 페이지 추가</h3></div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>사람 코드</label>
+        <input type="text" id="newPersonCode" placeholder="예: ysg, ksh" oninput="Admin.updateNewUrl()">
+        <div class="form-hint">영문 소문자 이니셜</div>
+      </div>
+      <div class="form-group">
+        <label>페이지 번호</label>
+        <input type="number" id="newPageNum" placeholder="1" min="1" oninput="Admin.updateNewUrl()">
+      </div>
+      <div class="form-group">
+        <label>템플릿</label>
+        <select id="newTemplate">
+          <option value="profile">👤 프로필</option>
+          <option value="portfolio">🎨 포트폴리오</option>
+          <option value="landing">🚀 랜딩</option>
+        </select>
+      </div>
+      <div class="url-preview">접속 URL: /<span id="newUrlText">---</span></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="Admin.closeNewModal()">취소</button>
+      <button class="btn btn-primary" onclick="Admin.createPage()">생성</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="/portfolio/js/admin.js"></script>
+<script>
+/* ── 인증 로직 ────────────────────────────────────────────── */
+const AUTH_KEY = 'portfolio_token';
+
+function getToken()      { return localStorage.getItem(AUTH_KEY) || ''; }
+function setToken(t)     { localStorage.setItem(AUTH_KEY, t); }
+function clearToken()    { localStorage.removeItem(AUTH_KEY); }
+
+async function initAuth() {
+  try {
+    const res  = await fetch('/portfolio/api/auth/check');
+    const data = await res.json();
+    if (!data.required) {
+      // 비밀번호 미설정 → 오버레이 숨기고 바로 진입
+      hideOverlay();
+      return;
+    }
+    if (getToken()) {
+      hideOverlay();
+    }
+    // 토큰 없으면 오버레이 유지 (autofocus로 입력 대기)
+  } catch (e) {
+    hideOverlay(); // 서버 오류 시 오버레이 제거 (fail-open)
+  }
+}
+
+function hideOverlay() {
+  document.getElementById('authOverlay').classList.add('hidden');
+}
+
+async function submitAuth() {
+  const pw  = document.getElementById('authInput').value;
+  const err = document.getElementById('authError');
+  if (!pw) return;
+
+  try {
+    const res  = await fetch('/portfolio/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setToken(data.token);
+      hideOverlay();
+      err.textContent = '';
+    } else {
+      err.textContent = data.error || '비밀번호가 틀렸습니다.';
+      document.getElementById('authInput').select();
+    }
+  } catch (e) {
+    err.textContent = '서버 연결 오류';
+  }
+}
+
+initAuth();
+</script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mdBoard - Editor</title>
+  <link rel="stylesheet" href="/mdboard/css/editor.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <style>
+    :root {
+      --font-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic',
+                   'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      --font-mono: 'Consolas', 'D2Coding', 'Cascadia Code', monospace;
+    }
+  </style>
+</head>
+<body>
+
+<div class="editor-root">
+
+  <!-- ── 헤더 ──────────────────────────────── -->
+  <div class="editor-header">
+    <input
+      type="text"
+      id="titleInput"
+      class="editor-title-input"
+      placeholder="파일명 (저장 시 제목.md로 저장됩니다)"
+      spellcheck="false"
+      autocomplete="off"
+    >
+    <div class="editor-header-right">
+      <!-- 뷰 모드 -->
+      <div class="view-toggle">
+        <button class="view-toggle-btn" data-mode="edit"    title="편집만">편집</button>
+        <button class="view-toggle-btn active" data-mode="split"   title="분할 뷰">분할</button>
+        <button class="view-toggle-btn" data-mode="preview" title="미리보기만">미리보기</button>
+      </div>
+
+      <button class="ed-btn ed-btn-secondary" onclick="newDocument()" title="새 문서 (초기화)">
+        🆕 새 문서
+      </button>
+      <button class="ed-btn ed-btn-danger" onclick="deleteFile()" title="현재 파일 삭제">
+        🗑️ 삭제
+      </button>
+      <button class="ed-btn ed-btn-primary" onclick="saveFile()" title="저장 (Ctrl+S)">
+        💾 저장
+      </button>
+    </div>
+  </div>
+
+  <!-- ── 마크다운 툴바 ──────────────────────── -->
+  <div class="md-toolbar">
+    <!-- 제목 -->
+    <button class="toolbar-btn" data-cmd="h1" title="제목 1 (H1)">
+      <span class="toolbar-btn-text">H1</span>
+    </button>
+    <button class="toolbar-btn" data-cmd="h2" title="제목 2 (H2)">
+      <span class="toolbar-btn-text">H2</span>
+    </button>
+    <button class="toolbar-btn" data-cmd="h3" title="제목 3 (H3)">
+      <span class="toolbar-btn-text">H3</span>
+    </button>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- 서식 -->
+    <button class="toolbar-btn" data-cmd="bold" title="굵게 (Ctrl+B)">
+      <strong>B</strong>
+    </button>
+    <button class="toolbar-btn" data-cmd="italic" title="기울임 (Ctrl+I)">
+      <em>I</em>
+    </button>
+    <button class="toolbar-btn" data-cmd="strike" title="취소선">
+      <s>S</s>
+    </button>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- 목록 -->
+    <button class="toolbar-btn" data-cmd="ul" title="순서 없는 목록">≡</button>
+    <button class="toolbar-btn" data-cmd="ol" title="순서 있는 목록">1.</button>
+    <button class="toolbar-btn" data-cmd="check" title="체크리스트">☑</button>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- 코드 / 인용 -->
+    <button class="toolbar-btn" data-cmd="code" title="인라인 코드">
+      <span class="toolbar-btn-text" style="font-size:12px">`c`</span>
+    </button>
+    <button class="toolbar-btn" data-cmd="codeblock" title="코드 블록">
+      <span class="toolbar-btn-text" style="font-size:10px">{ }</span>
+    </button>
+    <button class="toolbar-btn" data-cmd="blockquote" title="인용">❝</button>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- 삽입 -->
+    <button class="toolbar-btn" data-cmd="table" title="표 삽입">⊞</button>
+    <button class="toolbar-btn" data-cmd="hr"    title="구분선 삽입">─</button>
+    <button class="toolbar-btn" data-cmd="link"  title="링크 삽입">🔗</button>
+    <button class="toolbar-btn" data-cmd="image" title="이미지 업로드">🖼️</button>
+  </div>
+
+  <!-- ── 에디터 본문 (split 기본) ──────────── -->
+  <div class="editor-body mode-split" id="editorBody">
+
+    <!-- 편집 패널 -->
+    <div class="editor-pane" id="editorPane">
+      <div class="editor-pane-header">Markdown 편집</div>
+      <textarea
+        id="mdTextarea"
+        class="md-textarea"
+        placeholder="# 제목을 입력하세요&#10;&#10;여기에 마크다운 내용을 작성하세요.&#10;&#10;**굵게**, *기울임*, `코드` 등 표준 마크다운 문법을 지원합니다."
+        spellcheck="false"
+        autocorrect="off"
+        autocapitalize="off"
+      ></textarea>
+      <!-- 드래그 오버레이 -->
+      <div class="drop-overlay">🖼️ 이미지를 여기에 드래그하세요</div>
+      <!-- 이미지 업로드 패널 -->
+      <div class="img-panel" id="imgPanel">
+        <span style="color:#718096; white-space:nowrap">이미지 업로드:</span>
+        <label class="img-panel-input" for="imgFileInput">
+          클릭하여 파일 선택 또는 에디터 영역에 드래그&드롭
+        </label>
+        <input type="file" id="imgFileInput" accept="image/*" multiple style="display:none">
+        <button class="ed-btn ed-btn-secondary" onclick="closeImgPanel()" style="padding:4px 8px">✕</button>
+      </div>
+    </div>
+
+    <!-- 프리뷰 패널 -->
+    <div class="preview-pane" id="previewPane">
+      <div class="preview-pane-header">
+        <span>미리보기</span>
+        <span style="font-size:10px; color:#c8a87a;">Light Ivory 테마 기준</span>
+      </div>
+      <div class="preview-scroll">
+        <div class="md-body" id="previewBody"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── 상태바 ─────────────────────────────── -->
+  <div class="editor-statusbar">
+    <div class="statusbar-dot" title="저장 상태"></div>
+    <span id="statusInfo">0줄 · 0단어 · 0자</span>
+    <span style="margin-left:auto; opacity:0.6">Ctrl+S: 저장 | Tab: 들여쓰기</span>
+  </div>
+
+</div>
+
+<!-- ── 저장 다이얼로그 ────────────────────────── -->
+<div class="save-dialog-overlay" id="saveDialogOverlay" onclick="if(event.target===this)closeSaveDialog()">
+  <div class="save-dialog">
+    <h3>💾 파일 저장</h3>
+    <p>저장할 파일명을 입력하세요. <code>.md</code> 확장자가 자동으로 추가됩니다.</p>
+    <input
+      type="text"
+      id="saveNameInput"
+      placeholder="파일명 입력"
+      onkeydown="if(event.key==='Enter')confirmSave()"
+    >
+    <div class="save-dialog-btns">
+      <button class="ed-btn ed-btn-secondary" onclick="closeSaveDialog()">취소</button>
+      <button class="ed-btn ed-btn-primary"   onclick="confirmSave()">저장</button>
+    </div>
+  </div>
+</div>
+
+<script src="/mdboard/js/common.js"></script>
+<script src="/mdboard/js/editor.js"></script>
+</body>
+</html>

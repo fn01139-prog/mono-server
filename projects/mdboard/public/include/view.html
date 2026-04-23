@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mdBoard - View</title>
+  <link rel="stylesheet" href="/mdboard/css/view.css">
+  <!-- Marked.js (마크다운 파서) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+  <style>
+    :root {
+      --font-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic',
+                   'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      --font-mono: 'Consolas', 'D2Coding', 'Cascadia Code', monospace;
+    }
+  </style>
+</head>
+<body>
+
+<div class="view-root theme-ivory" id="viewRoot">
+
+  <!-- 툴바 -->
+  <div class="view-toolbar" id="viewToolbar">
+    <div class="view-toolbar-left">
+      <div class="view-breadcrumb" id="viewBreadcrumb">
+        <span>📄</span>
+        <span>문서 선택 대기</span>
+      </div>
+    </div>
+    <div class="view-toolbar-right">
+      <!-- 테마 스위처 -->
+      <div class="theme-switcher" title="테마 변경">
+        <button class="theme-btn active" data-theme="ivory" title="Light Ivory"></button>
+        <button class="theme-btn" data-theme="dark"  title="Dark Blue"></button>
+        <button class="theme-btn" data-theme="green" title="Light Green"></button>
+      </div>
+
+      <!-- 편집 버튼 -->
+      <button class="view-action-btn" onclick="editFile()">
+        <span class="ico">✏️</span> 편집
+      </button>
+      <!-- 파워포인트 다운로드 -->
+      <button class="view-action-btn ppt-btn" data-md-file="" id="downPowerPoint">
+	<span class="ico">💾</span> PowerPoint 
+      </button>
+    </div>
+  </div>
+
+  <!-- 문서 본문 -->
+  <div class="view-wrap" id="viewWrap">
+    <div class="doc-meta" id="docMeta"></div>
+    <article class="md-body" id="mdBody">
+      <div class="view-empty">
+        <div class="view-loading-icon">📭</div>
+        <div>왼쪽 사이드바에서 문서를 선택하세요.</div>
+      </div>
+    </article>
+  </div>
+
+</div>
+
+<script src="/mdboard/js/common.js"></script>
+<script src="/mdboard/js/view.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs/dist/pptxgen.bundle.js"></script>
+<script type="module">
+  import { initPptButtons } from '/mdboard/js/pptDownload.js';
+  const pptBtn     = document.getElementById('ppt-btn');
+  initPptButtons();
+ function formatName(filePath) {
+    return filePath.replace(/\.[^.]+$/, '').split('/').pop().replace(/[-_]/g, ' ');
+  }
+</script>
+</body>
+</html>

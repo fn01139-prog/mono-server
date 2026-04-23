@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>포트폴리오</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --bg: #faf8f5;
+    --surface: #ffffff;
+    --border: #e6dfd6;
+    --text: #2c2416;
+    --muted: #7a6a55;
+    --accent: #7c5c2e;
+    --accent2: #a67c4e;
+    --accent-light: #f0e8da;
+    --accent-soft: #d4b896;
+    --green: #5a7a3a;
+    --green-light: #edf3e6;
+  }
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+
+  /* NAV */
+  nav { position:fixed; top:0; left:0; right:0; z-index:100; background:rgba(250,248,245,0.9); backdrop-filter:blur(12px); border-bottom:1px solid var(--border); }
+  .nav-inner { max-width:960px; margin:0 auto; padding:0 24px; display:flex; justify-content:space-between; align-items:center; height:56px; }
+  .logo { font-weight:800; font-size:1.05rem; color:var(--accent); letter-spacing:-.01em; }
+  .nav-links { display:flex; gap:24px; list-style:none; }
+  .nav-links a { text-decoration:none; color:var(--muted); font-size:.9rem; transition:.2s; }
+  .nav-links a:hover { color:var(--accent); }
+  .nav-toggle { display:none; background:none; border:none; font-size:22px; cursor:pointer; color:var(--text); }
+
+  /* SECTIONS */
+  .container { max-width:960px; margin:0 auto; padding:96px 24px; }
+  h2.section-title { font-size:1.7rem; font-weight:800; margin-bottom:48px; position:relative; color:var(--text); }
+  h2.section-title::after { content:''; position:absolute; left:0; bottom:-10px; width:32px; height:3px; background:var(--accent-soft); border-radius:2px; }
+
+  /* HERO */
+  #hero { min-height:100vh; display:flex; align-items:center; background: linear-gradient(160deg, #faf8f5 60%, #f0e8da 100%); }
+  .hero-inner { max-width:960px; margin:0 auto; padding:100px 24px 60px; }
+  .hero-tag { display:inline-flex; align-items:center; gap:6px; background:var(--accent-light); color:var(--accent); font-size:.8rem; font-weight:600; padding:5px 14px; border-radius:20px; margin-bottom:22px; border:1px solid var(--accent-soft); }
+  #hero h1 { font-size:clamp(2rem,5vw,3.4rem); font-weight:800; line-height:1.15; margin-bottom:18px; }
+  #hero h1 span { color:var(--accent); }
+  #hero p { font-size:1.05rem; color:var(--muted); max-width:500px; line-height:1.8; margin-bottom:36px; }
+  .hero-btns { display:flex; gap:12px; flex-wrap:wrap; }
+  .btn-primary { background:var(--accent); color:#fff; padding:12px 28px; border-radius:8px; text-decoration:none; font-weight:600; font-size:.92rem; transition:.2s; border:none; cursor:pointer; }
+  .btn-primary:hover { background:#5e4420; }
+  .btn-outline { border:1.5px solid var(--accent-soft); color:var(--accent); padding:12px 28px; border-radius:8px; text-decoration:none; font-weight:600; font-size:.92rem; transition:.2s; background:transparent; cursor:pointer; }
+  .btn-outline:hover { background:var(--accent-light); }
+  .hero-deco { position:absolute; right:5%; top:20%; font-size:120px; opacity:.07; pointer-events:none; }
+
+  /* ABOUT */
+  .about-grid { display:grid; grid-template-columns:auto 1fr; gap:48px; align-items:center; }
+  .about-avatar { width:200px; height:200px; border-radius:24px; background:linear-gradient(135deg,var(--accent-light),#e8d5be); display:flex; align-items:center; justify-content:center; font-size:80px; border:1px solid var(--border); flex-shrink:0; }
+  .about-text p { color:var(--muted); line-height:1.85; margin-bottom:14px; font-size:.97rem; }
+  .about-badges { display:flex; flex-wrap:wrap; gap:8px; margin-top:20px; }
+  .badge { background:var(--accent-light); color:var(--accent); padding:5px 13px; border-radius:20px; font-size:.78rem; font-weight:600; border:1px solid var(--border); }
+
+  /* SKILLS */
+  .skills-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+  .skill-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; }
+  .skill-card h3 { font-size:.75rem; font-weight:700; margin-bottom:20px; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+
+  /* PROJECTS */
+  .projects-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:20px; }
+  .project-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:24px; transition:.25s; cursor:pointer; }
+  .project-card:hover { border-color:var(--accent-soft); transform:translateY(-3px); box-shadow:0 10px 28px rgba(124,92,46,.1); }
+  .project-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:16px; }
+  .project-card h3 { font-size:.98rem; font-weight:700; margin-bottom:8px; }
+  .project-card p { color:var(--muted); font-size:.88rem; line-height:1.65; margin-bottom:16px; }
+  .project-tags { display:flex; flex-wrap:wrap; gap:6px; }
+  .tag { background:var(--accent-light); color:var(--accent); font-size:.73rem; padding:3px 10px; border-radius:12px; font-weight:500; }
+
+  /* CONTACT */
+  .contact-wrap { display:grid; grid-template-columns:1fr 1fr; gap:48px; }
+  .contact-info p { color:var(--muted); line-height:1.8; margin-bottom:24px; font-size:.96rem; }
+  .contact-links { display:flex; flex-direction:column; gap:14px; }
+  .contact-link { display:flex; align-items:center; gap:12px; color:var(--text); text-decoration:none; font-size:.93rem; transition:.2s; }
+  .contact-link:hover { color:var(--accent); }
+  .contact-link .icon { font-size:20px; }
+  .form-group { margin-bottom:14px; }
+  .form-group label { display:block; font-size:.82rem; font-weight:700; margin-bottom:6px; color:var(--muted); letter-spacing:.03em; }
+  .form-group input, .form-group textarea {
+    width:100%; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px;
+    font-size:.92rem; font-family:inherit; background:#fff; color:var(--text); transition:.2s; resize:vertical;
+  }
+  .form-group input:focus, .form-group textarea:focus { outline:none; border-color:var(--accent-soft); background:var(--accent-light); }
+  .form-group textarea { min-height:96px; }
+  .submit-btn { width:100%; padding:12px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-size:.93rem; font-weight:700; cursor:pointer; transition:.2s; }
+  .submit-btn:hover { background:#5e4420; }
+  .form-success { display:none; background:var(--green-light); border:1px solid #c3d9a8; color:var(--green); padding:12px 16px; border-radius:8px; font-size:.88rem; margin-top:12px; }
+
+  /* CHAT */
+  .chat-fab { position:fixed; bottom:28px; right:28px; z-index:200; }
+  .chat-btn { width:56px; height:56px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; border:none; font-size:24px; cursor:pointer; box-shadow:0 4px 20px rgba(124,92,46,.35); transition:.2s; display:flex; align-items:center; justify-content:center; }
+  .chat-btn:hover { transform:scale(1.08); }
+  .chat-window { position:fixed; bottom:96px; right:28px; width:330px; max-height:460px; background:#fff; border:1px solid var(--border); border-radius:20px; box-shadow:0 16px 48px rgba(0,0,0,.1); display:none; flex-direction:column; overflow:hidden; z-index:200; }
+  .chat-window.open { display:flex; }
+  .chat-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; background:var(--accent-light); }
+  .chat-avatar { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--accent),var(--accent2)); display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .chat-header-info h4 { font-size:.88rem; font-weight:700; color:var(--text); }
+  .chat-header-info p { font-size:.73rem; color:var(--muted); }
+  .chat-close { margin-left:auto; background:none; border:none; font-size:18px; cursor:pointer; color:var(--muted); }
+  .chat-messages { flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:84%; padding:10px 14px; border-radius:16px; font-size:.86rem; line-height:1.55; }
+  .msg.bot { background:var(--accent-light); color:var(--text); align-self:flex-start; border-bottom-left-radius:4px; }
+  .msg.user { background:var(--accent); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
+  .msg.typing { color:var(--muted); font-style:italic; }
+  .chat-input-row { padding:10px 12px; border-top:1px solid var(--border); display:flex; gap:8px; }
+  .chat-input { flex:1; padding:8px 13px; border:1.5px solid var(--border); border-radius:20px; font-size:.86rem; font-family:inherit; outline:none; background:#faf8f5; }
+  .chat-input:focus { border-color:var(--accent-soft); }
+  .chat-send { background:var(--accent); color:#fff; border:none; border-radius:50%; width:34px; height:34px; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+  footer { border-top:1px solid var(--border); text-align:center; padding:28px 24px; color:var(--muted); font-size:.83rem; background:var(--surface); }
+
+  /* RESPONSIVE */
+  @media(max-width:768px) {
+    .nav-links { display:none; flex-direction:column; position:absolute; top:56px; left:0; right:0; background:rgba(250,248,245,0.98); border-bottom:1px solid var(--border); padding:12px 0; gap:0; }
+    .nav-links.open { display:flex; }
+    .nav-links li a { display:block; padding:12px 24px; font-size:.95rem; }
+    .nav-toggle { display:block; }
+    .about-grid { grid-template-columns:1fr; text-align:center; gap:28px; }
+    .about-avatar { margin:0 auto; width:140px; height:140px; font-size:56px; }
+    .about-badges { justify-content:center; }
+    .skills-grid { grid-template-columns:1fr; }
+    .contact-wrap { grid-template-columns:1fr; gap:32px; }
+    .chat-window { width:calc(100vw - 32px); right:16px; bottom:88px; }
+    .hero-inner { padding:100px 20px 60px; }
+    #hero h1 { font-size:2rem; }
+  }
+  @media(max-width:480px) {
+    .container { padding:80px 16px; }
+    .projects-grid { grid-template-columns:1fr; }
+    .hero-btns { flex-direction:column; }
+    .btn-primary, .btn-outline { text-align:center; }
+    h2.section-title { font-size:1.45rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <span class="logo">🌱 YourName.dev</span>
+    <button class="nav-toggle" onclick="toggleNav()" aria-label="메뉴">☰</button>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#about" onclick="closeNav()">소개</a></li>
+      <li><a href="#skills" onclick="closeNav()">기술</a></li>
+      <li><a href="#projects" onclick="closeNav()">프로젝트</a></li>
+      <li><a href="#contact" onclick="closeNav()">연락</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-inner">
+    <span class="hero-tag">🌱 안녕하세요, 반갑습니다</span>
+    <h1>저는 <span>풀스택 개발자</span><br>홍길동입니다.</h1>
+    <p>사용자 중심의 웹 애플리케이션을 만드는 걸 좋아합니다. 깔끔한 코드와 아름다운 UI로 문제를 해결합니다.</p>
+    <div class="hero-btns">
+      <a href="#projects" class="btn-primary">프로젝트 보기</a>
+      <a href="#contact" class="btn-outline">연락하기</a>
+    </div>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section id="about">
+  <div class="container">
+    <h2 class="section-title">소개</h2>
+    <div class="about-grid">
+      <div class="about-avatar">🧑‍💻</div>
+      <div class="about-text">
+        <p>안녕하세요! 저는 3년차 풀스택 개발자입니다. React, Node.js, Python을 주로 사용하며, 사용자 경험을 최우선으로 생각하는 개발자입니다.</p>
+        <p>문제를 명확하게 분석하고, 효율적인 솔루션을 만드는 것을 즐깁니다. 새로운 기술을 배우는 것을 사랑합니다.</p>
+        <div class="about-badges">
+          <span class="badge">🎓 컴퓨터공학 B.S.</span>
+          <span class="badge">📍 서울, 대한민국</span>
+          <span class="badge">💼 오픈 투 워크</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SKILLS -->
+<section id="skills" style="background:var(--surface); border-top:1px solid var(--border); border-bottom:1px solid var(--border);">
+  <div class="container">
+    <h2 class="section-title">기술 스택</h2>
+    <div class="skills-grid">
+      <div class="skill-card">
+        <h3>프론트엔드</h3>
+        <canvas id="frontendChart"></canvas>
+      </div>
+      <div class="skill-card">
+        <h3>백엔드 & 기타</h3>
+        <canvas id="backendChart"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROJECTS -->
+<section id="projects">
+  <div class="container">
+    <h2 class="section-title">프로젝트</h2>
+    <div class="projects-grid">
+      <div class="project-card">
+        <div class="project-icon" style="background:#f5ede0;">🛒</div>
+        <h3>쇼핑몰 플랫폼</h3>
+        <p>React와 Node.js로 구축한 풀스택 e-커머스 플랫폼. 실시간 재고 관리 및 결제 연동 기능 포함.</p>
+        <div class="project-tags">
+          <span class="tag">React</span><span class="tag">Node.js</span><span class="tag">MongoDB</span>
+        </div>
+      </div>
+      <div class="project-card">
+        <div class="project-icon" style="background:#edf3e6;">🤖</div>
+        <h3>AI 일정 관리 앱</h3>
+        <p>자연어로 일정을 추가하고 관리할 수 있는 AI 기반 캘린더 앱. GPT API 활용.</p>
+        <div class="project-tags">
+          <span class="tag">Next.js</span><span class="tag">OpenAI</span><span class="tag">PostgreSQL</span>
+        </div>
+      </div>
+      <div class="project-card">
+        <div class="project-icon" style="background:#f0e8da;">📊</div>
+        <h3>실시간 대시보드</h3>
+        <p>WebSocket으로 실시간 데이터를 시각화하는 분석 대시보드. 다크모드 지원.</p>
+        <div class="project-tags">
+          <span class="tag">Vue.js</span><span class="tag">Python</span><span class="tag">Redis</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact" style="background:var(--surface); border-top:1px solid var(--border);">
+  <div class="container">
+    <h2 class="section-title">연락하기</h2>
+    <div class="contact-wrap">
+      <div>
+        <div class="contact-info">
+          <p>새로운 기회나 협업 제안은 언제든지 환영합니다. 아래 양식이나 SNS를 통해 연락해 주세요!</p>
+        </div>
+        <div class="contact-links">
+          <a href="mailto:hello@example.com" class="contact-link"><span class="icon">📧</span> hello@example.com</a>
+          <a href="#" class="contact-link"><span class="icon">💼</span> LinkedIn</a>
+          <a href="#" class="contact-link"><span class="icon">🐙</span> GitHub</a>
+        </div>
+      </div>
+      <div>
+        <div class="form-group"><label>이름</label><input type="text" id="f-name" placeholder="홍길동"></div>
+        <div class="form-group"><label>이메일</label><input type="email" id="f-email" placeholder="hong@email.com"></div>
+        <div class="form-group"><label>메시지</label><textarea id="f-msg" placeholder="안녕하세요! 협업 제안이 있어서 연락드립니다..."></textarea></div>
+        <button class="submit-btn" onclick="submitForm()">메시지 보내기 →</button>
+        <div class="form-success" id="form-success">🌱 메시지가 전송되었습니다! 빠른 시일 내에 답변 드리겠습니다.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>© 2026 홍길동 · 🌱 Made with care</footer>
+
+<!-- AI CHAT -->
+<div class="chat-fab">
+  <div class="chat-window" id="chatWindow">
+    <div class="chat-header">
+      <div class="chat-avatar">🌱</div>
+      <div class="chat-header-info">
+        <h4>AI 어시스턴트</h4>
+        <p>저에 대해 무엇이든 물어보세요</p>
+      </div>
+      <button class="chat-close" onclick="toggleChat()">✕</button>
+    </div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="msg bot">안녕하세요! 🌱 저는 홍길동의 AI 어시스턴트입니다. 기술 스택, 프로젝트, 경력 등 무엇이든 물어보세요!</div>
+    </div>
+    <div class="chat-input-row">
+      <input class="chat-input" id="chatInput" placeholder="질문을 입력하세요..." onkeydown="if(event.key==='Enter')sendMsg()">
+      <button class="chat-send" onclick="sendMsg()">➤</button>
+    </div>
+  </div>
+  <button class="chat-btn" onclick="toggleChat()" title="AI에게 물어보기">🌱</button>
+</div>
+
+<script>
+// NAV MOBILE
+function toggleNav() { document.getElementById('navLinks').classList.toggle('open'); }
+function closeNav() { document.getElementById('navLinks').classList.remove('open'); }
+
+// CHARTS
+const palette = ['#7c5c2e','#a67c4e','#c4996a','#5a7a3a','#8aab5e'];
+const chartOpts = (labels, data) => ({
+  type:'bar',
+  data:{ labels, datasets:[{ data, backgroundColor:palette, borderRadius:6 }] },
+  options:{
+    indexAxis:'y', plugins:{legend:{display:false}},
+    scales:{
+      x:{ min:0, max:100, grid:{color:'#f0ece6'}, ticks:{callback:v=>v+'%', color:'#7a6a55', font:{size:11}} },
+      y:{ grid:{display:false}, ticks:{color:'#2c2416', font:{size:12}} }
+    },
+    animation:{duration:1000}
+  }
+});
+new Chart(document.getElementById('frontendChart'), chartOpts(
+  ['React','TypeScript','Next.js','CSS/Tailwind','Vue.js'], [95,88,82,90,70]
+));
+new Chart(document.getElementById('backendChart'), chartOpts(
+  ['Node.js','Python','PostgreSQL','Docker','AWS'], [90,85,80,72,65]
+));
+
+// FORM
+function submitForm() {
+  const n=document.getElementById('f-name').value;
+  const e=document.getElementById('f-email').value;
+  const m=document.getElementById('f-msg').value;
+  if(!n||!e||!m){alert('모든 항목을 입력해 주세요.');return;}
+  document.getElementById('form-success').style.display='block';
+  document.getElementById('f-name').value='';
+  document.getElementById('f-email').value='';
+  document.getElementById('f-msg').value='';
+}
+
+// CHAT
+function toggleChat() {
+  const w=document.getElementById('chatWindow');
+  w.classList.toggle('open');
+  if(w.classList.contains('open')) document.getElementById('chatInput').focus();
+}
+
+const PERSONA = `당신은 개발자 홍길동의 포트폴리오 AI 어시스턴트입니다.
+홍길동 정보:
+- 3년차 풀스택 개발자, 서울 거주
+- 주요 기술: React, Next.js, TypeScript, Node.js, Python, PostgreSQL, Docker, AWS
+- 프로젝트: 쇼핑몰 플랫폼(React+Node+MongoDB), AI 일정관리(Next.js+OpenAI), 실시간 대시보드(Vue+Python+Redis)
+- 컴퓨터공학 학사
+- 오픈 투 워크, 연락: hello@example.com
+친절하고 간결하게 한국어로 2-3문장 이내로 답하세요.`;
+
+let chatHistory = [];
+async function sendMsg() {
+  const inp=document.getElementById('chatInput');
+  const msgs=document.getElementById('chatMessages');
+  const txt=inp.value.trim();
+  if(!txt) return;
+  inp.value='';
+  const uDiv=document.createElement('div');
+  uDiv.className='msg user'; uDiv.textContent=txt; msgs.appendChild(uDiv);
+  const tDiv=document.createElement('div');
+  tDiv.className='msg bot typing'; tDiv.textContent='입력 중...'; msgs.appendChild(tDiv);
+  msgs.scrollTop=msgs.scrollHeight;
+  chatHistory.push({role:'user',content:txt});
+  try {
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:PERSONA,messages:chatHistory})
+    });
+    const data=await res.json();
+    const reply=data.content?.[0]?.text||'죄송해요, 잠시 후 다시 시도해 주세요.';
+    chatHistory.push({role:'assistant',content:reply});
+    tDiv.className='msg bot'; tDiv.textContent=reply;
+  } catch(e) {
+    tDiv.className='msg bot'; tDiv.textContent='오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+  }
+  msgs.scrollTop=msgs.scrollHeight;
+}
+</script>
+</body>
+</html>

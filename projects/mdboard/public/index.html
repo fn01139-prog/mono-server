@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>공부하자 - mdBoard</title>
+  <link rel="stylesheet" href="/mdboard/css/common.css">
+  <style>
+    /* ── 홈 화면 전용 스타일 ─────────────────────── */
+    .home-content { color: #2d3748; }
+
+    .home-hero {
+      background: linear-gradient(135deg, #1e2736 0%, #2d4a7a 50%, #1e2736 100%);
+      border-radius: 14px;
+      padding: 36px 40px;
+      color: #fff;
+      margin-bottom: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+    .home-hero::before {
+      content: '';
+      position: absolute; top: -40px; right: -40px;
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(74,143,212,0.3) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .home-hero h1 {
+      font-size: 26px; font-weight: 800;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .home-hero h1 span { color: #7ab8e8; }
+    .home-hero p {
+      font-size: 14px; color: rgba(255,255,255,0.75);
+      line-height: 1.7; max-width: 520px;
+    }
+    .home-hero-badges {
+      display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;
+    }
+    .hero-badge {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.85);
+      padding: 3px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 500;
+    }
+
+    /* 통계 카드 */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px 18px;
+      transition: box-shadow 0.15s, transform 0.15s;
+    }
+    .stat-card:hover {
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+      transform: translateY(-1px);
+    }
+    .stat-icon { font-size: 22px; margin-bottom: 8px; }
+    .stat-value {
+      font-size: 24px; font-weight: 800;
+      color: #1a202c; line-height: 1;
+    }
+    .stat-label {
+      font-size: 11px; color: #718096;
+      margin-top: 4px; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    /* 섹션 */
+    .home-section { margin-bottom: 28px; }
+    .section-title {
+      font-size: 13px; font-weight: 700;
+      color: #4a5568; text-transform: uppercase;
+      letter-spacing: 0.7px; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::after {
+      content: ''; flex: 1; height: 1px; background: #e2e8f0;
+    }
+
+    /* 최근 파일 목록 */
+    .recent-list { display: flex; flex-direction: column; gap: 6px; }
+    .recent-item {
+      display: flex; align-items: center; gap: 12px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+    }
+    .recent-item:hover {
+      border-color: #4a8fd4;
+      background: #f0f7ff;
+      box-shadow: 0 2px 8px rgba(74,143,212,0.12);
+    }
+    .recent-item-icon { font-size: 18px; flex-shrink: 0; }
+    .recent-item-body { flex: 1; min-width: 0; }
+    .recent-item-title {
+      font-size: 14px; font-weight: 600; color: #2d3748;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .recent-item-sub {
+      font-size: 11px; color: #a0aec0; margin-top: 2px;
+    }
+    .recent-item-preview {
+      font-size: 11px; color: #718096;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 300px;
+    }
+    .recent-item-date {
+      font-size: 11px; color: #a0aec0;
+      white-space: nowrap; flex-shrink: 0;
+    }
+
+    /* 사용 가이드 */
+    .guide-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+    }
+    .guide-card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .guide-card-icon { font-size: 24px; margin-bottom: 8px; }
+    .guide-card h3 {
+      font-size: 13px; font-weight: 700; color: #2d3748;
+      margin-bottom: 6px;
+    }
+    .guide-card p {
+      font-size: 12px; color: #718096; line-height: 1.6;
+    }
+    .guide-card code {
+      background: #f4f6f9; color: #4a5568;
+      padding: 1px 5px; border-radius: 3px;
+      font-size: 11px; font-family: 'Consolas', monospace;
+    }
+
+    /* 빈 상태 */
+    .home-empty {
+      text-align: center; padding: 40px;
+      color: #a0aec0; font-size: 13px; line-height: 1.8;
+    }
+    .home-empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.5; }
+
+    /* 마크다운 문법 참조 */
+    .md-ref-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .md-ref-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 7px 10px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .md-ref-src {
+      font-family: 'Consolas', monospace;
+      color: #718096; flex: 1;
+    }
+    .md-ref-arrow { color: #cbd5e0; }
+    .md-ref-result { color: #2d3748; }
+
+    /* 스크롤바 */
+    .home-content::-webkit-scrollbar { width: 6px; }
+    .home-content::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 3px; }
+
+    /* ── 인증 UI ────────────────────────────────── */
+    .auth-area { display: flex; align-items: center; gap: 8px; }
+
+    .btn-auth {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 12px; border-radius: 6px; border: 1px solid;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .btn-auth.locked {
+      background: #fff; border-color: #e2e8f0; color: #4a5568;
+    }
+    .btn-auth.locked:hover { border-color: #4a8fd4; color: #4a8fd4; }
+    .btn-auth.unlocked {
+      background: #ebf8f0; border-color: #68d391; color: #276749;
+    }
+    .btn-auth.logout-btn {
+      background: transparent; border-color: #e2e8f0;
+      color: #a0aec0; font-size: 11px; padding: 4px 8px;
+    }
+    .btn-auth.logout-btn:hover { border-color: #fc8181; color: #e53e3e; }
+
+    .auth-input-wrap {
+      display: none; align-items: center; gap: 6px;
+    }
+    .auth-input-wrap.visible { display: flex; }
+    .auth-input {
+      padding: 5px 10px; border: 1px solid #4a8fd4; border-radius: 6px;
+      font-size: 12px; width: 140px; outline: none;
+    }
+    .auth-input:focus { box-shadow: 0 0 0 2px rgba(74,143,212,0.2); }
+    .btn-auth-confirm {
+      padding: 5px 10px; border-radius: 6px;
+      background: #4a8fd4; color: #fff; border: none;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .btn-auth-confirm:hover { background: #3a7fc4; }
+    .btn-auth-cancel {
+      padding: 5px 8px; border-radius: 6px;
+      background: transparent; color: #a0aec0; border: none;
+      font-size: 13px; cursor: pointer; line-height: 1;
+    }
+    .btn-auth-cancel:hover { color: #4a5568; }
+  </style>
+
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ══════════════════════════════════════════════
+       헤더
+  ═══════════════════════════════════════════════ -->
+  <header class="shell-header">
+
+    <!-- 로고 -->
+    <a class="header-logo" href="/" onclick="loadHome(); return false;" title="홈으로">
+      <div class="logo-icon">📚</div>
+      <div>
+        <div class="logo-text">공부하자</div>
+        <div class="logo-sub">mdBoard v1.0</div>
+      </div>
+    </a>
+
+    <div class="header-center"></div>
+
+    <!-- 우측 버튼 -->
+    <div class="header-right">
+      <span id="headerFileInfo" style="font-size:12px; color:#7a8ba0; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+
+      <!-- 인증 영역 -->
+      <div class="auth-area" id="authArea" style="display:none">
+        <!-- 비인증 상태 -->
+        <div id="authLocked">
+          <button class="btn-auth locked" onclick="showAuthInput()" id="btnAuthLocked">
+            🔐 인증하기
+          </button>
+        </div>
+        <!-- 비밀번호 입력창 -->
+        <div class="auth-input-wrap" id="authInputWrap">
+          <input
+            type="password"
+            class="auth-input"
+            id="authPasswordInput"
+            placeholder="비밀번호 입력"
+            onkeydown="if(event.key==='Enter') submitAuth(); if(event.key==='Escape') hideAuthInput();"
+          >
+          <button class="btn-auth-confirm" onclick="submitAuth()">확인</button>
+          <button class="btn-auth-cancel" onclick="hideAuthInput()">✕</button>
+        </div>
+        <!-- 인증 완료 상태 -->
+        <div id="authUnlocked" style="display:none; display:flex; align-items:center; gap:6px;">
+          <button class="btn-auth unlocked" style="pointer-events:none">
+            🔓 인증됨
+          </button>
+          <button class="btn-auth logout-btn" onclick="logout()" title="인증 해제">로그아웃</button>
+        </div>
+      </div>
+
+      <button class="btn-monitor" onclick="toggleMonitor()" title="서버 리소스 모니터링">
+        <span class="ico">↻</span>
+        <span>서버 모니터</span>
+      </button>
+    </div>
+
+  </header>
+
+  <!-- ══════════════════════════════════════════════
+       사이드바
+  ═══════════════════════════════════════════════ -->
+  <nav class="shell-sidebar">
+
+    <button class="sidebar-new-btn" id="sidebarNewBtn" onclick="onNewDocument()" style="display:none">
+      <span>✏️</span> 새 문서 작성
+    </button>
+
+    <div class="sidebar-search">
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="🔍  문서 검색..."
+        oninput="filterFiles(this.value)"
+      >
+    </div>
+
+    <div class="sidebar-section-title">문서 목록</div>
+
+    <div class="sidebar-list" id="sidebarList">
+      <div class="sidebar-empty">
+        <div style="font-size:24px;margin-bottom:8px">📭</div>
+        문서 로드 중...
+      </div>
+    </div>
+
+  </nav>
+
+  <!-- ══════════════════════════════════════════════
+       메인 영역
+  ═══════════════════════════════════════════════ -->
+  <main class="shell-main" id="shellMain">
+
+    <!-- 홈 콘텐츠 (iframe 없을 때 기본 표시) -->
+    <div class="home-content" id="homeContent">
+
+      <!-- 히어로 -->
+      <div class="home-hero">
+        <h1>📚 <span>공부하자</span> mdBoard</h1>
+        <p>
+          마크다운(Markdown) 기반 문서 작성 및 조회 플랫폼입니다.<br>
+          학습 자료, 개발 문서, 블로그 포스팅을 간편하게 작성하고 관리하세요.
+        </p>
+        <div class="home-hero-badges">
+          <span class="hero-badge">📝 Markdown</span>
+          <span class="hero-badge">🎨 3가지 테마</span>
+          <span class="hero-badge">🖼️ 이미지 업로드</span>
+          <span class="hero-badge">⚡ 실시간 미리보기</span>
+          <span class="hero-badge">💾 자동 저장</span>
+        </div>
+      </div>
+
+      <!-- 통계 카드 -->
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+          <div class="stat-icon">📄</div>
+          <div class="stat-value" id="statFiles">-</div>
+          <div class="stat-label">문서</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🖼️</div>
+          <div class="stat-value" id="statImages">-</div>
+          <div class="stat-label">이미지</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">💾</div>
+          <div class="stat-value" id="statSize">-</div>
+          <div class="stat-label">총 용량</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🕐</div>
+          <div class="stat-value" id="statLastMod">-</div>
+          <div class="stat-label">마지막 수정</div>
+        </div>
+      </div>
+
+      <!-- 최근 문서 -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:28px;">
+        <div class="home-section">
+          <div class="section-title">최근 문서</div>
+          <div class="recent-list" id="recentList">
+            <div class="home-empty">
+              <div class="home-empty-icon">📂</div>
+              아직 작성된 문서가 없습니다.<br>
+              왼쪽의 <strong>새 문서 작성</strong>을 눌러 첫 번째 문서를 작성하세요!
+            </div>
+          </div>
+        </div>
+        <div class="home-section">
+          <div class="section-title">시스템 변경 사항</div>
+          <div class="recent-list" id="changeList">
+            <div class="home-empty">
+              <div class="home-empty-icon">🖥️</div>
+              아직 변경된 내역이 없습니다.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 두 컬럼: 사용 가이드 + 마크다운 참조 -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:28px;">
+
+        <!-- 사용 가이드 -->
+        <div class="home-section" style="margin:0">
+          <div class="section-title">사용 방법</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div class="guide-card">
+              <div class="guide-card-icon">✏️</div>
+              <h3>문서 작성</h3>
+              <p>왼쪽 사이드바의 <strong>새 문서 작성</strong>을 클릭하거나, 기존 문서를 선택 후 <strong>편집</strong> 버튼을 누릅니다.</p>
+            </div>
+            <div class="guide-card">
+              <div class="guide-card-icon">💾</div>
+              <h3>저장</h3>
+              <p><code>Ctrl+S</code> 또는 우측 상단 <strong>저장 버튼</strong>으로 저장합니다. 1분마다 자동 저장됩니다.</p>
+            </div>
+            <div class="guide-card">
+              <div class="guide-card-icon">🖼️</div>
+              <h3>이미지 삽입</h3>
+              <p>에디터 툴바의 🖼️ 버튼 클릭 또는 에디터 영역에 <strong>드래그&드롭</strong>으로 이미지를 삽입합니다.</p>
+            </div>
+            <div class="guide-card">
+              <div class="guide-card-icon">🎨</div>
+              <h3>테마 변경</h3>
+              <p>뷰어 상단의 색상 버튼으로 <strong>Ivory / Dark / Green</strong> 3가지 테마를 선택할 수 있습니다.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 마크다운 문법 참조 -->
+        <div class="home-section" style="margin:0">
+          <div class="section-title">마크다운 문법 참조</div>
+          <div class="md-ref-grid">
+            <div class="md-ref-item"><span class="md-ref-src"># 제목</span><span class="md-ref-arrow">→</span><strong class="md-ref-result">H1</strong></div>
+            <div class="md-ref-item"><span class="md-ref-src">## 제목</span><span class="md-ref-arrow">→</span><span class="md-ref-result" style="font-size:13px;font-weight:600">H2</span></div>
+            <div class="md-ref-item"><span class="md-ref-src">**텍스트**</span><span class="md-ref-arrow">→</span><strong class="md-ref-result">굵게</strong></div>
+            <div class="md-ref-item"><span class="md-ref-src">*텍스트*</span><span class="md-ref-arrow">→</span><em class="md-ref-result">기울임</em></div>
+            <div class="md-ref-item"><span class="md-ref-src">~~텍스트~~</span><span class="md-ref-arrow">→</span><s class="md-ref-result">취소선</s></div>
+            <div class="md-ref-item"><span class="md-ref-src">`코드`</span><span class="md-ref-arrow">→</span><code style="background:#f4f6f9;padding:1px 4px;border-radius:3px;font-size:11px">코드</code></div>
+            <div class="md-ref-item"><span class="md-ref-src">- 항목</span><span class="md-ref-arrow">→</span><span class="md-ref-result">• 목록</span></div>
+            <div class="md-ref-item"><span class="md-ref-src">1. 항목</span><span class="md-ref-arrow">→</span><span class="md-ref-result">1. 목록</span></div>
+            <div class="md-ref-item"><span class="md-ref-src">&gt; 인용</span><span class="md-ref-arrow">→</span><span class="md-ref-result" style="color:#8b5e3c">❝ 인용</span></div>
+            <div class="md-ref-item"><span class="md-ref-src">---</span><span class="md-ref-arrow">→</span><span class="md-ref-result">─ 구분선</span></div>
+            <div class="md-ref-item"><span class="md-ref-src">[텍스트](URL)</span><span class="md-ref-arrow">→</span><span class="md-ref-result" style="color:#4a8fd4">링크</span></div>
+            <div class="md-ref-item"><span class="md-ref-src">![alt](이미지)</span><span class="md-ref-arrow">→</span><span class="md-ref-result">🖼️ 이미지</span></div>
+          </div>
+        </div>
+
+      </div>
+
+    </div><!-- /home-content -->
+
+    <!-- iframe (파일 조회/편집 시 표시) -->
+    <iframe id="mainFrame" style="display:none; width:100%; height:100%; border:none;" title="콘텐츠 영역"></iframe>
+
+  </main>
+
+</div><!-- /shell -->
+
+<!-- 모니터 패널 -->
+<div class="monitor-panel" id="monitorPanel"></div>
+
+<!-- Toast -->
+
+<script src="/mdboard/js/common.js"></script>
+<script>
+/* ── 전역 상태 ─────────────────────────────────────────────────────── */
+let allFiles      = [];
+let activeItem    = null;
+let currentMode   = 'home'; // 'home' | 'view' | 'editor'
+let authRequired  = false;
+
+/* ── 초기화 ───────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', async () => {
+  await initAuth();
+  loadFileList();
+  loadStats();
+  window.addEventListener('message', onFrameMessage);
+});
+
+/* ── 인증 초기화 ──────────────────────────────────────────────────── */
+async function initAuth() {
+  try {
+    const res = await API.authCheck();
+    authRequired = res.required;
+  } catch (e) {
+    authRequired = false;
+  }
+
+  const authArea = document.getElementById('authArea');
+  if (!authRequired) {
+    // 비밀번호 미설정 → 인증 영역 숨기고 모든 기능 허용
+    authArea.style.display = 'none';
+    showNewDocBtn(true);
+    return;
+  }
+
+  authArea.style.display = 'flex';
+  updateAuthUI();
+}
+
+function updateAuthUI() {
+  const locked   = document.getElementById('authLocked');
+  const inputWrap= document.getElementById('authInputWrap');
+  const unlocked = document.getElementById('authUnlocked');
+  const authed   = Auth.isAuthenticated();
+
+  locked.style.display    = authed ? 'none'  : 'block';
+  inputWrap.classList.remove('visible');
+  unlocked.style.display  = authed ? 'flex'  : 'none';
+  showNewDocBtn(authed);
+
+  // view.html iframe에 인증 상태 전달
+  const frame = document.getElementById('mainFrame');
+  if (frame && frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'auth-changed', authed }, '*');
+  }
+}
+
+function showNewDocBtn(show) {
+  document.getElementById('sidebarNewBtn').style.display = show ? '' : 'none';
+}
+
+function showAuthInput() {
+  document.getElementById('authLocked').style.display = 'none';
+  document.getElementById('authInputWrap').classList.add('visible');
+  document.getElementById('authPasswordInput').focus();
+}
+
+function hideAuthInput() {
+  document.getElementById('authPasswordInput').value = '';
+  document.getElementById('authInputWrap').classList.remove('visible');
+  document.getElementById('authLocked').style.display = 'block';
+}
+
+async function submitAuth() {
+  const pw = document.getElementById('authPasswordInput').value;
+  if (!pw) return;
+  try {
+    const res = await API.auth(pw);
+    if (res.success) {
+      Auth.setToken(res.token);
+      hideAuthInput();
+      updateAuthUI();
+      showToast('✅ 인증되었습니다.', 'success');
+    } else {
+      showToast('❌ ' + (res.error || '비밀번호가 틀렸습니다.'), 'error');
+      document.getElementById('authPasswordInput').select();
+    }
+  } catch (e) {
+    showToast('❌ 인증 요청 실패', 'error');
+  }
+}
+
+function logout() {
+  Auth.clear();
+  updateAuthUI();
+  showToast('🔐 인증이 해제되었습니다.', 'info');
+  // 에디터 모드였다면 홈으로
+  if (currentMode === 'editor') loadHome();
+}
+
+function onNewDocument() {
+  if (authRequired && !Auth.isAuthenticated()) {
+    showToast('🔐 인증 후 이용 가능합니다.', 'error');
+    return;
+  }
+  openEditor(null);
+}
+
+/* ── 파일 목록 로드 ───────────────────────────────────────────────── */
+async function loadFileList() {
+  try {
+    const data = await API.get('/mdboard/api/files');
+    if (!data.success) return;
+    allFiles = data.files;
+    renderSidebar(allFiles);
+  } catch (e) {
+    console.error('파일 목록 로드 실패', e);
+  }
+}
+
+/* ── 통계 로드 ────────────────────────────────────────────────────── */
+async function loadStats() {
+  try {
+    const data = await API.get('/mdboard/api/stats');
+console.log(data);
+    if (!data.success) return;
+
+    document.getElementById('statFiles').textContent  = data.totalFiles ?? '-';
+    document.getElementById('statImages').textContent = data.totalImages ?? '-';
+    document.getElementById('statSize').textContent   = formatSize(data.totalSize || 0);
+    document.getElementById('statLastMod').textContent =
+      data.lastModified ? formatDate(data.lastModified) : '-';
+
+    // 최근 파일 목록
+    const recentList = document.getElementById('recentList');
+    if (!data.recentFiles || !data.recentFiles.length) {
+      recentList.innerHTML = `
+        <div class="home-empty">
+          <div class="home-empty-icon">📂</div>
+          아직 작성된 문서가 없습니다.<br>
+          왼쪽의 <strong>새 문서 작성</strong>을 눌러 첫 번째 문서를 작성하세요!
+        </div>`;
+      return;
+    }
+    recentList.innerHTML = data.recentFiles.map(f => `
+      <div class="recent-item" onclick="openView('${escHtml(f.name)}')">
+        <div class="recent-item-icon">📄</div>
+        <div class="recent-item-body">
+          <div class="recent-item-title">${escHtml(f.title || f.name)}</div>
+          <div class="recent-item-preview">${escHtml(f.preview || '')}</div>
+        </div>
+        <div class="recent-item-date">${formatDate(f.modified)}</div>
+      </div>
+    `).join('');
+
+    // 최근 시스템변경내역
+    const changeList = document.getElementById('changeList');
+    if (!data.changeList || !data.changeList.length) {
+      changeList.innerHTML = `
+        <div class="home-empty">
+          <div class="home-empty-icon">🖥️</div>
+          아직 변경된 내역이 없습니다.
+        </div>`;
+      return;
+    }
+console.log(data.changeList);
+    changeList.innerHTML = data.changeList.map(f => `
+      <div class="recent-item">
+        <div class="recent-item-icon">📄</div>
+        <div class="recent-item-body">
+          <div class="recent-item-title">${escHtml(f.title)}</div>
+          <div class="recent-item-preview">${escHtml(f.contents || '')}</div>
+        </div>
+        <div class="recent-item-date">${formatDate(f.modified)}</div>
+      </div>
+    `).join('');
+
+  } catch (e) {
+    console.error('통계 로드 실패', e);
+  }
+}
+
+/* ── 사이드바 렌더 ────────────────────────────────────────────────── */
+function renderSidebar(files) {
+  const list = document.getElementById('sidebarList');
+  if (!files.length) {
+    list.innerHTML = `
+      <div class="sidebar-empty">
+        <div style="font-size:20px;margin-bottom:6px">📝</div>
+        작성된 문서가 없습니다.<br>
+        새 문서를 작성해보세요!
+      </div>`;
+    return;
+  }
+  list.innerHTML = files.map(f => `
+    <div
+      class="sidebar-item"
+      id="si-${escHtml(f.name)}"
+      onclick="openView('${escHtml(f.name)}')"
+      title="${escHtml(f.title || f.name)}"
+    >
+      <span class="sidebar-item-icon">📄</span>
+      <div class="sidebar-item-body">
+        <div class="sidebar-item-title">${escHtml(f.title || f.name)}</div>
+        <div class="sidebar-item-meta">${formatDate(f.modified)} · ${formatSize(f.size)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+/* ── 검색 필터 ────────────────────────────────────────────────────── */
+function filterFiles(query) {
+  const q = query.toLowerCase();
+  const filtered = q
+    ? allFiles.filter(f =>
+        (f.title || f.name).toLowerCase().includes(q) ||
+        (f.preview || '').toLowerCase().includes(q)
+      )
+    : allFiles;
+  renderSidebar(filtered);
+}
+
+/* ── 뷰어 열기 ────────────────────────────────────────────────────── */
+function openView(name) {
+  setActiveItem(name);
+  showIframe(`./include/view.html?file=${encodeURIComponent(name)}`);
+  currentMode = 'view';
+  document.getElementById('headerFileInfo').textContent = name + '.md';
+}
+
+/* ── 에디터 열기 ──────────────────────────────────────────────────── */
+function openEditor(name) {
+  if (authRequired && !Auth.isAuthenticated()) {
+    showToast('🔐 인증 후 이용 가능합니다.', 'error');
+    return;
+  }
+  const url = name
+    ? `./include/editor.html?file=${encodeURIComponent(name)}`
+    : './include/editor.html';
+  showIframe(url);
+  currentMode = 'editor';
+  if (name) {
+    setActiveItem(name);
+    document.getElementById('headerFileInfo').textContent = '편집: ' + name + '.md';
+  } else {
+    setActiveItem(null);
+    document.getElementById('headerFileInfo').textContent = '새 문서';
+  }
+}
+
+/* ── 홈 복귀 ──────────────────────────────────────────────────────── */
+function loadHome() {
+  document.getElementById('mainFrame').style.display = 'none';
+  document.getElementById('homeContent').style.display = '';
+  setActiveItem(null);
+  currentMode = 'home';
+  document.getElementById('headerFileInfo').textContent = '';
+  loadStats();
+}
+
+/* ── iframe 표시 ──────────────────────────────────────────────────── */
+function showIframe(url) {
+  const frame   = document.getElementById('mainFrame');
+  const content = document.getElementById('homeContent');
+  frame.src = url;
+  frame.style.display = '';
+  content.style.display = 'none';
+  // iframe 로드 완료 후 인증 상태 전달
+  frame.onload = () => {
+    frame.contentWindow.postMessage(
+      { type: 'auth-changed', authed: !authRequired || Auth.isAuthenticated() }, '*'
+    );
+  };
+}
+
+/* ── 활성 아이템 표시 ─────────────────────────────────────────────── */
+function setActiveItem(name) {
+  if (activeItem) {
+    const prev = document.getElementById('si-' + activeItem);
+    if (prev) prev.classList.remove('active');
+  }
+  activeItem = name;
+  if (name) {
+    const el = document.getElementById('si-' + name);
+    if (el) el.classList.add('active');
+  }
+}
+
+/* ── iframe 메시지 처리 ───────────────────────────────────────────── */
+function onFrameMessage(e) {
+  const msg = e.data || {};
+  const { type } = msg;
+  // view.js는 'file' 키, editor.js는 'name' 키 사용 - 둘 다 처리
+  const fileName = msg.name || msg.file;
+
+  switch (type) {
+    case 'open-editor':
+      openEditor(fileName); break;
+
+    case 'file-saved':
+      loadFileList();
+      loadStats();
+      if (fileName) {
+        setActiveItem(fileName);
+        document.getElementById('headerFileInfo').textContent = fileName;
+        showToast('💾 ' + fileName + ' 저장됨', 'success');
+        // 저장 후 뷰어로 이동
+        setTimeout(() => openView(fileName), 300);
+      }
+      break;
+
+    case 'file-deleted':
+      loadFileList();
+      loadStats();
+      loadHome();
+      break;
+
+    case 'file-loaded':
+      // 뷰어에서 파일 로드 완료 → 사이드바 active 갱신
+      if (name) setActiveItem(name);
+      break;
+
+    case 'theme-change':
+      // 테마 변경 시 처리 (필요시 확장)
+      break;
+  }
+}
+
+/* ── 모니터 토글 ──────────────────────────────────────────────────── */
+function toggleMonitor() {
+  const panel = document.getElementById('monitorPanel');
+  if (panel.classList.contains('open')) {
+    panel.classList.remove('open');
+  } else {
+    refreshMonitor();
+  }
+}
+
+/* ── 헬퍼 ────────────────────────────────────────────────────────── */
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+</script>
+
+
+</body>
+</html>
