@@ -234,7 +234,7 @@
     ).join('');
 
     return `
-      <section id="project">
+      <section id="projects">
         <div class="container">
           <h2 class="section-title">프로젝트</h2>
           <div class="projects-grid project-grid-2">${cardsHtml}</div>
