@@ -11,6 +11,46 @@ const os      = require('os');
 const crypto  = require('crypto');
 const router  = express.Router();
 
+/* ──────────────────────────────────────────────────────────────────────────
+ * [1] 파일 상단 require 블록 아래에 아래 함수를 추가
+ * ────────────────────────────────────────────────────────────────────────── */
+ 
+async function pushToGitHub(filename, content) {
+  const pat    = process.env.GITHUB_PAT;
+  const owner  = process.env.GITHUB_OWNER  || 'fn01139-prog';
+  const repo   = process.env.GITHUB_REPO   || 'mono-server';
+  const branch = process.env.GITHUB_BRANCH || 'main';
+  const folder = process.env.GITHUB_CONTENTS_PATH || 'projects/mdboard/public/contents';
+ 
+  if (!pat) return; // 환경변수 미설정 시 skip
+ 
+  const filePath = `${folder}/${filename}`;
+  const apiUrl   = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`;
+  const encoded  = Buffer.from(content, 'utf8').toString('base64');
+  const headers  = {
+    Authorization: `token ${pat}`,
+    Accept:        'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+    'User-Agent':  'mdboard-server'
+  };
+ 
+  // 기존 파일 SHA 조회 (업데이트 시 필요)
+  let sha;
+  try {
+    const check = await fetch(apiUrl, { headers });
+    if (check.ok) sha = (await check.json()).sha;
+  } catch (_) {}
+ 
+  const body = { message: `docs: ${filename}`, content: encoded, branch };
+  if (sha) body.sha = sha;
+ 
+  const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `GitHub API ${res.status}`);
+  }
+}
+
 /* ── 인증 헬퍼 ────────────────────────────────────────────────────────── */
 function getPassword() { return process.env.MDBOARD_PASSWORD || ''; }
 
@@ -131,6 +171,16 @@ router.post('/save', requireAuth, (req, res) => {
       const oldPath = safePath(originalName);
       if (oldPath && fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
+
+    // GitHub push (실패해도 로컬 저장은 유지)
+    let githubError = null;
+    try {
+      await pushToGitHub(name, content);
+    } catch (e) {
+      githubError = e.message;
+      console.error('[mdboard] GitHub push 실패:', e.message);
+    }
+ 
     res.json({ success: true, name });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
