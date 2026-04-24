@@ -158,20 +158,32 @@ router.get('/file/:name', (req, res) => {
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
 
-router.post('/save', requireAuth, (req, res) => {
+/* ──────────────────────────────────────────────────────────────────────────
+ * [2] router.post('/save', ...) 를 아래로 교체
+ *     변경점: (req, res) → async (req, res)
+ *             fs.writeFileSync 이후 pushToGitHub 호출 추가
+ * ────────────────────────────────────────────────────────────────────────── */
+ 
+router.post('/save', requireAuth, async (req, res) => {
   try {
     let { name, content, originalName } = req.body;
-    if (!name || content === undefined) return res.status(400).json({ error: 'name and content required' });
+    if (!name || content === undefined)
+      return res.status(400).json({ error: 'name and content required' });
+ 
     name = name.trim().replace(/[<>:"/\\|?*]/g, '_');
     if (!name.endsWith('.md')) name += '.md';
+ 
     const filePath = safePath(name);
     if (!filePath) return res.status(403).json({ error: 'Forbidden' });
+ 
+    // 로컬 저장
     fs.writeFileSync(filePath, content, 'utf8');
+ 
     if (originalName && originalName !== name) {
       const oldPath = safePath(originalName);
       if (oldPath && fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
     }
-
+ 
     // GitHub push (실패해도 로컬 저장은 유지)
     let githubError = null;
     try {
@@ -181,8 +193,10 @@ router.post('/save', requireAuth, (req, res) => {
       console.error('[mdboard] GitHub push 실패:', e.message);
     }
  
-    res.json({ success: true, name });
-  } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+    res.json({ success: true, name, githubError });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 router.delete('/file/:name', requireAuth, (req, res) => {
