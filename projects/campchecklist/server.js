@@ -10,10 +10,10 @@ const PORT             = process.env.PORT || 3000;
 const DATA_DIR         = path.join(__dirname, 'data');
 const SYNC_INTERVAL_MS = 30 * 1000;
 
-// ── 서브경로 설정 (예: /campcheck)
-// Railway 환경변수 BASE_PATH=/campcheck 로 지정
+// ── 서브경로 설정 (예: /campchecklist)
+// Railway 환경변수 BASE_PATH=/campchecklist 로 지정
 // 로컬 개발 시에도 동일하게 적용됨
-const BASE = (process.env.BASE_PATH || '/campcheck').replace(/\/+$/, '');
+const BASE = (process.env.BASE_PATH || '/campchecklist').replace(/\/+$/, '');
 
 // ════════════════════════════════════════════════════════════════════
 // 데이터 디렉토리 및 초기 파일 보장
@@ -164,8 +164,8 @@ process.on('SIGINT',  () => shutdown('SIGINT'));
 app.use(express.json());
 
 // ── 정적 파일: BASE 경로 아래에서 서빙
-// GET /campcheck/        → public/index.html
-// GET /campcheck/        → public/ 내 정적 자원
+// GET /campchecklist/        → public/index.html
+// GET /campchecklist/        → public/ 내 정적 자원
 app.use(BASE, express.static(path.join(__dirname, 'public')));
 
 // ── 루트 접속 시 BASE 경로로 리다이렉트
@@ -173,7 +173,7 @@ app.get('/', (req, res) => res.redirect(BASE + '/'));
 
 // ════════════════════════════════════════════════════════════════════
 // API Router — BASE/api/* 에 마운트
-// 예: GET /campcheck/api/users
+// 예: GET /campchecklist/api/users
 // ════════════════════════════════════════════════════════════════════
 const router = express.Router();
 app.use(`${BASE}/api`, router);
@@ -319,7 +319,7 @@ router.put('/trips/:tripId/checks', (req, res) => {
 // ════════════════════════════════════════════════════════════════════
 pullFromDrive().then(() => {
   app.listen(PORT, () => {
-    console.log(`\n🏕️  CampCheck 서버 가동`);
+    console.log(`\n🏕️  campchecklist 서버 가동`);
     console.log(`   URL  : http://localhost:${PORT}${BASE}/`);
     console.log(`   API  : http://localhost:${PORT}${BASE}/api/`);
     console.log(`   데이터: ${DATA_DIR}`);
