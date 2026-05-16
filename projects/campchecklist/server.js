@@ -8,7 +8,12 @@ const crypto  = require('crypto');
 const app              = express();
 const PORT             = process.env.PORT || 3000;
 const DATA_DIR         = path.join(__dirname, 'data');
-const SYNC_INTERVAL_MS = 30 * 1000; // 30초
+const SYNC_INTERVAL_MS = 30 * 1000;
+
+// ── 서브경로 설정 (예: /campcheck)
+// Railway 환경변수 BASE_PATH=/campcheck 로 지정
+// 로컬 개발 시에도 동일하게 적용됨
+const BASE = (process.env.BASE_PATH || '/campcheck').replace(/\/+$/, '');
 
 // ════════════════════════════════════════════════════════════════════
 // 데이터 디렉토리 및 초기 파일 보장
@@ -24,9 +29,9 @@ Object.entries(INIT_DATA).forEach(([name, empty]) => {
 // ════════════════════════════════════════════════════════════════════
 // DB 헬퍼 — dirty 플래그로 변경 추적
 // ════════════════════════════════════════════════════════════════════
-const dirty    = new Set(); // 변경된 파일명 추적
-let lastSyncAt = null;      // 마지막 Drive 동기화 성공 시각
-let syncStatus = 'idle';    // idle | syncing | error
+const dirty    = new Set();
+let lastSyncAt = null;
+let syncStatus = 'idle'; // idle | syncing | error
 
 const db = {
   read(name) {
@@ -38,7 +43,7 @@ const db = {
   },
   write(name, data) {
     fs.writeFileSync(path.join(DATA_DIR, `${name}.json`), JSON.stringify(data, null, 2), 'utf8');
-    dirty.add(name); // 변경 마킹 → 다음 30초 주기에 Drive Push
+    dirty.add(name);
   },
 };
 
@@ -52,21 +57,16 @@ const FOLDER_ID = process.env.GDRIVE_FOLDER_ID;
 const USE_DRIVE = !!(process.env.GDRIVE_KEY && FOLDER_ID);
 
 let drive         = null;
-const fileIdCache = {}; // { 'users.json': 'driveFileId' } — list API 호출 최소화
+const fileIdCache = {};
 
 if (USE_DRIVE) {
   try {
     const { google } = require('googleapis');
-
-    // raw JSON 또는 base64 인코딩 모두 지원 (Railway 환경변수 이슈 대응)
     let rawKey = process.env.GDRIVE_KEY;
     try { JSON.parse(rawKey); }
     catch { rawKey = Buffer.from(rawKey, 'base64').toString('utf8'); }
-
     const key = JSON.parse(rawKey);
-    // 일부 플랫폼에서 private_key 개행이 \\n으로 이스케이프되는 이슈 대응
     if (key.private_key) key.private_key = key.private_key.replace(/\\n/g, '\n');
-
     const auth = new google.auth.GoogleAuth({
       credentials: key,
       scopes: ['https://www.googleapis.com/auth/drive'],
@@ -78,31 +78,24 @@ if (USE_DRIVE) {
   }
 }
 
-// ── Drive 파일 ID 조회 (캐시 우선, 없으면 list API) ─────────────────
 async function getFileId(filename) {
   if (fileIdCache[filename]) return fileIdCache[filename];
   const res = await drive.files.list({
     q: `name='${filename}' and '${FOLDER_ID}' in parents and trashed=false`,
-    fields: 'files(id)',
-    spaces: 'drive',
+    fields: 'files(id)', spaces: 'drive',
   });
   const id = res.data.files[0]?.id ?? null;
   if (id) fileIdCache[filename] = id;
   return id;
 }
 
-// ── Drive → 로컬 Pull (단일 파일) ───────────────────────────────────
 async function drivePull(filename) {
   const fileId = await getFileId(filename);
-  if (!fileId) return null; // Drive에 없음 (최초 기동)
-  const res = await drive.files.get(
-    { fileId, alt: 'media' },
-    { responseType: 'text' }
-  );
+  if (!fileId) return null;
+  const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' });
   return typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
 }
 
-// ── 로컬 → Drive Push (단일 파일) ───────────────────────────────────
 async function drivePush(filename, content) {
   const media  = { mimeType: 'application/json', body: content };
   const fileId = await getFileId(filename);
@@ -111,14 +104,12 @@ async function drivePush(filename, content) {
   } else {
     const created = await drive.files.create({
       requestBody: { name: filename, parents: [FOLDER_ID] },
-      media,
-      fields: 'id',
+      media, fields: 'id',
     });
-    fileIdCache[filename] = created.data.id; // 신규 생성 ID 캐시
+    fileIdCache[filename] = created.data.id;
   }
 }
 
-// ── 서버 시작 시 Drive → 로컬 전체 복원 ────────────────────────────
 async function pullFromDrive() {
   if (!drive) return;
   console.log('📥 Google Drive에서 데이터 복원 중...');
@@ -137,14 +128,11 @@ async function pullFromDrive() {
   }
 }
 
-// ── 30초 배치 동기화 — dirty 있을 때만 실행 ────────────────────────
 async function syncToDrive() {
-  if (!drive || dirty.size === 0) return; // 변경 없으면 API 호출 안 함
-
+  if (!drive || dirty.size === 0) return;
   syncStatus   = 'syncing';
   const toSync = [...dirty];
-  dirty.clear(); // 먼저 clear → 실패 시 개별 재추가
-
+  dirty.clear();
   const results = [];
   for (const name of toSync) {
     try {
@@ -152,54 +140,59 @@ async function syncToDrive() {
       await drivePush(`${name}.json`, content);
       results.push(`✓ ${name}`);
     } catch (e) {
-      dirty.add(name); // 실패 파일은 다음 주기에 재시도
+      dirty.add(name);
       results.push(`✗ ${name}(${e.message})`);
       syncStatus = 'error';
     }
   }
-
-  if (syncStatus !== 'error') {
-    syncStatus = 'idle';
-    lastSyncAt = now();
-  }
+  if (syncStatus !== 'error') { syncStatus = 'idle'; lastSyncAt = now(); }
   console.log(`☁️  Drive 동기화 [${new Date().toLocaleTimeString('ko-KR')}] ${results.join(' | ')}`);
 }
 
-// ── Graceful Shutdown — SIGTERM/SIGINT 시 최종 동기화 후 종료 ────────
 async function shutdown(signal) {
   console.log(`\n[${signal}] 종료 전 Drive 최종 동기화 시작...`);
   await syncToDrive();
-  console.log('✅ 최종 동기화 완료. 종료합니다.');
+  console.log('✅ 완료. 종료합니다.');
   process.exit(0);
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT',  () => shutdown('SIGINT'));
 
 // ════════════════════════════════════════════════════════════════════
-// Express 미들웨어
+// Express 설정
 // ════════════════════════════════════════════════════════════════════
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+
+// ── 정적 파일: BASE 경로 아래에서 서빙
+// GET /campcheck/        → public/index.html
+// GET /campcheck/        → public/ 내 정적 자원
+app.use(BASE, express.static(path.join(__dirname, 'public')));
+
+// ── 루트 접속 시 BASE 경로로 리다이렉트
+app.get('/', (req, res) => res.redirect(BASE + '/'));
 
 // ════════════════════════════════════════════════════════════════════
-// 동기화 상태 API (프론트 10초 폴링)
+// API Router — BASE/api/* 에 마운트
+// 예: GET /campcheck/api/users
 // ════════════════════════════════════════════════════════════════════
-app.get('/api/status', (req, res) => {
+const router = express.Router();
+app.use(`${BASE}/api`, router);
+
+// ── 동기화 상태
+router.get('/status', (req, res) => {
   res.json({
     driveEnabled:    !!drive,
-    syncStatus,                      // idle | syncing | error
-    pendingChanges:  [...dirty],     // 아직 동기화 안 된 파일 목록
-    lastSyncAt,                      // 마지막 성공 시각 ISO string
+    syncStatus,
+    pendingChanges:  [...dirty],
+    lastSyncAt,
     syncIntervalSec: SYNC_INTERVAL_MS / 1000,
   });
 });
 
-// ════════════════════════════════════════════════════════════════════
-// USERS
-// ════════════════════════════════════════════════════════════════════
-app.get('/api/users', (req, res) => res.json(db.read('users')));
+// ── USERS ─────────────────────────────────────────────────────────
+router.get('/users', (req, res) => res.json(db.read('users')));
 
-app.post('/api/users', (req, res) => {
+router.post('/users', (req, res) => {
   const { name, color } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '이름을 입력하세요' });
   const users = db.read('users');
@@ -209,7 +202,7 @@ app.post('/api/users', (req, res) => {
   res.json(user);
 });
 
-app.put('/api/users/:id', (req, res) => {
+router.put('/users/:id', (req, res) => {
   const users = db.read('users');
   const i = users.findIndex(u => u.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: '사용자 없음' });
@@ -218,7 +211,7 @@ app.put('/api/users/:id', (req, res) => {
   res.json(users[i]);
 });
 
-app.delete('/api/users/:id', (req, res) => {
+router.delete('/users/:id', (req, res) => {
   db.write('users', db.read('users').filter(u => u.id !== req.params.id));
   db.write('items', db.read('items').filter(i => i.userId !== req.params.id));
   const trips = db.read('trips');
@@ -227,16 +220,14 @@ app.delete('/api/users/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ════════════════════════════════════════════════════════════════════
-// ITEMS
-// ════════════════════════════════════════════════════════════════════
-app.get('/api/items', (req, res) => {
+// ── ITEMS ──────────────────────────────────────────────────────────
+router.get('/items', (req, res) => {
   let items = db.read('items');
   if (req.query.userId) items = items.filter(i => i.userId === req.query.userId);
   res.json(items);
 });
 
-app.post('/api/items', (req, res) => {
+router.post('/items', (req, res) => {
   const { userId, name, category, quantity, unit, note } = req.body;
   if (!userId || !name?.trim()) return res.status(400).json({ error: '필수값 누락' });
   const items = db.read('items');
@@ -252,7 +243,7 @@ app.post('/api/items', (req, res) => {
   res.json(item);
 });
 
-app.put('/api/items/:id', (req, res) => {
+router.put('/items/:id', (req, res) => {
   const items = db.read('items');
   const i = items.findIndex(x => x.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: '품목 없음' });
@@ -261,17 +252,15 @@ app.put('/api/items/:id', (req, res) => {
   res.json(items[i]);
 });
 
-app.delete('/api/items/:id', (req, res) => {
+router.delete('/items/:id', (req, res) => {
   db.write('items', db.read('items').filter(i => i.id !== req.params.id));
   res.json({ ok: true });
 });
 
-// ════════════════════════════════════════════════════════════════════
-// TRIPS
-// ════════════════════════════════════════════════════════════════════
-app.get('/api/trips', (req, res) => res.json(db.read('trips')));
+// ── TRIPS ──────────────────────────────────────────────────────────
+router.get('/trips', (req, res) => res.json(db.read('trips')));
 
-app.post('/api/trips', (req, res) => {
+router.post('/trips', (req, res) => {
   const { name, startDate, endDate, location, note, participants } = req.body;
   if (!name?.trim() || !startDate) return res.status(400).json({ error: '필수값 누락' });
   const trips = db.read('trips');
@@ -287,7 +276,7 @@ app.post('/api/trips', (req, res) => {
   res.json(trip);
 });
 
-app.put('/api/trips/:id', (req, res) => {
+router.put('/trips/:id', (req, res) => {
   const trips = db.read('trips');
   const i = trips.findIndex(t => t.id === req.params.id);
   if (i < 0) return res.status(404).json({ error: '일정 없음' });
@@ -296,7 +285,7 @@ app.put('/api/trips/:id', (req, res) => {
   res.json(trips[i]);
 });
 
-app.delete('/api/trips/:id', (req, res) => {
+router.delete('/trips/:id', (req, res) => {
   db.write('trips', db.read('trips').filter(t => t.id !== req.params.id));
   const checks = db.read('checks');
   delete checks[req.params.id];
@@ -304,15 +293,13 @@ app.delete('/api/trips/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ════════════════════════════════════════════════════════════════════
-// CHECKS  { [tripId]: { [userId]: { [itemId]: { planned, packed } } } }
-// ════════════════════════════════════════════════════════════════════
-app.get('/api/trips/:tripId/checks', (req, res) => {
+// ── CHECKS ─────────────────────────────────────────────────────────
+router.get('/trips/:tripId/checks', (req, res) => {
   const checks = db.read('checks');
   res.json(checks[req.params.tripId] || {});
 });
 
-app.put('/api/trips/:tripId/checks', (req, res) => {
+router.put('/trips/:tripId/checks', (req, res) => {
   const { userId, itemId, planned, packed } = req.body;
   if (!userId || !itemId) return res.status(400).json({ error: '필수값 누락' });
   const checks = db.read('checks');
@@ -328,16 +315,18 @@ app.put('/api/trips/:tripId/checks', (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// 서버 기동 — Drive Pull 완료 후 listen, 동기화 인터벌 등록
+// 서버 기동
 // ════════════════════════════════════════════════════════════════════
 pullFromDrive().then(() => {
   app.listen(PORT, () => {
-    console.log(`\n🏕️  CampCheck 서버 가동 → http://localhost:${PORT}`);
-    console.log(`📁 데이터 경로: ${DATA_DIR}`);
+    console.log(`\n🏕️  CampCheck 서버 가동`);
+    console.log(`   URL  : http://localhost:${PORT}${BASE}/`);
+    console.log(`   API  : http://localhost:${PORT}${BASE}/api/`);
+    console.log(`   데이터: ${DATA_DIR}`);
 
     if (drive) {
       setInterval(syncToDrive, SYNC_INTERVAL_MS);
-      console.log(`🔄 Drive 배치 동기화: ${SYNC_INTERVAL_MS / 1000}초 주기 (변경 있을 때만 실행)\n`);
+      console.log(`🔄 Drive 배치 동기화: ${SYNC_INTERVAL_MS / 1000}초 주기 (변경 시만)\n`);
     } else {
       console.log('💾 로컬 전용 모드 (GDRIVE_KEY / GDRIVE_FOLDER_ID 미설정)\n');
     }
