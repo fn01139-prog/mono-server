@@ -172,11 +172,11 @@ app.use(BASE, express.static(path.join(__dirname, 'public')));
 app.get('/', (req, res) => res.redirect(BASE + '/'));
 
 // ════════════════════════════════════════════════════════════════════
-// API Router — BASE/api/* 에 마운트
-// 예: GET /campchecklist/api/users
+// API Router — /api/* 에 마운트
+// 예: GET /api/users
 // ════════════════════════════════════════════════════════════════════
 const router = express.Router();
-app.use(`${BASE}/api`, router);
+app.use(`/api`, router);
 
 // ── 동기화 상태
 router.get('/status', (req, res) => {
