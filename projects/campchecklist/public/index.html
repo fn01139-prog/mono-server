@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏕️ CampCheck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Noto+Sans+KR:wght@400;500;600;700&family=Courier+Prime:wght@700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #e8dfd0;
+  --surface:   #f5f0e8;
+  --surface2:  #faf7f2;
+  --border:    #c8b89a;
+  --border2:   #ddd0bc;
+  --text:      #2a1e0e;
+  --muted:     #8a7a62;
+  --nav:       #1e2d1a;
+  --green:     #3a5a40;
+  --green-lt:  #5d8a62;
+  --green-bg:  #d4e8d0;
+  --accent:    #c4621d;
+  --accent-bg: #f5e0d0;
+  --yellow:    #b07a0a;
+  --yellow-bg: #f5edd0;
+  --red:       #a83232;
+  --red-bg:    #f5d8d8;
+  --blue:      #2a5a7a;
+  --blue-bg:   #d0e4f0;
+  --radius:    8px;
+  --shadow:    0 2px 8px rgba(42,30,14,.1);
+  --shadow-lg: 0 4px 20px rgba(42,30,14,.16);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+/* ── NAV ── */
+header {
+  background: var(--nav); padding: 0 20px;
+  display: flex; align-items: center; gap: 20px;
+  height: 54px; position: sticky; top: 0; z-index: 100;
+  box-shadow: 0 2px 12px rgba(0,0,0,.35);
+}
+.logo { font-family: 'Playfair Display', serif; font-size: 19px; color: #b8d8b8; white-space: nowrap; flex-shrink: 0; }
+nav { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
+nav::-webkit-scrollbar { display: none; }
+nav button {
+  background: none; border: none; cursor: pointer; color: #889a88;
+  font-size: 13px; font-family: inherit; padding: 6px 13px;
+  border-radius: 6px; transition: all .15s; white-space: nowrap; font-weight: 500;
+}
+nav button:hover { background: rgba(255,255,255,.08); color: #c8e0c8; }
+nav button.active { background: rgba(255,255,255,.14); color: #fff; font-weight: 700; }
+
+/* ── SYNC BADGE ── */
+#sync-badge {
+  display: none; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 99px; font-size: 11px; font-weight: 600;
+  white-space: nowrap; flex-shrink: 0; cursor: default;
+  border: 1px solid transparent; transition: all .3s;
+}
+#sync-badge.s-ok     { background: rgba(58,90,64,.6);  border-color: #5a8a60; color: #a8d8a8; }
+#sync-badge.s-pend   { background: rgba(176,122,10,.4); border-color: #c09030; color: #f0d080; }
+#sync-badge.s-sync   { background: rgba(196,98,29,.4); border-color: #d07030; color: #f0b080; }
+#sync-badge.s-err    { background: rgba(168,50,50,.5);  border-color: #c05050; color: #f0a0a0; }
+#sync-badge.s-off    { background: rgba(80,70,60,.4);   border-color: #70604a; color: #a09080; display: flex; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { display: inline-block; animation: spin .9s linear infinite; }
+
+/* ── LAYOUT ── */
+main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+.view { display: none; animation: fadeIn .2s ease; }
+.view.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* ── SHARED ── */
+.page-title { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--green); margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+.card { background: var(--surface2); border-radius: var(--radius); border: 1px solid var(--border2); box-shadow: var(--shadow); padding: 18px; }
+.card + .card { margin-top: 12px; }
+
+/* ── BUTTONS ── */
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-family: inherit; font-weight: 600; transition: all .15s; white-space: nowrap; }
+.btn-primary { background: var(--green); color: #fff; }
+.btn-primary:hover { background: var(--green-lt); }
+.btn-ghost   { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--surface); color: var(--text); }
+.btn-danger  { background: var(--red-bg); color: var(--red); border: 1px solid #e0b0b0; }
+.btn-danger:hover { background: var(--red); color: #fff; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-icon { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px 5px; border-radius: 4px; transition: all .15s; font-size: 14px; line-height: 1; }
+.btn-icon:hover { color: var(--red); background: var(--red-bg); }
+
+/* ── FORM ── */
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 130px; }
+.form-group label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+input, select, textarea {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
+  font-family: inherit; font-size: 13px; background: var(--surface2); color: var(--text);
+  transition: border-color .15s; width: 100%;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--green-lt); box-shadow: 0 0 0 3px rgba(93,138,98,.15); }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+/* ── BADGE ── */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+.badge-green  { background: var(--green-bg);  color: var(--green); }
+.badge-yellow { background: var(--yellow-bg); color: var(--yellow); }
+.badge-red    { background: var(--red-bg);    color: var(--red); }
+.badge-blue   { background: var(--blue-bg);   color: var(--blue); }
+.badge-gray   { background: #e4ddd4; color: var(--muted); }
+
+/* ── PROGRESS ── */
+.progress-bar { height: 8px; background: var(--border2); border-radius: 99px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--green); border-radius: 99px; transition: width .4s; }
+
+/* ── USER DOT ── */
+.user-dot { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+
+/* ── SECTION TOGGLE ── */
+.stoggle { background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; }
+.stoggle-hd { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; cursor: pointer; user-select: none; font-weight: 700; color: var(--green); font-size: 14px; }
+.stoggle-hd:hover { background: var(--green-bg); }
+.stoggle-bd { padding: 16px; border-top: 1px solid var(--border2); display: none; }
+.stoggle-bd.open { display: block; }
+.sarrow { transition: transform .2s; font-size: 11px; color: var(--muted); }
+.sarrow.open { transform: rotate(180deg); }
+
+/* ── TRIPS ── */
+.trips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+.trip-card {
+  background: var(--surface2); border-radius: var(--radius); border: 1px solid var(--border2);
+  box-shadow: var(--shadow); padding: 16px 18px; transition: all .15s; position: relative;
+}
+.trip-card:hover { box-shadow: var(--shadow-lg); border-color: var(--green-lt); transform: translateY(-1px); }
+.trip-card.past { opacity: .65; }
+.trip-date { font-family: 'Courier Prime', monospace; font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: .4px; }
+.trip-name { font-size: 16px; font-weight: 700; margin: 4px 0 2px; }
+.trip-loc  { font-size: 12px; color: var(--muted); margin-bottom: 10px; min-height: 16px; }
+.trip-footer { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.trip-card-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
+.trip-card:hover .trip-card-actions { opacity: 1; }
+
+/* ── USERS ── */
+.users-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.user-card { background: var(--surface2); border-radius: var(--radius); border: 1px solid var(--border2); padding: 13px 15px; display: flex; align-items: center; gap: 12px; box-shadow: var(--shadow); }
+.user-info { flex: 1; min-width: 0; }
+.user-name { font-size: 15px; font-weight: 700; }
+.user-meta { font-size: 12px; color: var(--muted); }
+
+/* ── ITEMS ── */
+.item-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.item-tab { display: flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s; color: var(--muted); }
+.item-tab:hover { border-color: var(--green-lt); color: var(--green); }
+.item-tab.active { background: var(--green); border-color: var(--green); color: #fff; }
+.cat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); padding: 3px 8px; background: var(--bg); border-radius: 4px; display: inline-block; margin-bottom: 7px; }
+.item-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; margin-bottom: 5px; }
+.item-row:hover { border-color: var(--border); }
+.item-name { flex: 1; font-weight: 500; }
+.item-qty  { font-family: 'Courier Prime', monospace; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.item-note { font-size: 11px; color: var(--muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── CHECKLIST ── */
+.cl-top { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.check-row { display: flex; align-items: center; gap: 10px; padding: 10px 13px; border-radius: 7px; margin-bottom: 5px; border: 1px solid var(--border2); background: var(--surface2); transition: background .2s, border-color .2s; }
+.check-row.is-planned { background: var(--yellow-bg); border-color: #ddc880; }
+.check-row.is-packed  { background: var(--green-bg);  border-color: #98c898; }
+.check-item-name { flex: 1; font-weight: 500; }
+.check-item-meta { font-size: 11px; color: var(--muted); }
+.ck-btn { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; font-size: 12px; font-weight: 600; font-family: inherit; background: var(--surface); color: var(--muted); transition: all .15s; white-space: nowrap; }
+.ck-btn.on-plan { background: var(--yellow-bg); border-color: var(--yellow); color: var(--yellow); }
+.ck-btn.on-pack { background: var(--green-bg);  border-color: var(--green);  color: var(--green); }
+.cl-stats { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 12px 16px; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border2); margin-bottom: 16px; }
+.stat-num { font-size: 22px; font-weight: 700; font-family: 'Courier Prime', monospace; color: var(--green); }
+.stat-lbl { font-size: 11px; color: var(--muted); }
+
+/* ── CROSS CHECK ── */
+.cross-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.p-card { background: var(--surface2); border-radius: var(--radius); border: 1px solid var(--border2); padding: 13px 15px; box-shadow: var(--shadow); }
+.p-card-name { font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 7px; font-size: 14px; }
+.p-card-stats { font-size: 11px; color: var(--muted); margin-bottom: 7px; }
+.warn-item { display: flex; align-items: flex-start; gap: 8px; padding: 10px 13px; border-radius: 6px; margin-bottom: 7px; border: 1px solid; }
+.warn-dup  { background: var(--yellow-bg); border-color: #ddc880; }
+.warn-miss { background: var(--red-bg);    border-color: #e0b0b0; }
+.warn-ok   { background: var(--green-bg);  border-color: #98c898; }
+.warn-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+.cross-tbl { width: 100%; border-collapse: collapse; background: var(--surface2); border-radius: var(--radius); overflow: hidden; font-size: 13px; }
+.cross-tbl th { background: var(--green); color: #fff; padding: 8px 11px; text-align: center; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cross-tbl th:first-child { text-align: left; min-width: 150px; }
+.cross-tbl td { padding: 7px 11px; border-bottom: 1px solid var(--border2); text-align: center; }
+.cross-tbl td:first-child { text-align: left; font-weight: 500; }
+.cross-tbl tr:last-child td { border-bottom: none; }
+.cross-tbl tr:hover td { background: var(--surface); }
+.cross-tbl .cat-tr td { background: var(--bg); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: 5px 11px; }
+.c-ok   { color: var(--green); font-size: 15px; }
+.c-plan { color: var(--yellow); font-size: 15px; }
+.c-no   { color: var(--border); }
+
+/* ── MODAL ── */
+.modal-ov { position: fixed; inset: 0; background: rgba(0,0,0,.48); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modal-ov.hidden { display: none; }
+.modal { background: var(--surface2); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 24px; width: 100%; max-width: 510px; max-height: 90vh; overflow-y: auto; }
+.modal-title { font-size: 16px; font-weight: 700; color: var(--green); margin-bottom: 16px; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+/* ── EMPTY ── */
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.empty-icon { font-size: 36px; margin-bottom: 10px; }
+
+/* ── TOAST ── */
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--nav); color: #b8d8b8; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 9999; transition: opacity .3s; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.3); opacity: 1; }
+#toast.hidden { opacity: 0; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 600px) {
+  header { padding: 0 10px; gap: 10px; }
+  nav button { padding: 5px 8px; font-size: 11px; }
+  .logo { font-size: 15px; }
+  main { padding: 14px 10px 50px; }
+  #sync-badge { display: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🏕 CampCheck</div>
+  <nav id="nav">
+    <button data-view="trips"     class="active">📅 일정</button>
+    <button data-view="users">👤 참여자</button>
+    <button data-view="items">🎒 품목</button>
+    <button data-view="checklist">✅ 체크리스트</button>
+    <button data-view="cross">🔍 교차점검</button>
+  </nav>
+  <div id="sync-badge" class="s-off" title="Google Drive 동기화 상태">☁️ 미연동</div>
+</header>
+
+<main>
+
+<!-- ══ 일정 ══ -->
+<div id="view-trips" class="view active">
+  <div class="page-title">📅 캠핑 일정 관리</div>
+  <div class="stoggle" id="st-trip">
+    <div class="stoggle-hd" onclick="toggleSt('st-trip')">
+      <span>➕ 새 일정 추가</span><span class="sarrow">▼</span>
+    </div>
+    <div class="stoggle-bd">
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label>일정 이름 *</label><input id="tf-name" placeholder="예: 여름 계곡 캠핑" /></div>
+        <div class="form-group"><label>장소</label><input id="tf-loc" placeholder="예: 가평 용소캠핑장" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>출발일 *</label><input id="tf-start" type="date" /></div>
+        <div class="form-group"><label>귀가일</label><input id="tf-end" type="date" /></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>참여자</label>
+          <div id="tf-parts" style="display:flex;gap:6px;flex-wrap:wrap;min-height:36px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);align-items:center">
+            <span style="color:var(--muted);font-size:12px">참여자를 먼저 등록하세요</span>
+          </div>
+        </div>
+        <div class="form-group" style="flex:2"><label>메모</label><input id="tf-note" placeholder="장비 점검, 예약 확인 등" /></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="saveTrip()">일정 저장</button></div>
+    </div>
+  </div>
+  <div class="trips-grid" id="trips-grid"></div>
+</div>
+
+<!-- ══ 참여자 ══ -->
+<div id="view-users" class="view">
+  <div class="page-title">👤 참여자 관리</div>
+  <div class="stoggle" id="st-user">
+    <div class="stoggle-hd" onclick="toggleSt('st-user')">
+      <span>➕ 참여자 추가</span><span class="sarrow">▼</span>
+    </div>
+    <div class="stoggle-bd">
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label>이름 *</label><input id="uf-name" placeholder="예: 홍길동" /></div>
+        <div class="form-group" style="flex:0 0 80px"><label>색상</label><input id="uf-color" type="color" value="#3a5a40" style="height:38px;padding:2px 4px;cursor:pointer" /></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="saveUser()">저장</button></div>
+    </div>
+  </div>
+  <div class="users-grid" id="users-grid"></div>
+</div>
+
+<!-- ══ 품목 ══ -->
+<div id="view-items" class="view">
+  <div class="page-title">🎒 품목 관리</div>
+  <div class="item-tabs" id="item-tabs"></div>
+  <div class="stoggle" id="st-item">
+    <div class="stoggle-hd" onclick="toggleSt('st-item')">
+      <span>➕ 품목 추가</span><span class="sarrow">▼</span>
+    </div>
+    <div class="stoggle-bd">
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label>품목명 *</label><input id="if-name" placeholder="예: 텐트, 침낭, 버너..." /></div>
+        <div class="form-group"><label>카테고리</label>
+          <select id="if-cat">
+            <option>텐트/거처</option><option>침구</option><option>주방/취사</option>
+            <option>식재료</option><option>의류</option><option>세면/위생</option>
+            <option>조명/전기</option><option>응급/안전</option><option>놀이/레저</option><option>기타</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:0 0 70px"><label>수량</label><input id="if-qty" type="number" value="1" min="1" /></div>
+        <div class="form-group" style="flex:0 0 60px"><label>단위</label><input id="if-unit" value="개" /></div>
+        <div class="form-group"><label>메모</label><input id="if-note" placeholder="참고사항" /></div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary" onclick="saveItem()">품목 저장</button></div>
+    </div>
+  </div>
+  <div id="items-list"></div>
+</div>
+
+<!-- ══ 체크리스트 ══ -->
+<div id="view-checklist" class="view">
+  <div class="page-title">✅ 체크리스트</div>
+  <div class="cl-top">
+    <div class="form-group" style="min-width:200px"><label>캠핑 일정</label>
+      <select id="cl-trip" onchange="onClTripChange()"><option value="">-- 일정 선택 --</option></select>
+    </div>
+    <div class="form-group" style="min-width:150px"><label>참여자</label>
+      <select id="cl-user" onchange="loadChecklist()"><option value="">-- 참여자 선택 --</option></select>
+    </div>
+  </div>
+  <div id="cl-content"></div>
+</div>
+
+<!-- ══ 교차 점검 ══ -->
+<div id="view-cross" class="view">
+  <div class="page-title">🔍 교차 점검</div>
+  <div style="margin-bottom:16px">
+    <div class="form-group" style="max-width:270px"><label>캠핑 일정</label>
+      <select id="cr-trip" onchange="loadCross()"><option value="">-- 일정 선택 --</option></select>
+    </div>
+  </div>
+  <div id="cr-content"></div>
+</div>
+
+</main>
+
+<!-- MODAL -->
+<div class="modal-ov hidden" id="modal-ov" onclick="closeModal(event)">
+  <div class="modal" id="modal-body"></div>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script>
+// ════════════════════════════════════════════════
+// 상수
+// ════════════════════════════════════════════════
+const CATS = ['텐트/거처','침구','주방/취사','식재료','의류','세면/위생','조명/전기','응급/안전','놀이/레저','기타'];
+const ICONS = {'텐트/거처':'⛺','침구':'🛌','주방/취사':'🍳','식재료':'🥘','의류':'👕','세면/위생':'🧴','조명/전기':'💡','응급/안전':'🚑','놀이/레저':'🎮','기타':'🧰'};
+
+// ════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════
+const S = {
+  users: [], items: [], trips: [], checks: {},
+  itemsUser: null,
+};
+
+// ════════════════════════════════════════════════
+// API
+// ════════════════════════════════════════════════
+const api = {
+  get:    p      => fetch(p).then(r => r.json()),
+  post:  (p, d)  => fetch(p, { method:'POST',   headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) }).then(r => r.json()),
+  put:   (p, d)  => fetch(p, { method:'PUT',    headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) }).then(r => r.json()),
+  delete: p      => fetch(p, { method:'DELETE' }).then(r => r.json()),
+};
+
+// ════════════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════════════
+let _tt;
+function toast(msg, type='ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = '';
+  el.style.background = type==='err' ? 'var(--red)' : 'var(--nav)';
+  clearTimeout(_tt);
+  _tt = setTimeout(() => el.classList.add('hidden'), 2200);
+}
+
+// ════════════════════════════════════════════════
+// SYNC BADGE (10초 폴링)
+// ════════════════════════════════════════════════
+async function pollSyncStatus() {
+  try {
+    const s = await api.get('/api/status');
+    const badge = document.getElementById('sync-badge');
+
+    if (!s.driveEnabled) {
+      badge.className = 's-off';
+      badge.style.display = 'none';
+      return;
+    }
+
+    badge.style.display = 'flex';
+
+    if (s.syncStatus === 'syncing') {
+      badge.className = 's-sync';
+      badge.innerHTML = '<span class="spin">↻</span> 동기화 중...';
+    } else if (s.syncStatus === 'error') {
+      badge.className = 's-err';
+      badge.innerHTML = '⚠️ 동기화 오류';
+    } else if (s.pendingChanges.length > 0) {
+      badge.className = 's-pend';
+      badge.innerHTML = `🕐 대기 ${s.pendingChanges.length}건`;
+      badge.title = `30초 이내 동기화 예정: ${s.pendingChanges.join(', ')}`;
+    } else if (s.lastSyncAt) {
+      const t = new Date(s.lastSyncAt).toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
+      badge.className = 's-ok';
+      badge.innerHTML = `☁️ ${t} 동기화됨`;
+      badge.title = `마지막 Google Drive 동기화: ${new Date(s.lastSyncAt).toLocaleString('ko-KR')}`;
+    } else {
+      badge.className = 's-ok';
+      badge.innerHTML = '☁️ Drive 연동됨';
+      badge.title = 'Google Drive 연동 활성화';
+    }
+  } catch { /* 서버 응답 없으면 무시 */ }
+}
+pollSyncStatus();
+setInterval(pollSyncStatus, 10000);
+
+// ════════════════════════════════════════════════
+// NAV
+// ════════════════════════════════════════════════
+document.getElementById('nav').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-view]');
+  if (!btn) return;
+  const v = btn.dataset.view;
+  document.querySelectorAll('[data-view]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + v).classList.add('active');
+  if (v === 'items')     renderItems();
+  if (v === 'checklist') initChecklist();
+  if (v === 'cross')     initCross();
+});
+
+// ════════════════════════════════════════════════
+// SECTION TOGGLE
+// ════════════════════════════════════════════════
+function toggleSt(id) {
+  const bd = document.querySelector(`#${id} .stoggle-bd`);
+  const ar = document.querySelector(`#${id} .sarrow`);
+  const open = bd.classList.toggle('open');
+  ar.classList.toggle('open', open);
+}
+
+// ════════════════════════════════════════════════
+// INIT LOAD
+// ════════════════════════════════════════════════
+async function loadAll() {
+  [S.users, S.items, S.trips] = await Promise.all([
+    api.get('/api/users'), api.get('/api/items'), api.get('/api/trips'),
+  ]);
+  renderTrips();
+  renderUsers();
+  populateTripSelects();
+}
+
+// ════════════════════════════════════════════════
+// USERS
+// ════════════════════════════════════════════════
+function renderUsers() {
+  const g = document.getElementById('users-grid');
+  if (!S.users.length) {
+    g.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>등록된 참여자가 없습니다.</p></div>';
+    refreshTripParticipants(); return;
+  }
+  g.innerHTML = S.users.map(u => `
+    <div class="user-card">
+      <div class="user-dot" style="background:${u.color}">${u.name[0]}</div>
+      <div class="user-info">
+        <div class="user-name">${esc(u.name)}</div>
+        <div class="user-meta">품목 ${S.items.filter(i=>i.userId===u.id).length}개 등록됨</div>
+      </div>
+      <button class="btn-icon" onclick="openEditUser('${u.id}')" title="수정">✏️</button>
+      <button class="btn-icon" onclick="deleteUser('${u.id}','${esc(u.name)}')" title="삭제">🗑️</button>
+    </div>`).join('');
+  refreshTripParticipants();
+}
+
+async function saveUser() {
+  const name  = document.getElementById('uf-name').value.trim();
+  const color = document.getElementById('uf-color').value;
+  if (!name) { toast('이름을 입력하세요', 'err'); return; }
+  const u = await api.post('/api/users', { name, color });
+  if (u.error) { toast(u.error, 'err'); return; }
+  S.users.push(u);
+  document.getElementById('uf-name').value = '';
+  renderUsers(); renderItems();
+  toast(`${u.name} 추가 완료`);
+}
+
+function openEditUser(id) {
+  const u = S.users.find(x => x.id === id);
+  openModal(`
+    <div class="modal-title">✏️ 참여자 수정</div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>이름</label><input id="eu-name" value="${esc(u.name)}" /></div>
+      <div class="form-group" style="flex:0 0 80px"><label>색상</label><input id="eu-color" type="color" value="${u.color}" style="height:38px;padding:2px 4px;cursor:pointer" /></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">취소</button>
+      <button class="btn btn-primary" onclick="updateUser('${id}')">저장</button>
+    </div>`);
+}
+
+async function updateUser(id) {
+  const name  = document.getElementById('eu-name').value.trim();
+  const color = document.getElementById('eu-color').value;
+  if (!name) { toast('이름 필수', 'err'); return; }
+  const u = await api.put(`/api/users/${id}`, { name, color });
+  S.users[S.users.findIndex(x=>x.id===id)] = u;
+  closeModal(); renderUsers(); renderTrips(); renderItems();
+  toast('수정 완료');
+}
+
+async function deleteUser(id, name) {
+  if (!confirm(`"${name}" 참여자와 해당 품목을 모두 삭제할까요?`)) return;
+  await api.delete(`/api/users/${id}`);
+  S.users = S.users.filter(u => u.id !== id);
+  S.items = S.items.filter(i => i.userId !== id);
+  S.trips.forEach(t => { t.participants = (t.participants||[]).filter(p=>p!==id); });
+  renderUsers(); renderItems(); renderTrips();
+  toast(`${name} 삭제 완료`);
+}
+
+function refreshTripParticipants() {
+  const c = document.getElementById('tf-parts');
+  if (!S.users.length) {
+    c.innerHTML = '<span style="color:var(--muted);font-size:12px">참여자를 먼저 등록하세요</span>';
+    return;
+  }
+  const checked = new Set([...c.querySelectorAll('input:checked')].map(el=>el.value));
+  c.innerHTML = S.users.map(u => `
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 7px;border-radius:4px;user-select:none" title="${esc(u.name)}">
+      <input type="checkbox" value="${u.id}" ${checked.has(u.id)?'checked':''} />
+      <span class="user-dot" style="background:${u.color};width:20px;height:20px;font-size:10px">${u.name[0]}</span>
+      <span style="font-size:12px">${esc(u.name)}</span>
+    </label>`).join('');
+}
+
+// ════════════════════════════════════════════════
+// ITEMS
+// ════════════════════════════════════════════════
+function renderItems() {
+  const tabs = document.getElementById('item-tabs');
+  if (!S.users.length) {
+    tabs.innerHTML = '<span style="color:var(--muted);font-size:13px">참여자를 먼저 등록해주세요</span>';
+    document.getElementById('items-list').innerHTML = '';
+    return;
+  }
+  if (!S.itemsUser || !S.users.find(u=>u.id===S.itemsUser)) S.itemsUser = S.users[0].id;
+  tabs.innerHTML = S.users.map(u => `
+    <div class="item-tab ${u.id===S.itemsUser?'active':''}" onclick="switchItemUser('${u.id}')">
+      <span style="background:${u.color};width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0"></span>
+      ${esc(u.name)}
+    </div>`).join('');
+  renderItemList();
+}
+
+function switchItemUser(id) { S.itemsUser = id; renderItems(); }
+
+function renderItemList() {
+  const c      = document.getElementById('items-list');
+  const myItems = S.items.filter(i => i.userId === S.itemsUser);
+  if (!myItems.length) {
+    c.innerHTML = '<div class="empty"><div class="empty-icon">🎒</div><p>등록된 품목이 없습니다.<br>위에서 추가해 주세요.</p></div>';
+    return;
+  }
+  const byCat = {};
+  myItems.forEach(i => (byCat[i.category] ??= []).push(i));
+  c.innerHTML = CATS.filter(cat => byCat[cat]).map(cat => `
+    <div style="margin-bottom:14px">
+      <div class="cat-label">${ICONS[cat]||''} ${cat}</div>
+      ${byCat[cat].map(item => `
+        <div class="item-row">
+          <span class="item-name">${esc(item.name)}</span>
+          <span class="item-qty">${item.quantity}${item.unit}</span>
+          ${item.note ? `<span class="item-note" title="${esc(item.note)}">📝 ${esc(item.note)}</span>` : ''}
+          <button class="btn-icon" onclick="openEditItem('${item.id}')" title="수정">✏️</button>
+          <button class="btn-icon" onclick="deleteItem('${item.id}','${esc(item.name)}')" title="삭제">🗑️</button>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+async function saveItem() {
+  if (!S.itemsUser) { toast('참여자를 먼저 선택하세요', 'err'); return; }
+  const name = document.getElementById('if-name').value.trim();
+  if (!name) { toast('품목명을 입력하세요', 'err'); return; }
+  const item = await api.post('/api/items', {
+    userId: S.itemsUser, name,
+    category: document.getElementById('if-cat').value,
+    quantity: document.getElementById('if-qty').value,
+    unit:     document.getElementById('if-unit').value,
+    note:     document.getElementById('if-note').value,
+  });
+  if (item.error) { toast(item.error, 'err'); return; }
+  S.items.push(item);
+  document.getElementById('if-name').value = '';
+  document.getElementById('if-note').value = '';
+  renderItemList();
+  toast(`${item.name} 추가 완료`);
+}
+
+function openEditItem(id) {
+  const it = S.items.find(x => x.id === id);
+  const catOpts = CATS.map(c => `<option ${c===it.category?'selected':''}>${c}</option>`).join('');
+  openModal(`
+    <div class="modal-title">✏️ 품목 수정</div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>품목명</label><input id="ei-name" value="${esc(it.name)}" /></div>
+      <div class="form-group"><label>카테고리</label><select id="ei-cat">${catOpts}</select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:0 0 70px"><label>수량</label><input id="ei-qty" type="number" value="${it.quantity}" /></div>
+      <div class="form-group" style="flex:0 0 60px"><label>단위</label><input id="ei-unit" value="${it.unit}" /></div>
+      <div class="form-group"><label>메모</label><input id="ei-note" value="${esc(it.note||'')}" /></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">취소</button>
+      <button class="btn btn-primary" onclick="updateItem('${id}')">저장</button>
+    </div>`);
+}
+
+async function updateItem(id) {
+  const updated = await api.put(`/api/items/${id}`, {
+    name:     document.getElementById('ei-name').value.trim(),
+    category: document.getElementById('ei-cat').value,
+    quantity: Number(document.getElementById('ei-qty').value),
+    unit:     document.getElementById('ei-unit').value,
+    note:     document.getElementById('ei-note').value,
+  });
+  S.items[S.items.findIndex(x=>x.id===id)] = updated;
+  closeModal(); renderItemList();
+  toast('수정 완료');
+}
+
+async function deleteItem(id, name) {
+  if (!confirm(`"${name}" 품목을 삭제할까요?`)) return;
+  await api.delete(`/api/items/${id}`);
+  S.items = S.items.filter(i => i.id !== id);
+  renderItemList();
+  toast(`${name} 삭제 완료`);
+}
+
+// ════════════════════════════════════════════════
+// TRIPS
+// ════════════════════════════════════════════════
+function populateTripSelects() {
+  const sorted = [...S.trips].sort((a,b) => b.startDate.localeCompare(a.startDate));
+  const opts   = sorted.map(t => `<option value="${t.id}">${esc(t.name)} (${t.startDate})</option>`).join('');
+  ['cl-trip','cr-trip'].forEach(id => {
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- 일정 선택 --</option>' + opts;
+    if (cur) sel.value = cur;
+  });
+}
+
+function renderTrips() {
+  const g     = document.getElementById('trips-grid');
+  const today = new Date().toISOString().slice(0,10);
+  const sorted = [...S.trips].sort((a,b) => a.startDate.localeCompare(b.startDate));
+  if (!sorted.length) {
+    g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📅</div><p>등록된 캠핑 일정이 없습니다.</p></div>';
+    return;
+  }
+  g.innerHTML = sorted.map(t => {
+    const past     = t.endDate < today;
+    const upcoming = t.startDate > today;
+    const status   = past ? '<span class="badge badge-gray">종료</span>'
+                   : upcoming ? '<span class="badge badge-blue">예정</span>'
+                   : '<span class="badge badge-green">진행중</span>';
+    const parts = (t.participants||[]).map(uid => {
+      const u = S.users.find(x=>x.id===uid);
+      return u ? `<span class="user-dot" style="background:${u.color};width:22px;height:22px;font-size:10px" title="${esc(u.name)}">${u.name[0]}</span>` : '';
+    }).join('');
+    const dateStr = t.endDate && t.endDate !== t.startDate ? `${t.startDate} ~ ${t.endDate}` : t.startDate;
+    return `
+      <div class="trip-card ${past?'past':''}">
+        <div class="trip-card-actions">
+          <button class="btn btn-ghost btn-sm" onclick="openEditTrip('${t.id}');event.stopPropagation()">✏️ 수정</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteTrip('${t.id}','${esc(t.name)}');event.stopPropagation()">🗑️</button>
+        </div>
+        <div class="trip-date">${dateStr}</div>
+        <div class="trip-name">${esc(t.name)}</div>
+        <div class="trip-loc">${t.location ? '📍 '+esc(t.location) : ''}</div>
+        <div class="trip-footer">
+          ${status}
+          <span style="display:flex;gap:3px;align-items:center">${parts}</span>
+          <span class="badge badge-gray">${(t.participants||[]).length}명</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function saveTrip() {
+  const name  = document.getElementById('tf-name').value.trim();
+  const start = document.getElementById('tf-start').value;
+  if (!name || !start) { toast('일정 이름과 출발일은 필수입니다', 'err'); return; }
+  const parts = [...document.querySelectorAll('#tf-parts input:checked')].map(el=>el.value);
+  const t = await api.post('/api/trips', {
+    name, startDate: start,
+    endDate:      document.getElementById('tf-end').value || start,
+    location:     document.getElementById('tf-loc').value.trim(),
+    note:         document.getElementById('tf-note').value.trim(),
+    participants: parts,
+  });
+  if (t.error) { toast(t.error,'err'); return; }
+  S.trips.push(t);
+  ['tf-name','tf-loc','tf-note','tf-start','tf-end'].forEach(id => document.getElementById(id).value = '');
+  renderTrips(); populateTripSelects();
+  toast(`"${t.name}" 일정 추가 완료`);
+}
+
+function openEditTrip(id) {
+  const t  = S.trips.find(x => x.id === id);
+  const pc = S.users.map(u => `
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px;border-radius:4px">
+      <input type="checkbox" value="${u.id}" ${(t.participants||[]).includes(u.id)?'checked':''} />
+      <span class="user-dot" style="background:${u.color};width:20px;height:20px;font-size:10px">${u.name[0]}</span>
+      <span style="font-size:12px">${esc(u.name)}</span>
+    </label>`).join('');
+  openModal(`
+    <div class="modal-title">✏️ 일정 수정</div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>일정 이름</label><input id="et-name" value="${esc(t.name)}" /></div>
+      <div class="form-group"><label>장소</label><input id="et-loc" value="${esc(t.location||'')}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>출발일</label><input id="et-start" type="date" value="${t.startDate}" /></div>
+      <div class="form-group"><label>귀가일</label><input id="et-end"   type="date" value="${t.endDate||t.startDate}" /></div>
+    </div>
+    <div class="form-group" style="margin-bottom:10px"><label>참여자</label>
+      <div id="et-parts" style="display:flex;gap:4px;flex-wrap:wrap;padding:6px;border:1px solid var(--border);border-radius:6px;min-height:36px">${pc}</div>
+    </div>
+    <div class="form-group"><label>메모</label><input id="et-note" value="${esc(t.note||'')}" /></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">취소</button>
+      <button class="btn btn-primary" onclick="updateTrip('${id}')">저장</button>
+    </div>`);
+}
+
+async function updateTrip(id) {
+  const parts = [...document.querySelectorAll('#et-parts input:checked')].map(el=>el.value);
+  const updated = await api.put(`/api/trips/${id}`, {
+    name:         document.getElementById('et-name').value.trim(),
+    startDate:    document.getElementById('et-start').value,
+    endDate:      document.getElementById('et-end').value,
+    location:     document.getElementById('et-loc').value.trim(),
+    note:         document.getElementById('et-note').value.trim(),
+    participants: parts,
+  });
+  S.trips[S.trips.findIndex(x=>x.id===id)] = updated;
+  closeModal(); renderTrips(); populateTripSelects();
+  toast('일정 수정 완료');
+}
+
+async function deleteTrip(id, name) {
+  if (!confirm(`"${name}" 일정과 체크 데이터를 모두 삭제할까요?`)) return;
+  await api.delete(`/api/trips/${id}`);
+  S.trips = S.trips.filter(t => t.id !== id);
+  delete S.checks[id];
+  renderTrips(); populateTripSelects();
+  toast(`"${name}" 삭제 완료`);
+}
+
+// ════════════════════════════════════════════════
+// CHECKLIST
+// ════════════════════════════════════════════════
+function initChecklist() {
+  populateTripSelects();
+  const clTrip = document.getElementById('cl-trip');
+  if (clTrip.value) onClTripChange();
+}
+
+function onClTripChange() {
+  const trip    = S.trips.find(t => t.id === document.getElementById('cl-trip').value);
+  const clUser  = document.getElementById('cl-user');
+  if (trip) {
+    const parts = (trip.participants||[]).map(uid => S.users.find(u=>u.id===uid)).filter(Boolean);
+    clUser.innerHTML = '<option value="">-- 참여자 선택 --</option>' +
+      parts.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  } else {
+    clUser.innerHTML = '<option value="">-- 참여자 선택 --</option>';
+  }
+  document.getElementById('cl-content').innerHTML = '';
+}
+
+async function loadChecklist() {
+  const tripId = document.getElementById('cl-trip').value;
+  const userId = document.getElementById('cl-user').value;
+  const c      = document.getElementById('cl-content');
+  if (!tripId || !userId) { c.innerHTML = ''; return; }
+
+  S.checks[tripId] = await api.get(`/api/trips/${tripId}/checks`);
+  const chk     = (S.checks[tripId]||{})[userId]||{};
+  const myItems = S.items.filter(i => i.userId === userId);
+  const user    = S.users.find(u => u.id === userId);
+
+  if (!myItems.length) {
+    c.innerHTML = `<div class="empty"><div class="empty-icon">🎒</div><p>${esc(user?.name)}의 품목이 없습니다.<br>🎒 품목 탭에서 먼저 추가해주세요.</p></div>`;
+    return;
+  }
+
+  const totalPlanned = myItems.filter(i => chk[i.id]?.planned).length;
+  const totalPacked  = myItems.filter(i => chk[i.id]?.packed).length;
+  const total        = myItems.length;
+  const pctPlan      = total ? Math.round(totalPlanned / total * 100) : 0;
+  const pctPack      = total ? Math.round(totalPacked  / total * 100) : 0;
+
+  const byCat = {};
+  myItems.forEach(i => (byCat[i.category]??=[]).push(i));
+
+  const statsHtml = `
+    <div class="cl-stats">
+      <div style="flex:1;min-width:150px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:700;color:var(--yellow)">📋 챙길 예정</span>
+          <span style="font-size:12px;color:var(--muted)">${totalPlanned}/${total} (${pctPlan}%)</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="background:var(--yellow);width:${pctPlan}%"></div></div>
+      </div>
+      <div style="flex:1;min-width:150px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12px;font-weight:700;color:var(--green)">✅ 실제 챙김</span>
+          <span style="font-size:12px;color:var(--muted)">${totalPacked}/${total} (${pctPack}%)</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pctPack}%"></div></div>
+      </div>
+      <div style="display:flex;gap:14px;flex-shrink:0">
+        <div style="text-align:center">
+          <div class="stat-num">${total - totalPacked}</div>
+          <div class="stat-lbl">미챙김</div>
+        </div>
+        <div style="text-align:center">
+          <div class="stat-num">${totalPacked}</div>
+          <div class="stat-lbl">완료</div>
+        </div>
+      </div>
+    </div>`;
+
+  const listHtml = CATS.filter(cat => byCat[cat]).map(cat => `
+    <div style="margin-bottom:14px">
+      <div class="cat-label">${ICONS[cat]||''} ${cat}</div>
+      ${byCat[cat].map(item => {
+        const ck  = chk[item.id]||{planned:false,packed:false};
+        const cls = ck.packed ? 'is-packed' : ck.planned ? 'is-planned' : '';
+        return `<div class="check-row ${cls}">
+          <div style="flex:1">
+            <div class="check-item-name">${esc(item.name)}</div>
+            <div class="check-item-meta">${item.quantity}${item.unit}${item.note?' · '+esc(item.note):''}</div>
+          </div>
+          <button class="ck-btn ${ck.planned?'on-plan':''}" onclick="toggleCheck('${tripId}','${userId}','${item.id}','planned')">
+            📋 ${ck.planned?'예정됨':'예정'}
+          </button>
+          <button class="ck-btn ${ck.packed?'on-pack':''}" onclick="toggleCheck('${tripId}','${userId}','${item.id}','packed')">
+            ✅ ${ck.packed?'챙겼음':'챙기기'}
+          </button>
+        </div>`;
+      }).join('')}
+    </div>`).join('');
+
+  c.innerHTML = statsHtml + listHtml;
+}
+
+async function toggleCheck(tripId, userId, itemId, field) {
+  const cur    = ((S.checks[tripId]||{})[userId]||{})[itemId]||{planned:false,packed:false};
+  const newVal = !cur[field];
+  const body   = { userId, itemId };
+  if (field === 'packed') {
+    body.packed  = newVal;
+    if (newVal) body.planned = true;  // 챙김 → 예정도 자동 체크
+  } else {
+    body.planned = newVal;
+    if (!newVal) body.packed = false; // 예정 해제 → 챙김도 해제
+  }
+  S.checks[tripId] = await api.put(`/api/trips/${tripId}/checks`, body);
+  loadChecklist();
+}
+
+// ════════════════════════════════════════════════
+// CROSS CHECK
+// ════════════════════════════════════════════════
+function initCross() { populateTripSelects(); }
+
+async function loadCross() {
+  const tripId = document.getElementById('cr-trip').value;
+  const c      = document.getElementById('cr-content');
+  if (!tripId) { c.innerHTML = ''; return; }
+
+  const trip   = S.trips.find(t => t.id === tripId);
+  S.checks[tripId] = await api.get(`/api/trips/${tripId}/checks`);
+  const tc     = S.checks[tripId]||{};
+  const parts  = (trip.participants||[]).map(uid=>S.users.find(u=>u.id===uid)).filter(Boolean);
+
+  if (!parts.length) {
+    c.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>이 일정에 참여자가 없습니다.</p></div>';
+    return;
+  }
+
+  // 참여자별 데이터 집계
+  const pData = parts.map(u => {
+    const items   = S.items.filter(i => i.userId === u.id);
+    const checks  = tc[u.id]||{};
+    const planned = items.filter(i => checks[i.id]?.planned);
+    const packed  = items.filter(i => checks[i.id]?.packed);
+    return { u, items, checks, planned, packed };
+  });
+
+  // 요약 카드
+  const summaryHtml = `
+    <div class="cross-cards">
+      ${pData.map(p => {
+        const total   = p.items.length;
+        const pctPlan = total ? Math.round(p.planned.length/total*100) : 0;
+        const pctPack = total ? Math.round(p.packed.length/total*100)  : 0;
+        return `<div class="p-card">
+          <div class="p-card-name"><div class="user-dot" style="background:${p.u.color}">${p.u.name[0]}</div>${esc(p.u.name)}</div>
+          <div class="p-card-stats">품목 ${total}개 · 예정 ${p.planned.length} · 완료 ${p.packed.length}</div>
+          <div class="progress-bar" style="margin-bottom:5px">
+            <div class="progress-fill" style="background:var(--yellow);width:${pctPlan}%"></div>
+          </div>
+          <div class="progress-bar" style="margin-bottom:8px">
+            <div class="progress-fill" style="width:${pctPack}%"></div>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <span class="badge badge-yellow">${p.planned.length} 예정</span>
+            <span class="badge badge-green">${p.packed.length} 완료</span>
+            <span class="badge badge-gray">${total-p.planned.length} 미예정</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  // 중복 검출: 같은 품목명을 2명 이상이 예정
+  const nameMap = {};
+  pData.forEach(p => p.planned.forEach(item => (nameMap[item.name]??=[]).push(p.u)));
+  const dups = Object.entries(nameMap).filter(([,users])=>users.length>1);
+
+  // 미예정 카테고리: 참여자 품목 중 아무도 예정 안 한 카테고리
+  const tripItems    = S.items.filter(i=>(trip.participants||[]).includes(i.userId));
+  const allCats      = new Set(tripItems.map(i=>i.category));
+  const coveredCats  = new Set();
+  pData.forEach(p => p.planned.forEach(item => coveredCats.add(item.category)));
+  const missingCats  = [...allCats].filter(c => !coveredCats.has(c));
+
+  let warnHtml = '';
+  if (dups.length) {
+    warnHtml += dups.map(([name,users]) => `
+      <div class="warn-item warn-dup">
+        <span class="warn-icon">🔄</span>
+        <div><strong>중복 품목:</strong> ${esc(name)}<br>
+          <span style="font-size:12px;color:var(--muted)">${users.map(u=>esc(u.name)).join(', ')} 모두 예정 — 조율 권장</span></div>
+      </div>`).join('');
+  }
+  if (missingCats.length) {
+    warnHtml += missingCats.map(cat => `
+      <div class="warn-item warn-miss">
+        <span class="warn-icon">⚠️</span>
+        <div><strong>미예정 카테고리:</strong> ${ICONS[cat]||''} ${cat}<br>
+          <span style="font-size:12px;color:var(--muted)">아무도 이 카테고리 품목을 예정하지 않았습니다</span></div>
+      </div>`).join('');
+  }
+  if (!dups.length && !missingCats.length && pData.some(p=>p.planned.length)) {
+    warnHtml = `<div class="warn-item warn-ok"><span class="warn-icon">✅</span><strong>이상 없음</strong> — 중복·누락 품목이 없습니다!</div>`;
+  }
+
+  // 교차 매트릭스 테이블
+  const byCat = {};
+  tripItems.forEach(i => (byCat[i.category]??=[]).push(i));
+  // 카테고리 내 품목 중복 제거 (같은 이름은 대표 1개)
+  Object.keys(byCat).forEach(cat => {
+    const seen = new Set();
+    byCat[cat] = byCat[cat].filter(i => { if(seen.has(i.name)) return false; seen.add(i.name); return true; });
+  });
+
+  const thParts = parts.map(p => `
+    <th><div style="display:inline-flex;align-items:center;gap:5px;background:${p.color};padding:3px 8px;border-radius:99px;color:#fff;font-weight:700">
+      ${p.name[0]} ${esc(p.name)}
+    </div></th>`).join('');
+
+  const tbRows = CATS.filter(cat=>byCat[cat]).map(cat => {
+    const catRow  = `<tr class="cat-tr"><td colspan="${parts.length+1}">${ICONS[cat]||''} ${cat}</td></tr>`;
+    const itemRows = byCat[cat].map(item => {
+      const cells = parts.map(p => {
+        const myItem = S.items.find(i => i.userId===p.id && i.name===item.name);
+        if (!myItem) return '<td><span class="c-no">—</span></td>';
+        const ck = (tc[p.id]||{})[myItem.id]||{};
+        if (ck.packed)  return '<td><span class="c-ok"  title="챙겼음">✅</span></td>';
+        if (ck.planned) return '<td><span class="c-plan" title="예정됨">📋</span></td>';
+        return '<td><span class="c-no">○</span></td>';
+      }).join('');
+      return `<tr><td>${esc(item.name)}</td>${cells}</tr>`;
+    }).join('');
+    return catRow + itemRows;
+  }).join('');
+
+  const tableHtml = `
+    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border2);box-shadow:var(--shadow)">
+      <table class="cross-tbl">
+        <thead><tr><th>품목</th>${thParts}</tr></thead>
+        <tbody>${tbRows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--muted);display:flex;gap:12px">
+      <span>✅ 실제 챙김</span><span>📋 예정됨</span><span>○ 미체크</span><span>— 해당 없음</span>
+    </div>`;
+
+  c.innerHTML = summaryHtml
+    + (warnHtml ? `<div style="margin-bottom:16px">${warnHtml}</div>` : '')
+    + tableHtml;
+}
+
+// ════════════════════════════════════════════════
+// MODAL
+// ════════════════════════════════════════════════
+function openModal(html) {
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal-ov').classList.remove('hidden');
+}
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modal-ov')) return;
+  document.getElementById('modal-ov').classList.add('hidden');
+}
+
+// ════════════════════════════════════════════════
+// 유틸
+// ════════════════════════════════════════════════
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ════════════════════════════════════════════════
+// START
+// ════════════════════════════════════════════════
+loadAll();
+</script>
+</body>
+</html>
