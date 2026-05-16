@@ -56,14 +56,13 @@ nav button.active { background: rgba(255,255,255,.14); color: #fff; font-weight:
 #sync-badge {
   display: none; align-items: center; gap: 6px;
   padding: 5px 11px; border-radius: 99px; font-size: 11px; font-weight: 600;
-  white-space: nowrap; flex-shrink: 0; cursor: default;
-  border: 1px solid transparent; transition: all .3s;
+  white-space: nowrap; flex-shrink: 0; border: 1px solid transparent; transition: all .3s;
 }
-#sync-badge.s-ok     { background: rgba(58,90,64,.6);  border-color: #5a8a60; color: #a8d8a8; }
-#sync-badge.s-pend   { background: rgba(176,122,10,.4); border-color: #c09030; color: #f0d080; }
-#sync-badge.s-sync   { background: rgba(196,98,29,.4); border-color: #d07030; color: #f0b080; }
-#sync-badge.s-err    { background: rgba(168,50,50,.5);  border-color: #c05050; color: #f0a0a0; }
-#sync-badge.s-off    { background: rgba(80,70,60,.4);   border-color: #70604a; color: #a09080; display: flex; }
+#sync-badge.s-ok   { background: rgba(58,90,64,.6);   border-color: #5a8a60; color: #a8d8a8; }
+#sync-badge.s-pend { background: rgba(176,122,10,.4); border-color: #c09030; color: #f0d080; }
+#sync-badge.s-sync { background: rgba(196,98,29,.4);  border-color: #d07030; color: #f0b080; }
+#sync-badge.s-err  { background: rgba(168,50,50,.5);  border-color: #c05050; color: #f0a0a0; }
+#sync-badge.s-off  { background: rgba(80,70,60,.4);   border-color: #70604a; color: #a09080; display: flex; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { display: inline-block; animation: spin .9s linear infinite; }
 
@@ -76,7 +75,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
 /* ── SHARED ── */
 .page-title { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--green); margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
 .card { background: var(--surface2); border-radius: var(--radius); border: 1px solid var(--border2); box-shadow: var(--shadow); padding: 18px; }
-.card + .card { margin-top: 12px; }
 
 /* ── BUTTONS ── */
 .btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-family: inherit; font-weight: 600; transition: all .15s; white-space: nowrap; }
@@ -128,10 +126,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 
 /* ── TRIPS ── */
 .trips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
-.trip-card {
-  background: var(--surface2); border-radius: var(--radius); border: 1px solid var(--border2);
-  box-shadow: var(--shadow); padding: 16px 18px; transition: all .15s; position: relative;
-}
+.trip-card { background: var(--surface2); border-radius: var(--radius); border: 1px solid var(--border2); box-shadow: var(--shadow); padding: 16px 18px; transition: all .15s; position: relative; }
 .trip-card:hover { box-shadow: var(--shadow-lg); border-color: var(--green-lt); transform: translateY(-1px); }
 .trip-card.past { opacity: .65; }
 .trip-date { font-family: 'Courier Prime', monospace; font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: .4px; }
@@ -211,7 +206,6 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--nav); color: #b8d8b8; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 9999; transition: opacity .3s; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.3); opacity: 1; }
 #toast.hidden { opacity: 0; }
 
-/* ── RESPONSIVE ── */
 @media (max-width: 600px) {
   header { padding: 0 10px; gap: 10px; }
   nav button { padding: 5px 8px; font-size: 11px; }
@@ -241,9 +235,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 <div id="view-trips" class="view active">
   <div class="page-title">📅 캠핑 일정 관리</div>
   <div class="stoggle" id="st-trip">
-    <div class="stoggle-hd" onclick="toggleSt('st-trip')">
-      <span>➕ 새 일정 추가</span><span class="sarrow">▼</span>
-    </div>
+    <div class="stoggle-hd" onclick="toggleSt('st-trip')"><span>➕ 새 일정 추가</span><span class="sarrow">▼</span></div>
     <div class="stoggle-bd">
       <div class="form-row">
         <div class="form-group" style="flex:2"><label>일정 이름 *</label><input id="tf-name" placeholder="예: 여름 계곡 캠핑" /></div>
@@ -272,9 +264,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 <div id="view-users" class="view">
   <div class="page-title">👤 참여자 관리</div>
   <div class="stoggle" id="st-user">
-    <div class="stoggle-hd" onclick="toggleSt('st-user')">
-      <span>➕ 참여자 추가</span><span class="sarrow">▼</span>
-    </div>
+    <div class="stoggle-hd" onclick="toggleSt('st-user')"><span>➕ 참여자 추가</span><span class="sarrow">▼</span></div>
     <div class="stoggle-bd">
       <div class="form-row">
         <div class="form-group" style="flex:2"><label>이름 *</label><input id="uf-name" placeholder="예: 홍길동" /></div>
@@ -291,9 +281,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
   <div class="page-title">🎒 품목 관리</div>
   <div class="item-tabs" id="item-tabs"></div>
   <div class="stoggle" id="st-item">
-    <div class="stoggle-hd" onclick="toggleSt('st-item')">
-      <span>➕ 품목 추가</span><span class="sarrow">▼</span>
-    </div>
+    <div class="stoggle-hd" onclick="toggleSt('st-item')"><span>➕ 품목 추가</span><span class="sarrow">▼</span></div>
     <div class="stoggle-bd">
       <div class="form-row">
         <div class="form-group" style="flex:2"><label>품목명 *</label><input id="if-name" placeholder="예: 텐트, 침낭, 버너..." /></div>
@@ -343,36 +331,47 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--g
 
 </main>
 
-<!-- MODAL -->
 <div class="modal-ov hidden" id="modal-ov" onclick="closeModal(event)">
   <div class="modal" id="modal-body"></div>
 </div>
-
 <div id="toast" class="hidden"></div>
 
 <script>
 // ════════════════════════════════════════════════
+// BASE PATH 자동 감지
+// 페이지 URL에서 서브경로를 추출해 API 경로에 자동 적용
+//
+// 예시:
+//   https://fn0113.up.railway.app/campcheck/
+//   → window.location.pathname = '/campcheck/'
+//   → BASE = '/campcheck'
+//   → API 호출: /campcheck/api/users
+//
+//   http://localhost:3000/campcheck/
+//   → BASE = '/campcheck'
+//   → API 호출: /campcheck/api/users
+// ════════════════════════════════════════════════
+const BASE = window.location.pathname.replace(/\/+$/, ''); // 끝 슬래시 제거
+
+// ════════════════════════════════════════════════
 // 상수
 // ════════════════════════════════════════════════
-const CATS = ['텐트/거처','침구','주방/취사','식재료','의류','세면/위생','조명/전기','응급/안전','놀이/레저','기타'];
+const CATS  = ['텐트/거처','침구','주방/취사','식재료','의류','세면/위생','조명/전기','응급/안전','놀이/레저','기타'];
 const ICONS = {'텐트/거처':'⛺','침구':'🛌','주방/취사':'🍳','식재료':'🥘','의류':'👕','세면/위생':'🧴','조명/전기':'💡','응급/안전':'🚑','놀이/레저':'🎮','기타':'🧰'};
 
 // ════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════
-const S = {
-  users: [], items: [], trips: [], checks: {},
-  itemsUser: null,
-};
+const S = { users: [], items: [], trips: [], checks: {}, itemsUser: null };
 
 // ════════════════════════════════════════════════
-// API
+// API — BASE + /api 접두사 자동 포함
 // ════════════════════════════════════════════════
 const api = {
-  get:    p      => fetch(p).then(r => r.json()),
-  post:  (p, d)  => fetch(p, { method:'POST',   headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) }).then(r => r.json()),
-  put:   (p, d)  => fetch(p, { method:'PUT',    headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) }).then(r => r.json()),
-  delete: p      => fetch(p, { method:'DELETE' }).then(r => r.json()),
+  get:    p      => fetch(`${BASE}/api${p}`).then(r => r.json()),
+  post:  (p, d)  => fetch(`${BASE}/api${p}`, { method:'POST',   headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) }).then(r => r.json()),
+  put:   (p, d)  => fetch(`${BASE}/api${p}`, { method:'PUT',    headers:{'Content-Type':'application/json'}, body:JSON.stringify(d) }).then(r => r.json()),
+  delete: p      => fetch(`${BASE}/api${p}`, { method:'DELETE' }).then(r => r.json()),
 };
 
 // ════════════════════════════════════════════════
@@ -383,7 +382,7 @@ function toast(msg, type='ok') {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = '';
-  el.style.background = type==='err' ? 'var(--red)' : 'var(--nav)';
+  el.style.background = type === 'err' ? 'var(--red)' : 'var(--nav)';
   clearTimeout(_tt);
   _tt = setTimeout(() => el.classList.add('hidden'), 2200);
 }
@@ -393,17 +392,10 @@ function toast(msg, type='ok') {
 // ════════════════════════════════════════════════
 async function pollSyncStatus() {
   try {
-    const s = await api.get('/api/status');
+    const s = await api.get('/status');
     const badge = document.getElementById('sync-badge');
-
-    if (!s.driveEnabled) {
-      badge.className = 's-off';
-      badge.style.display = 'none';
-      return;
-    }
-
+    if (!s.driveEnabled) { badge.style.display = 'none'; return; }
     badge.style.display = 'flex';
-
     if (s.syncStatus === 'syncing') {
       badge.className = 's-sync';
       badge.innerHTML = '<span class="spin">↻</span> 동기화 중...';
@@ -422,9 +414,8 @@ async function pollSyncStatus() {
     } else {
       badge.className = 's-ok';
       badge.innerHTML = '☁️ Drive 연동됨';
-      badge.title = 'Google Drive 연동 활성화';
     }
-  } catch { /* 서버 응답 없으면 무시 */ }
+  } catch { /* 무시 */ }
 }
 pollSyncStatus();
 setInterval(pollSyncStatus, 10000);
@@ -451,8 +442,8 @@ document.getElementById('nav').addEventListener('click', e => {
 function toggleSt(id) {
   const bd = document.querySelector(`#${id} .stoggle-bd`);
   const ar = document.querySelector(`#${id} .sarrow`);
-  const open = bd.classList.toggle('open');
-  ar.classList.toggle('open', open);
+  bd.classList.toggle('open');
+  ar.classList.toggle('open', bd.classList.contains('open'));
 }
 
 // ════════════════════════════════════════════════
@@ -460,11 +451,9 @@ function toggleSt(id) {
 // ════════════════════════════════════════════════
 async function loadAll() {
   [S.users, S.items, S.trips] = await Promise.all([
-    api.get('/api/users'), api.get('/api/items'), api.get('/api/trips'),
+    api.get('/users'), api.get('/items'), api.get('/trips'),
   ]);
-  renderTrips();
-  renderUsers();
-  populateTripSelects();
+  renderTrips(); renderUsers(); populateTripSelects();
 }
 
 // ════════════════════════════════════════════════
@@ -493,7 +482,7 @@ async function saveUser() {
   const name  = document.getElementById('uf-name').value.trim();
   const color = document.getElementById('uf-color').value;
   if (!name) { toast('이름을 입력하세요', 'err'); return; }
-  const u = await api.post('/api/users', { name, color });
+  const u = await api.post('/users', { name, color });
   if (u.error) { toast(u.error, 'err'); return; }
   S.users.push(u);
   document.getElementById('uf-name').value = '';
@@ -519,7 +508,7 @@ async function updateUser(id) {
   const name  = document.getElementById('eu-name').value.trim();
   const color = document.getElementById('eu-color').value;
   if (!name) { toast('이름 필수', 'err'); return; }
-  const u = await api.put(`/api/users/${id}`, { name, color });
+  const u = await api.put(`/users/${id}`, { name, color });
   S.users[S.users.findIndex(x=>x.id===id)] = u;
   closeModal(); renderUsers(); renderTrips(); renderItems();
   toast('수정 완료');
@@ -527,7 +516,7 @@ async function updateUser(id) {
 
 async function deleteUser(id, name) {
   if (!confirm(`"${name}" 참여자와 해당 품목을 모두 삭제할까요?`)) return;
-  await api.delete(`/api/users/${id}`);
+  await api.delete(`/users/${id}`);
   S.users = S.users.filter(u => u.id !== id);
   S.items = S.items.filter(i => i.userId !== id);
   S.trips.forEach(t => { t.participants = (t.participants||[]).filter(p=>p!==id); });
@@ -537,13 +526,10 @@ async function deleteUser(id, name) {
 
 function refreshTripParticipants() {
   const c = document.getElementById('tf-parts');
-  if (!S.users.length) {
-    c.innerHTML = '<span style="color:var(--muted);font-size:12px">참여자를 먼저 등록하세요</span>';
-    return;
-  }
+  if (!S.users.length) { c.innerHTML = '<span style="color:var(--muted);font-size:12px">참여자를 먼저 등록하세요</span>'; return; }
   const checked = new Set([...c.querySelectorAll('input:checked')].map(el=>el.value));
   c.innerHTML = S.users.map(u => `
-    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 7px;border-radius:4px;user-select:none" title="${esc(u.name)}">
+    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;padding:3px 7px;border-radius:4px;user-select:none">
       <input type="checkbox" value="${u.id}" ${checked.has(u.id)?'checked':''} />
       <span class="user-dot" style="background:${u.color};width:20px;height:20px;font-size:10px">${u.name[0]}</span>
       <span style="font-size:12px">${esc(u.name)}</span>
@@ -557,8 +543,7 @@ function renderItems() {
   const tabs = document.getElementById('item-tabs');
   if (!S.users.length) {
     tabs.innerHTML = '<span style="color:var(--muted);font-size:13px">참여자를 먼저 등록해주세요</span>';
-    document.getElementById('items-list').innerHTML = '';
-    return;
+    document.getElementById('items-list').innerHTML = ''; return;
   }
   if (!S.itemsUser || !S.users.find(u=>u.id===S.itemsUser)) S.itemsUser = S.users[0].id;
   tabs.innerHTML = S.users.map(u => `
@@ -572,14 +557,11 @@ function renderItems() {
 function switchItemUser(id) { S.itemsUser = id; renderItems(); }
 
 function renderItemList() {
-  const c      = document.getElementById('items-list');
+  const c       = document.getElementById('items-list');
   const myItems = S.items.filter(i => i.userId === S.itemsUser);
-  if (!myItems.length) {
-    c.innerHTML = '<div class="empty"><div class="empty-icon">🎒</div><p>등록된 품목이 없습니다.<br>위에서 추가해 주세요.</p></div>';
-    return;
-  }
+  if (!myItems.length) { c.innerHTML = '<div class="empty"><div class="empty-icon">🎒</div><p>등록된 품목이 없습니다.</p></div>'; return; }
   const byCat = {};
-  myItems.forEach(i => (byCat[i.category] ??= []).push(i));
+  myItems.forEach(i => (byCat[i.category]??=[]).push(i));
   c.innerHTML = CATS.filter(cat => byCat[cat]).map(cat => `
     <div style="margin-bottom:14px">
       <div class="cat-label">${ICONS[cat]||''} ${cat}</div>
@@ -598,7 +580,7 @@ async function saveItem() {
   if (!S.itemsUser) { toast('참여자를 먼저 선택하세요', 'err'); return; }
   const name = document.getElementById('if-name').value.trim();
   if (!name) { toast('품목명을 입력하세요', 'err'); return; }
-  const item = await api.post('/api/items', {
+  const item = await api.post('/items', {
     userId: S.itemsUser, name,
     category: document.getElementById('if-cat').value,
     quantity: document.getElementById('if-qty').value,
@@ -634,7 +616,7 @@ function openEditItem(id) {
 }
 
 async function updateItem(id) {
-  const updated = await api.put(`/api/items/${id}`, {
+  const updated = await api.put(`/items/${id}`, {
     name:     document.getElementById('ei-name').value.trim(),
     category: document.getElementById('ei-cat').value,
     quantity: Number(document.getElementById('ei-qty').value),
@@ -648,7 +630,7 @@ async function updateItem(id) {
 
 async function deleteItem(id, name) {
   if (!confirm(`"${name}" 품목을 삭제할까요?`)) return;
-  await api.delete(`/api/items/${id}`);
+  await api.delete(`/items/${id}`);
   S.items = S.items.filter(i => i.id !== id);
   renderItemList();
   toast(`${name} 삭제 완료`);
@@ -661,8 +643,7 @@ function populateTripSelects() {
   const sorted = [...S.trips].sort((a,b) => b.startDate.localeCompare(a.startDate));
   const opts   = sorted.map(t => `<option value="${t.id}">${esc(t.name)} (${t.startDate})</option>`).join('');
   ['cl-trip','cr-trip'].forEach(id => {
-    const sel = document.getElementById(id);
-    const cur = sel.value;
+    const sel = document.getElementById(id), cur = sel.value;
     sel.innerHTML = '<option value="">-- 일정 선택 --</option>' + opts;
     if (cur) sel.value = cur;
   });
@@ -672,16 +653,12 @@ function renderTrips() {
   const g     = document.getElementById('trips-grid');
   const today = new Date().toISOString().slice(0,10);
   const sorted = [...S.trips].sort((a,b) => a.startDate.localeCompare(b.startDate));
-  if (!sorted.length) {
-    g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📅</div><p>등록된 캠핑 일정이 없습니다.</p></div>';
-    return;
-  }
+  if (!sorted.length) { g.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="empty-icon">📅</div><p>등록된 캠핑 일정이 없습니다.</p></div>'; return; }
   g.innerHTML = sorted.map(t => {
-    const past     = t.endDate < today;
-    const upcoming = t.startDate > today;
-    const status   = past ? '<span class="badge badge-gray">종료</span>'
-                   : upcoming ? '<span class="badge badge-blue">예정</span>'
-                   : '<span class="badge badge-green">진행중</span>';
+    const past  = t.endDate < today, upcoming = t.startDate > today;
+    const status = past ? '<span class="badge badge-gray">종료</span>'
+                 : upcoming ? '<span class="badge badge-blue">예정</span>'
+                 : '<span class="badge badge-green">진행중</span>';
     const parts = (t.participants||[]).map(uid => {
       const u = S.users.find(x=>x.id===uid);
       return u ? `<span class="user-dot" style="background:${u.color};width:22px;height:22px;font-size:10px" title="${esc(u.name)}">${u.name[0]}</span>` : '';
@@ -696,11 +673,7 @@ function renderTrips() {
         <div class="trip-date">${dateStr}</div>
         <div class="trip-name">${esc(t.name)}</div>
         <div class="trip-loc">${t.location ? '📍 '+esc(t.location) : ''}</div>
-        <div class="trip-footer">
-          ${status}
-          <span style="display:flex;gap:3px;align-items:center">${parts}</span>
-          <span class="badge badge-gray">${(t.participants||[]).length}명</span>
-        </div>
+        <div class="trip-footer">${status}<span style="display:flex;gap:3px">${parts}</span><span class="badge badge-gray">${(t.participants||[]).length}명</span></div>
       </div>`;
   }).join('');
 }
@@ -710,7 +683,7 @@ async function saveTrip() {
   const start = document.getElementById('tf-start').value;
   if (!name || !start) { toast('일정 이름과 출발일은 필수입니다', 'err'); return; }
   const parts = [...document.querySelectorAll('#tf-parts input:checked')].map(el=>el.value);
-  const t = await api.post('/api/trips', {
+  const t = await api.post('/trips', {
     name, startDate: start,
     endDate:      document.getElementById('tf-end').value || start,
     location:     document.getElementById('tf-loc').value.trim(),
@@ -754,7 +727,7 @@ function openEditTrip(id) {
 
 async function updateTrip(id) {
   const parts = [...document.querySelectorAll('#et-parts input:checked')].map(el=>el.value);
-  const updated = await api.put(`/api/trips/${id}`, {
+  const updated = await api.put(`/trips/${id}`, {
     name:         document.getElementById('et-name').value.trim(),
     startDate:    document.getElementById('et-start').value,
     endDate:      document.getElementById('et-end').value,
@@ -769,7 +742,7 @@ async function updateTrip(id) {
 
 async function deleteTrip(id, name) {
   if (!confirm(`"${name}" 일정과 체크 데이터를 모두 삭제할까요?`)) return;
-  await api.delete(`/api/trips/${id}`);
+  await api.delete(`/trips/${id}`);
   S.trips = S.trips.filter(t => t.id !== id);
   delete S.checks[id];
   renderTrips(); populateTripSelects();
@@ -781,17 +754,15 @@ async function deleteTrip(id, name) {
 // ════════════════════════════════════════════════
 function initChecklist() {
   populateTripSelects();
-  const clTrip = document.getElementById('cl-trip');
-  if (clTrip.value) onClTripChange();
+  if (document.getElementById('cl-trip').value) onClTripChange();
 }
 
 function onClTripChange() {
-  const trip    = S.trips.find(t => t.id === document.getElementById('cl-trip').value);
-  const clUser  = document.getElementById('cl-user');
+  const trip   = S.trips.find(t => t.id === document.getElementById('cl-trip').value);
+  const clUser = document.getElementById('cl-user');
   if (trip) {
-    const parts = (trip.participants||[]).map(uid => S.users.find(u=>u.id===uid)).filter(Boolean);
-    clUser.innerHTML = '<option value="">-- 참여자 선택 --</option>' +
-      parts.map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join('');
+    const parts = (trip.participants||[]).map(uid=>S.users.find(u=>u.id===uid)).filter(Boolean);
+    clUser.innerHTML = '<option value="">-- 참여자 선택 --</option>' + parts.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('');
   } else {
     clUser.innerHTML = '<option value="">-- 참여자 선택 --</option>';
   }
@@ -804,7 +775,7 @@ async function loadChecklist() {
   const c      = document.getElementById('cl-content');
   if (!tripId || !userId) { c.innerHTML = ''; return; }
 
-  S.checks[tripId] = await api.get(`/api/trips/${tripId}/checks`);
+  S.checks[tripId] = await api.get(`/trips/${tripId}/checks`);
   const chk     = (S.checks[tripId]||{})[userId]||{};
   const myItems = S.items.filter(i => i.userId === userId);
   const user    = S.users.find(u => u.id === userId);
@@ -817,13 +788,13 @@ async function loadChecklist() {
   const totalPlanned = myItems.filter(i => chk[i.id]?.planned).length;
   const totalPacked  = myItems.filter(i => chk[i.id]?.packed).length;
   const total        = myItems.length;
-  const pctPlan      = total ? Math.round(totalPlanned / total * 100) : 0;
-  const pctPack      = total ? Math.round(totalPacked  / total * 100) : 0;
+  const pctPlan = total ? Math.round(totalPlanned/total*100) : 0;
+  const pctPack = total ? Math.round(totalPacked/total*100)  : 0;
 
   const byCat = {};
   myItems.forEach(i => (byCat[i.category]??=[]).push(i));
 
-  const statsHtml = `
+  c.innerHTML = `
     <div class="cl-stats">
       <div style="flex:1;min-width:150px">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px">
@@ -840,53 +811,39 @@ async function loadChecklist() {
         <div class="progress-bar"><div class="progress-fill" style="width:${pctPack}%"></div></div>
       </div>
       <div style="display:flex;gap:14px;flex-shrink:0">
-        <div style="text-align:center">
-          <div class="stat-num">${total - totalPacked}</div>
-          <div class="stat-lbl">미챙김</div>
-        </div>
-        <div style="text-align:center">
-          <div class="stat-num">${totalPacked}</div>
-          <div class="stat-lbl">완료</div>
-        </div>
+        <div style="text-align:center"><div class="stat-num">${total-totalPacked}</div><div class="stat-lbl">미챙김</div></div>
+        <div style="text-align:center"><div class="stat-num">${totalPacked}</div><div class="stat-lbl">완료</div></div>
       </div>
-    </div>`;
-
-  const listHtml = CATS.filter(cat => byCat[cat]).map(cat => `
-    <div style="margin-bottom:14px">
-      <div class="cat-label">${ICONS[cat]||''} ${cat}</div>
-      ${byCat[cat].map(item => {
-        const ck  = chk[item.id]||{planned:false,packed:false};
-        const cls = ck.packed ? 'is-packed' : ck.planned ? 'is-planned' : '';
-        return `<div class="check-row ${cls}">
-          <div style="flex:1">
-            <div class="check-item-name">${esc(item.name)}</div>
-            <div class="check-item-meta">${item.quantity}${item.unit}${item.note?' · '+esc(item.note):''}</div>
-          </div>
-          <button class="ck-btn ${ck.planned?'on-plan':''}" onclick="toggleCheck('${tripId}','${userId}','${item.id}','planned')">
-            📋 ${ck.planned?'예정됨':'예정'}
-          </button>
-          <button class="ck-btn ${ck.packed?'on-pack':''}" onclick="toggleCheck('${tripId}','${userId}','${item.id}','packed')">
-            ✅ ${ck.packed?'챙겼음':'챙기기'}
-          </button>
-        </div>`;
-      }).join('')}
-    </div>`).join('');
-
-  c.innerHTML = statsHtml + listHtml;
+    </div>
+    ${CATS.filter(cat=>byCat[cat]).map(cat => `
+      <div style="margin-bottom:14px">
+        <div class="cat-label">${ICONS[cat]||''} ${cat}</div>
+        ${byCat[cat].map(item => {
+          const ck  = chk[item.id]||{planned:false,packed:false};
+          const cls = ck.packed ? 'is-packed' : ck.planned ? 'is-planned' : '';
+          return `<div class="check-row ${cls}">
+            <div style="flex:1">
+              <div class="check-item-name">${esc(item.name)}</div>
+              <div class="check-item-meta">${item.quantity}${item.unit}${item.note?' · '+esc(item.note):''}</div>
+            </div>
+            <button class="ck-btn ${ck.planned?'on-plan':''}" onclick="toggleCheck('${tripId}','${userId}','${item.id}','planned')">
+              📋 ${ck.planned?'예정됨':'예정'}
+            </button>
+            <button class="ck-btn ${ck.packed?'on-pack':''}" onclick="toggleCheck('${tripId}','${userId}','${item.id}','packed')">
+              ✅ ${ck.packed?'챙겼음':'챙기기'}
+            </button>
+          </div>`;
+        }).join('')}
+      </div>`).join('')}`;
 }
 
 async function toggleCheck(tripId, userId, itemId, field) {
   const cur    = ((S.checks[tripId]||{})[userId]||{})[itemId]||{planned:false,packed:false};
   const newVal = !cur[field];
   const body   = { userId, itemId };
-  if (field === 'packed') {
-    body.packed  = newVal;
-    if (newVal) body.planned = true;  // 챙김 → 예정도 자동 체크
-  } else {
-    body.planned = newVal;
-    if (!newVal) body.packed = false; // 예정 해제 → 챙김도 해제
-  }
-  S.checks[tripId] = await api.put(`/api/trips/${tripId}/checks`, body);
+  if (field === 'packed') { body.packed = newVal; if (newVal) body.planned = true; }
+  else { body.planned = newVal; if (!newVal) body.packed = false; }
+  S.checks[tripId] = await api.put(`/trips/${tripId}/checks`, body);
   loadChecklist();
 }
 
@@ -900,17 +857,13 @@ async function loadCross() {
   const c      = document.getElementById('cr-content');
   if (!tripId) { c.innerHTML = ''; return; }
 
-  const trip   = S.trips.find(t => t.id === tripId);
-  S.checks[tripId] = await api.get(`/api/trips/${tripId}/checks`);
-  const tc     = S.checks[tripId]||{};
-  const parts  = (trip.participants||[]).map(uid=>S.users.find(u=>u.id===uid)).filter(Boolean);
+  const trip = S.trips.find(t => t.id === tripId);
+  S.checks[tripId] = await api.get(`/trips/${tripId}/checks`);
+  const tc    = S.checks[tripId]||{};
+  const parts = (trip.participants||[]).map(uid=>S.users.find(u=>u.id===uid)).filter(Boolean);
 
-  if (!parts.length) {
-    c.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>이 일정에 참여자가 없습니다.</p></div>';
-    return;
-  }
+  if (!parts.length) { c.innerHTML = '<div class="empty"><div class="empty-icon">👤</div><p>이 일정에 참여자가 없습니다.</p></div>'; return; }
 
-  // 참여자별 데이터 집계
   const pData = parts.map(u => {
     const items   = S.items.filter(i => i.userId === u.id);
     const checks  = tc[u.id]||{};
@@ -919,108 +872,76 @@ async function loadCross() {
     return { u, items, checks, planned, packed };
   });
 
-  // 요약 카드
-  const summaryHtml = `
-    <div class="cross-cards">
-      ${pData.map(p => {
-        const total   = p.items.length;
-        const pctPlan = total ? Math.round(p.planned.length/total*100) : 0;
-        const pctPack = total ? Math.round(p.packed.length/total*100)  : 0;
-        return `<div class="p-card">
-          <div class="p-card-name"><div class="user-dot" style="background:${p.u.color}">${p.u.name[0]}</div>${esc(p.u.name)}</div>
-          <div class="p-card-stats">품목 ${total}개 · 예정 ${p.planned.length} · 완료 ${p.packed.length}</div>
-          <div class="progress-bar" style="margin-bottom:5px">
-            <div class="progress-fill" style="background:var(--yellow);width:${pctPlan}%"></div>
-          </div>
-          <div class="progress-bar" style="margin-bottom:8px">
-            <div class="progress-fill" style="width:${pctPack}%"></div>
-          </div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap">
-            <span class="badge badge-yellow">${p.planned.length} 예정</span>
-            <span class="badge badge-green">${p.packed.length} 완료</span>
-            <span class="badge badge-gray">${total-p.planned.length} 미예정</span>
-          </div>
-        </div>`;
-      }).join('')}
+  const summaryHtml = `<div class="cross-cards">${pData.map(p => {
+    const total = p.items.length;
+    return `<div class="p-card">
+      <div class="p-card-name"><div class="user-dot" style="background:${p.u.color}">${p.u.name[0]}</div>${esc(p.u.name)}</div>
+      <div class="p-card-stats">품목 ${total}개 · 예정 ${p.planned.length} · 완료 ${p.packed.length}</div>
+      <div class="progress-bar" style="margin-bottom:5px"><div class="progress-fill" style="background:var(--yellow);width:${total?Math.round(p.planned.length/total*100):0}%"></div></div>
+      <div class="progress-bar" style="margin-bottom:8px"><div class="progress-fill" style="width:${total?Math.round(p.packed.length/total*100):0}%"></div></div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap">
+        <span class="badge badge-yellow">${p.planned.length} 예정</span>
+        <span class="badge badge-green">${p.packed.length} 완료</span>
+        <span class="badge badge-gray">${total-p.planned.length} 미예정</span>
+      </div>
     </div>`;
+  }).join('')}</div>`;
 
-  // 중복 검출: 같은 품목명을 2명 이상이 예정
   const nameMap = {};
   pData.forEach(p => p.planned.forEach(item => (nameMap[item.name]??=[]).push(p.u)));
   const dups = Object.entries(nameMap).filter(([,users])=>users.length>1);
 
-  // 미예정 카테고리: 참여자 품목 중 아무도 예정 안 한 카테고리
-  const tripItems    = S.items.filter(i=>(trip.participants||[]).includes(i.userId));
-  const allCats      = new Set(tripItems.map(i=>i.category));
-  const coveredCats  = new Set();
+  const tripItems   = S.items.filter(i=>(trip.participants||[]).includes(i.userId));
+  const allCats     = new Set(tripItems.map(i=>i.category));
+  const coveredCats = new Set();
   pData.forEach(p => p.planned.forEach(item => coveredCats.add(item.category)));
-  const missingCats  = [...allCats].filter(c => !coveredCats.has(c));
+  const missingCats = [...allCats].filter(c => !coveredCats.has(c));
 
   let warnHtml = '';
-  if (dups.length) {
-    warnHtml += dups.map(([name,users]) => `
-      <div class="warn-item warn-dup">
-        <span class="warn-icon">🔄</span>
-        <div><strong>중복 품목:</strong> ${esc(name)}<br>
-          <span style="font-size:12px;color:var(--muted)">${users.map(u=>esc(u.name)).join(', ')} 모두 예정 — 조율 권장</span></div>
-      </div>`).join('');
-  }
-  if (missingCats.length) {
-    warnHtml += missingCats.map(cat => `
-      <div class="warn-item warn-miss">
-        <span class="warn-icon">⚠️</span>
-        <div><strong>미예정 카테고리:</strong> ${ICONS[cat]||''} ${cat}<br>
-          <span style="font-size:12px;color:var(--muted)">아무도 이 카테고리 품목을 예정하지 않았습니다</span></div>
-      </div>`).join('');
-  }
-  if (!dups.length && !missingCats.length && pData.some(p=>p.planned.length)) {
+  if (dups.length) warnHtml += dups.map(([name,users]) => `
+    <div class="warn-item warn-dup"><span class="warn-icon">🔄</span>
+      <div><strong>중복 품목:</strong> ${esc(name)}<br>
+        <span style="font-size:12px;color:var(--muted)">${users.map(u=>esc(u.name)).join(', ')} 모두 예정 — 조율 권장</span>
+      </div></div>`).join('');
+  if (missingCats.length) warnHtml += missingCats.map(cat => `
+    <div class="warn-item warn-miss"><span class="warn-icon">⚠️</span>
+      <div><strong>미예정 카테고리:</strong> ${ICONS[cat]||''} ${cat}<br>
+        <span style="font-size:12px;color:var(--muted)">아무도 이 카테고리 품목을 예정하지 않았습니다</span>
+      </div></div>`).join('');
+  if (!dups.length && !missingCats.length && pData.some(p=>p.planned.length))
     warnHtml = `<div class="warn-item warn-ok"><span class="warn-icon">✅</span><strong>이상 없음</strong> — 중복·누락 품목이 없습니다!</div>`;
-  }
 
-  // 교차 매트릭스 테이블
   const byCat = {};
   tripItems.forEach(i => (byCat[i.category]??=[]).push(i));
-  // 카테고리 내 품목 중복 제거 (같은 이름은 대표 1개)
   Object.keys(byCat).forEach(cat => {
     const seen = new Set();
     byCat[cat] = byCat[cat].filter(i => { if(seen.has(i.name)) return false; seen.add(i.name); return true; });
   });
 
-  const thParts = parts.map(p => `
-    <th><div style="display:inline-flex;align-items:center;gap:5px;background:${p.color};padding:3px 8px;border-radius:99px;color:#fff;font-weight:700">
-      ${p.name[0]} ${esc(p.name)}
-    </div></th>`).join('');
-
-  const tbRows = CATS.filter(cat=>byCat[cat]).map(cat => {
-    const catRow  = `<tr class="cat-tr"><td colspan="${parts.length+1}">${ICONS[cat]||''} ${cat}</td></tr>`;
-    const itemRows = byCat[cat].map(item => {
-      const cells = parts.map(p => {
-        const myItem = S.items.find(i => i.userId===p.id && i.name===item.name);
-        if (!myItem) return '<td><span class="c-no">—</span></td>';
-        const ck = (tc[p.id]||{})[myItem.id]||{};
-        if (ck.packed)  return '<td><span class="c-ok"  title="챙겼음">✅</span></td>';
-        if (ck.planned) return '<td><span class="c-plan" title="예정됨">📋</span></td>';
-        return '<td><span class="c-no">○</span></td>';
-      }).join('');
-      return `<tr><td>${esc(item.name)}</td>${cells}</tr>`;
-    }).join('');
-    return catRow + itemRows;
+  const thParts = parts.map(p => `<th><div style="display:inline-flex;align-items:center;gap:5px;background:${p.color};padding:3px 8px;border-radius:99px;color:#fff;font-weight:700">${p.name[0]} ${esc(p.name)}</div></th>`).join('');
+  const tbRows  = CATS.filter(cat=>byCat[cat]).map(cat => {
+    return `<tr class="cat-tr"><td colspan="${parts.length+1}">${ICONS[cat]||''} ${cat}</td></tr>`
+      + byCat[cat].map(item => {
+          const cells = parts.map(p => {
+            const myItem = S.items.find(i=>i.userId===p.id && i.name===item.name);
+            if (!myItem) return '<td><span class="c-no">—</span></td>';
+            const ck = (tc[p.id]||{})[myItem.id]||{};
+            if (ck.packed)  return '<td><span class="c-ok"  title="챙겼음">✅</span></td>';
+            if (ck.planned) return '<td><span class="c-plan" title="예정됨">📋</span></td>';
+            return '<td><span class="c-no">○</span></td>';
+          }).join('');
+          return `<tr><td>${esc(item.name)}</td>${cells}</tr>`;
+        }).join('');
   }).join('');
-
-  const tableHtml = `
-    <div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border2);box-shadow:var(--shadow)">
-      <table class="cross-tbl">
-        <thead><tr><th>품목</th>${thParts}</tr></thead>
-        <tbody>${tbRows}</tbody>
-      </table>
-    </div>
-    <div style="margin-top:8px;font-size:11px;color:var(--muted);display:flex;gap:12px">
-      <span>✅ 실제 챙김</span><span>📋 예정됨</span><span>○ 미체크</span><span>— 해당 없음</span>
-    </div>`;
 
   c.innerHTML = summaryHtml
     + (warnHtml ? `<div style="margin-bottom:16px">${warnHtml}</div>` : '')
-    + tableHtml;
+    + `<div style="overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border2);box-shadow:var(--shadow)">
+        <table class="cross-tbl"><thead><tr><th>품목</th>${thParts}</tr></thead><tbody>${tbRows}</tbody></table>
+       </div>
+       <div style="margin-top:8px;font-size:11px;color:var(--muted);display:flex;gap:12px">
+         <span>✅ 실제 챙김</span><span>📋 예정됨</span><span>○ 미체크</span><span>— 해당 없음</span>
+       </div>`;
 }
 
 // ════════════════════════════════════════════════
