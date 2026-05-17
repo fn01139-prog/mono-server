@@ -32,9 +32,10 @@ Object.entries(INIT).forEach(([n, v]) => {
 // ════════════════════════════════════════════════════════════════════
 // DB 헬퍼
 // ════════════════════════════════════════════════════════════════════
-const dirty    = new Set();
-let lastSyncAt = null;
-let syncStatus = 'idle';
+const dirty       = new Set();
+let lastSyncAt    = null;
+let syncStatus    = 'idle';
+let lastSyncError = null; // 마지막 실패 원인 저장
 
 const db = {
   read(name) {
@@ -60,12 +61,62 @@ const fileIdCache = {};
 if (process.env.GDRIVE_KEY && FOLDER_ID) {
   try {
     const { google } = require('googleapis');
+    const { JWT }    = require('google-auth-library');
+
     let rawKey = process.env.GDRIVE_KEY;
     try { JSON.parse(rawKey); } catch { rawKey = Buffer.from(rawKey, 'base64').toString('utf8'); }
     const key = JSON.parse(rawKey);
     if (key.private_key) key.private_key = key.private_key.replace(/\\n/g, '\n');
-    const auth = new google.auth.GoogleAuth({ credentials: key, scopes: ['https://www.googleapis.com/auth/drive'] });
-    drive = google.drive({ version: 'v3', auth });
+
+    // Google 서버 시각을 읽어 clock skew 자동 계산
+    async function getClockOffset() {
+      try {
+        const res = await fetch('https://www.googleapis.com/oauth2/v3/certs');
+        const googleTime = new Date(res.headers.get('date')).getTime();
+        const offset     = googleTime - Date.now();
+        if (Math.abs(offset) > 5000) { // 5초 이상 차이날 때만 보정
+          console.log(`[CampCheck] ⏱  서버 시각 차이 감지: ${offset > 0 ? '+' : ''}${Math.round(offset / 1000)}초 → 보정 적용`);
+        }
+        return offset;
+      } catch {
+        return 0; // fetch 실패 시 보정 없이 진행
+      }
+    }
+
+    // JWT 토큰 생성 시 clock skew 만큼 Date.now를 임시 보정
+    async function createAuthClient(offset = 0) {
+      const origNow = Date.now.bind(Date);
+      if (offset !== 0) Date.now = () => origNow() + offset;
+      try {
+        const authClient = new JWT({
+          email:  key.client_email,
+          key:    key.private_key,
+          scopes: ['https://www.googleapis.com/auth/drive'],
+        });
+        await authClient.authorize(); // 토큰 미리 발급하여 오류 조기 감지
+        return authClient;
+      } finally {
+        Date.now = origNow; // 반드시 원복
+      }
+    }
+
+    // 1차 시도 → 실패 시 clock skew 보정 후 재시도
+    let authClient;
+    try {
+      authClient = await createAuthClient();
+    } catch (e) {
+      const errMsg = e?.response?.data?.error_description || e.message || '';
+      const isTimeError = /expired|not yet valid|invalid_grant|clock/i.test(errMsg);
+      if (isTimeError) {
+        console.warn('[CampCheck] ⚠️  인증 실패 (시각 불일치 의심) → 자동 보정 재시도');
+        const offset = await getClockOffset();
+        authClient = await createAuthClient(offset); // 보정값으로 재시도
+      } else {
+        throw e;
+      }
+    }
+
+    drive = google.drive({ version: 'v3', auth: authClient });
     console.log('[CampCheck] ✅ Google Drive 연동 활성화');
   } catch (e) { console.error('[CampCheck] ❌ Drive 초기화 실패:', e.message); }
 }
@@ -105,12 +156,22 @@ async function pullFromDrive() {
 }
 async function syncToDrive() {
   if (!drive || dirty.size === 0) return;
-  syncStatus   = 'syncing';
-  const toSync = [...dirty]; dirty.clear();
+  syncStatus    = 'syncing';
+  lastSyncError = null;
+  const toSync  = [...dirty];
+  dirty.clear();
   const results = [];
   for (const name of toSync) {
-    try { await drivePush(`${name}.json`, fs.readFileSync(path.join(DATA_DIR, `${name}.json`), 'utf8')); results.push(`✓ ${name}`); }
-    catch (e) { dirty.add(name); results.push(`✗ ${name}`); syncStatus = 'error'; }
+    try {
+      await drivePush(`${name}.json`, fs.readFileSync(path.join(DATA_DIR, `${name}.json`), 'utf8'));
+      results.push(`✓ ${name}`);
+    } catch (e) {
+      dirty.add(name); // 실패 파일은 다음 주기 재시도
+      lastSyncError = `[${name}] ${e?.errors?.[0]?.message || e.message}`;
+      results.push(`✗ ${name}: ${lastSyncError}`);
+      syncStatus = 'error';
+      console.error(`[CampCheck] ☁️  Drive Push 실패 — ${lastSyncError}`);
+    }
   }
   if (syncStatus !== 'error') { syncStatus = 'idle'; lastSyncAt = now(); }
   console.log(`[CampCheck] ☁️  Drive [${new Date().toLocaleTimeString('ko-KR')}] ${results.join(' | ')}`);
@@ -204,7 +265,12 @@ router.use(authOptional); // 모든 요청에 user 첨부 시도
 
 // ── 동기화 상태 ────────────────────────────────────────────────────
 router.get('/status', (req, res) => res.json({
-  driveEnabled: !!drive, syncStatus, pendingChanges: [...dirty], lastSyncAt, syncIntervalSec: SYNC_INTERVAL_MS / 1000,
+  driveEnabled:    !!drive,
+  syncStatus,
+  pendingChanges:  [...dirty],
+  lastSyncAt,
+  lastSyncError,   // 마지막 실패 원인 (null이면 정상)
+  syncIntervalSec: SYNC_INTERVAL_MS / 1000,
 }));
 
 // ════════════════════════════════════════════════════════════════════
