@@ -58,67 +58,46 @@ const FOLDER_ID = process.env.GDRIVE_FOLDER_ID;
 let drive       = null;
 const fileIdCache = {};
 
-if (process.env.GDRIVE_KEY && FOLDER_ID) {
-  try {
+// ── Drive 초기화 (OAuth2 Refresh Token)
+// top-level await 금지 → IIFE Promise로 감싸서 _driveReady에 저장
+// 서비스 계정(GDRIVE_KEY) 대신 OAuth2를 사용하므로:
+//   - 저장 쿼터 문제 없음 (파일 소유권이 본인 구글 계정)
+//   - clock skew 처리 불필요 (googleapis가 토큰 자동 갱신)
+//
+// 필요 환경변수: GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET, GDRIVE_REFRESH_TOKEN, GDRIVE_FOLDER_ID
+// 토큰 발급: node get-token.js 실행
+let _driveReady = null;
+
+const _oauthReady = !!(
+  process.env.GDRIVE_CLIENT_ID &&
+  process.env.GDRIVE_CLIENT_SECRET &&
+  process.env.GDRIVE_REFRESH_TOKEN &&
+  FOLDER_ID
+);
+
+if (_oauthReady) {
+  _driveReady = (async () => {
     const { google } = require('googleapis');
-    const { JWT }    = require('google-auth-library');
 
-    let rawKey = process.env.GDRIVE_KEY;
-    try { JSON.parse(rawKey); } catch { rawKey = Buffer.from(rawKey, 'base64').toString('utf8'); }
-    const key = JSON.parse(rawKey);
-    if (key.private_key) key.private_key = key.private_key.replace(/\\n/g, '\n');
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GDRIVE_CLIENT_ID,
+      process.env.GDRIVE_CLIENT_SECRET,
+      'http://localhost' // 초기 인증 후에는 redirect_uri 미사용
+    );
 
-    // Google 서버 시각을 읽어 clock skew 자동 계산
-    async function getClockOffset() {
-      try {
-        const res = await fetch('https://www.googleapis.com/oauth2/v3/certs');
-        const googleTime = new Date(res.headers.get('date')).getTime();
-        const offset     = googleTime - Date.now();
-        if (Math.abs(offset) > 5000) { // 5초 이상 차이날 때만 보정
-          console.log(`[CampCheck] ⏱  서버 시각 차이 감지: ${offset > 0 ? '+' : ''}${Math.round(offset / 1000)}초 → 보정 적용`);
-        }
-        return offset;
-      } catch {
-        return 0; // fetch 실패 시 보정 없이 진행
-      }
-    }
+    oauth2Client.setCredentials({
+      refresh_token: process.env.GDRIVE_REFRESH_TOKEN,
+    });
 
-    // JWT 토큰 생성 시 clock skew 만큼 Date.now를 임시 보정
-    async function createAuthClient(offset = 0) {
-      const origNow = Date.now.bind(Date);
-      if (offset !== 0) Date.now = () => origNow() + offset;
-      try {
-        const authClient = new JWT({
-          email:  key.client_email,
-          key:    key.private_key,
-          scopes: ['https://www.googleapis.com/auth/drive'],
-        });
-        await authClient.authorize(); // 토큰 미리 발급하여 오류 조기 감지
-        return authClient;
-      } finally {
-        Date.now = origNow; // 반드시 원복
-      }
-    }
+    // access_token 만료 시 googleapis가 자동으로 갱신
+    oauth2Client.on('tokens', (tokens) => {
+      if (tokens.refresh_token)
+        console.log('[CampCheck] 🔑 Drive 토큰 갱신됨');
+    });
 
-    // 1차 시도 → 실패 시 clock skew 보정 후 재시도
-    let authClient;
-    try {
-      authClient = await createAuthClient();
-    } catch (e) {
-      const errMsg = e?.response?.data?.error_description || e.message || '';
-      const isTimeError = /expired|not yet valid|invalid_grant|clock/i.test(errMsg);
-      if (isTimeError) {
-        console.warn('[CampCheck] ⚠️  인증 실패 (시각 불일치 의심) → 자동 보정 재시도');
-        const offset = await getClockOffset();
-        authClient = await createAuthClient(offset); // 보정값으로 재시도
-      } else {
-        throw e;
-      }
-    }
-
-    drive = google.drive({ version: 'v3', auth: authClient });
-    console.log('[CampCheck] ✅ Google Drive 연동 활성화');
-  } catch (e) { console.error('[CampCheck] ❌ Drive 초기화 실패:', e.message); }
+    drive = google.drive({ version: 'v3', auth: oauth2Client });
+    console.log('[CampCheck] ✅ Google Drive 연동 활성화 (OAuth2)');
+  })().catch(e => console.error('[CampCheck] ❌ Drive 초기화 실패:', e.message));
 }
 
 async function getFileId(filename) {
@@ -232,18 +211,19 @@ let _initPromise = null;
 
 function ensureInit() {
   if (_initPromise) return _initPromise;
-  _initPromise = pullFromDrive()
-    .then(() => {
-      if (drive) {
-        setInterval(syncToDrive, SYNC_INTERVAL_MS);
-        console.log(`[CampCheck] 🔄 Drive ${SYNC_INTERVAL_MS / 1000}초 동기화 시작`);
-      }
-      console.log('[CampCheck] 🏕️  준비 완료');
-    })
-    .catch(e => {
-      console.error('[CampCheck] Drive 초기화 오류:', e.message);
-      _initPromise = null; // 실패 시 다음 요청에서 재시도
-    });
+  _initPromise = (async () => {
+    // Drive 클라이언트 초기화가 완료될 때까지 대기
+    if (_driveReady) await _driveReady;
+    await pullFromDrive();
+    if (drive) {
+      setInterval(syncToDrive, SYNC_INTERVAL_MS);
+      console.log(`[CampCheck] 🔄 Drive ${SYNC_INTERVAL_MS / 1000}초 동기화 시작`);
+    }
+    console.log('[CampCheck] 🏕️  준비 완료');
+  })().catch(e => {
+    console.error('[CampCheck] 초기화 오류:', e.message);
+    _initPromise = null; // 실패 시 다음 요청에서 재시도
+  });
   return _initPromise;
 }
 
