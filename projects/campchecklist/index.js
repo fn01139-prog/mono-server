@@ -158,10 +158,48 @@ const adminRequired = (req, res, next) => {
 };
 
 // ════════════════════════════════════════════════════════════════════
+// Lazy Init — 첫 API 요청 시점에 Drive 초기화
+//
+// 서버(모노서버)가 완전히 listen된 이후 실제 요청이 들어올 때 실행되므로
+// healthcheck 타임아웃 문제가 발생하지 않음
+//
+// _initPromise:
+//   null       → 아직 초기화 안 됨 (첫 요청에서 시작)
+//   Promise    → 초기화 진행 중 또는 완료 (이후 요청은 바로 통과)
+// ════════════════════════════════════════════════════════════════════
+let _initPromise = null;
+
+function ensureInit() {
+  if (_initPromise) return _initPromise;
+  _initPromise = pullFromDrive()
+    .then(() => {
+      if (drive) {
+        setInterval(syncToDrive, SYNC_INTERVAL_MS);
+        console.log(`[CampCheck] 🔄 Drive ${SYNC_INTERVAL_MS / 1000}초 동기화 시작`);
+      }
+      console.log('[CampCheck] 🏕️  준비 완료');
+    })
+    .catch(e => {
+      console.error('[CampCheck] Drive 초기화 오류:', e.message);
+      _initPromise = null; // 실패 시 다음 요청에서 재시도
+    });
+  return _initPromise;
+}
+
+// ════════════════════════════════════════════════════════════════════
 // Router
 // ════════════════════════════════════════════════════════════════════
 const router = express.Router();
 router.use(express.json());
+
+// Lazy Init 미들웨어 — 모든 라우트보다 먼저 등록
+// healthcheck는 여기를 거치지 않으므로 Drive 완료를 기다리지 않음
+router.use((req, res, next) => {
+  ensureInit()
+    .then(() => next())
+    .catch(() => next()); // 초기화 실패해도 요청은 처리 (로컬 데이터로 동작)
+});
+
 router.use(authOptional); // 모든 요청에 user 첨부 시도
 
 // ── 동기화 상태 ────────────────────────────────────────────────────
@@ -470,18 +508,5 @@ router.delete('/comments/:id', adminRequired, (req, res) => {
   db.write('comments', comments.filter(c => !toDelete.has(c.id)));
   res.json({ ok: true, deleted: [...toDelete].length });
 });
-
-// ════════════════════════════════════════════════════════════════════
-// 자동 초기화 (require 시 실행)
-// ════════════════════════════════════════════════════════════════════
-pullFromDrive()
-  .then(() => {
-    if (drive) {
-      setInterval(syncToDrive, SYNC_INTERVAL_MS);
-      console.log(`[CampCheck] 🔄 Drive ${SYNC_INTERVAL_MS / 1000}초 동기화 시작`);
-    }
-    console.log('[CampCheck] 🏕️  준비 완료');
-  })
-  .catch(e => console.error('[CampCheck] 초기화 오류:', e.message));
 
 module.exports = router;
