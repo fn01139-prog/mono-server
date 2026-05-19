@@ -379,3 +379,108 @@ button, input, select, textarea { font-family: inherit; }
 .toast.show { transform: translateY(0); opacity: 1; }
 .toast.success { border-left: 3px solid var(--shell-success); }
 .toast.error   { border-left: 3px solid var(--shell-danger); }
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE — mdBoard Shell
+   ① 태블릿 세로 + 스마트폰 (≤768px) : 사이드바 → 오버레이 드로어
+   ② 스마트폰 전용 (≤480px)          : 헤더 조밀화
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 햄버거 버튼: 데스크톱에서 기본 숨김 */
+.sidebar-toggle {
+  display: none;
+  align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: var(--radius-sm);
+  color: var(--shell-sidebar-text);
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition);
+  line-height: 1; padding: 0;
+}
+.sidebar-toggle:hover { background: rgba(255,255,255,.14); }
+
+/* 사이드바 오버레이 백드롭: 기본 숨김 */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: var(--header-h); left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 299;
+  cursor: pointer;
+}
+.sidebar-overlay.show {
+  display: block;
+  animation: overlayFadeIn .2s ease;
+}
+@keyframes overlayFadeIn { from { opacity:0; } to { opacity:1; } }
+
+/* ── ① 태블릿 + 스마트폰 공통 (≤768px) ──────────────────────── */
+@media (max-width: 768px) {
+
+  /* 햄버거 버튼 표시 */
+  .sidebar-toggle { display: flex; }
+
+  /* 셸: 사이드바 컬럼 제거 */
+  .shell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "header"
+      "main";
+  }
+
+  /* 사이드바 → 슬라이드인 드로어 */
+  .shell-sidebar {
+    position: fixed;
+    top: var(--header-h); left: 0; bottom: 0;
+    width: var(--sidebar-w);
+    z-index: 300;
+    transform: translateX(-100%);
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  .shell-sidebar.open {
+    transform: translateX(0);
+    box-shadow: 6px 0 28px rgba(0,0,0,.45);
+  }
+
+  /* 헤더 로고: 고정 너비 해제 */
+  .header-logo { width: auto; padding: 0 10px; flex: 1; }
+  .logo-sub { display: none; }
+
+  /* 서버 모니터 버튼: 아이콘만 */
+  .btn-monitor > span:not(.ico) { display: none; }
+  .btn-monitor { padding: 5px 8px; }
+
+  /* 모니터 패널: 화면 너비에 맞춤 */
+  .monitor-panel { width: calc(100vw - 24px); left: 12px; right: 12px; }
+}
+
+/* ── ② 스마트폰 전용 (≤480px) ────────────────────────────────── */
+@media (max-width: 480px) {
+
+  /* 헤더 더 조밀하게 */
+  --header-h: 50px;
+  .shell-header { padding: 0 10px 0 0; gap: 5px; }
+  .header-logo  { padding: 0 8px; gap: 7px; }
+  .logo-icon    { width: 28px; height: 28px; font-size: 16px; }
+  .logo-text    { font-size: 14px; }
+
+  /* 헤더 우측 조밀화 */
+  .header-right { gap: 5px; }
+
+  /* 파일명 정보 숨김 (화면 공간 부족) */
+  #headerFileInfo { display: none !important; }
+
+  /* 인증 입력창: 좁게 */
+  .auth-input { width: 120px; font-size: 12px; }
+
+  /* 사이드바 너비: 전체 폭 */
+  .shell-sidebar { width: min(var(--sidebar-w), calc(100vw - 48px)); }
+
+  /* 홈 콘텐츠 패딩 */
+  .home-content { padding: 16px 14px; }
+}

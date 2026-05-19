@@ -37,13 +37,13 @@
       </div>
 
       <button class="ed-btn ed-btn-secondary" onclick="newDocument()" title="새 문서 (초기화)">
-        🆕 새 문서
+        🆕<span class="btn-label"> 새 문서</span>
       </button>
       <button class="ed-btn ed-btn-danger" onclick="deleteFile()" title="현재 파일 삭제">
-        🗑️ 삭제
+        🗑️<span class="btn-label"> 삭제</span>
       </button>
       <button class="ed-btn ed-btn-primary" onclick="saveFile()" title="저장 (Ctrl+S)">
-        💾 저장
+        💾<span class="btn-label"> 저장</span>
       </button>
     </div>
   </div>
@@ -145,7 +145,7 @@
   <div class="editor-statusbar">
     <div class="statusbar-dot" title="저장 상태"></div>
     <span id="statusInfo">0줄 · 0단어 · 0자</span>
-    <span style="margin-left:auto; opacity:0.6">Ctrl+S: 저장 | Tab: 들여쓰기</span>
+    <span style="margin-left:auto; opacity:0.6" class="statusbar-hint">Ctrl+S: 저장 | Tab: 들여쓰기</span>
   </div>
 
 </div>

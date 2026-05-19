@@ -430,3 +430,71 @@ html, body {
 .save-dialog-btns {
   display: flex; gap: 8px; justify-content: flex-end;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE — 마크다운 에디터
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 태블릿 + 스마트폰 (≤768px) ──────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* 분할 모드 → 세로 스택 (위: 에디터 / 아래: 미리보기) */
+  .editor-body.mode-split {
+    flex-direction: column;
+  }
+  .editor-body.mode-split .editor-pane  { flex: 1; min-height: 0; }
+  .editor-body.mode-split .preview-pane { flex: 1; min-height: 0; border-right: none; border-top: 1px solid #e2e8f0; }
+
+  /* 툴바: 가로 스크롤 허용 (버튼 잘리지 않게) */
+  .md-toolbar { flex-wrap: nowrap; overflow-x: auto; padding: 4px 8px; }
+  .md-toolbar::-webkit-scrollbar { height: 3px; }
+  .md-toolbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+
+  /* 뷰 토글 버튼: 축소 */
+  .view-toggle-btn { padding: 3px 7px; font-size: 10px; }
+
+  /* 저장 버튼 라벨 축소 */
+  .ed-btn { padding: 5px 9px; font-size: 11px; }
+}
+
+/* ── 스마트폰 전용 (≤480px) ──────────────────────────────────── */
+@media (max-width: 480px) {
+
+  /* 분할 모드에서 프리뷰 숨김 → 편집 패널 전체 */
+  .editor-body.mode-split .preview-pane { display: none; }
+  .editor-body.mode-split .editor-pane  { flex: 1; }
+
+  /* 에디터 헤더 높이 축소 */
+  .editor-header { height: 42px; padding: 0 10px; gap: 6px; }
+
+  /* iOS 포커스 줌인 방지 (16px 이상 필수) */
+  .editor-title-input { font-size: 16px; }
+  .md-textarea        { font-size: 16px; padding: 14px 14px; }
+
+  /* 저장 다이얼로그: 전체 너비 */
+  .save-dialog {
+    width: calc(100vw - 32px);
+    padding: 18px 18px 20px;
+  }
+  .save-dialog input { font-size: 16px; }
+
+  /* 이미지 패널 */
+  .img-panel { padding: 8px 10px; }
+
+  /* 상태바 */
+  .editor-statusbar { padding: 3px 10px; font-size: 10px; gap: 10px; }
+}
+
+/* btn-label: 모바일에서 버튼 텍스트 숨김 (이모지만 표시) */
+@media (max-width: 480px) {
+  .btn-label { display: none; }
+
+  /* 상태바 키보드 단축키 힌트: 터치 환경에서 불필요 */
+  .statusbar-hint { display: none; }
+
+  /* 헤더 우측: 버튼 최소 크기 (이모지 기준 터치 타겟) */
+  .ed-btn { min-width: 36px; padding: 5px 7px; justify-content: center; }
+
+  /* 뷰 토글: 폰에서 더 촘촘하게 */
+  .view-toggle-btn { padding: 3px 6px; font-size: 10px; }
+}
