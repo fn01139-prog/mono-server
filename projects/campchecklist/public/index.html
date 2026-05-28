@@ -186,21 +186,244 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green-lt
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--nav);color:#b8d8b8;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;z-index:9999;transition:opacity .3s;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.3);opacity:1}
 #toast.hidden{opacity:0}
 
-@media(max-width:600px){header{padding:0 8px;gap:8px}nav button{padding:4px 7px;font-size:11px}.logo{font-size:15px}main{padding:14px 10px 50px}#sync-badge{display:none!important}}
+/* ═══════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ① 태블릿 세로 (481px ~ 768px) : 헤더 2행, 탭 스크롤
+   ② 스마트폰    (≤ 480px)       : 헤더 1행 + 하단 고정 탭바
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── ① 공통 (태블릿 + 폰) ───────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* 트립 카드: hover 대신 항상 액션 버튼 표시 */
+  .trip-card-actions {
+    opacity: 1;
+    position: static;
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border2);
+  }
+
+  /* 댓글 들여쓰기 완화 */
+  .comment.depth-1 { margin-left: 16px; }
+  .comment.depth-2 { margin-left: 28px; }
+
+  /* 교차점검 테이블 셀 조밀화 */
+  .cross-tbl th, .cross-tbl td { padding: 6px 8px; }
+
+  /* 교차점검 카드 2열 */
+  .cross-cards { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── ② 태블릿 세로 전용 (481px ~ 768px) ─────────────────────── */
+@media (min-width: 481px) and (max-width: 768px) {
+
+  /* 헤더: 2행 — 위: 로고+배지+로그인 / 아래: 탭 */
+  header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 8px 16px 0;
+    gap: 6px;
+  }
+  .logo     { order: 1; }
+  #sync-badge { order: 2; margin-left: auto; }
+  #login-area { order: 3; }
+  nav {
+    order: 4;
+    width: 100%;
+    padding: 4px 0 8px;
+    border-top: 1px solid rgba(255,255,255,.08);
+    margin-top: 2px;
+    overflow-x: auto;
+  }
+  nav button { padding: 5px 10px; font-size: 12px; }
+
+  /* .nav-icon / .nav-label — 태블릿은 원본 텍스트 그대로 */
+  .nav-icon { display: none; }
+  .nav-label { font-size: inherit; }
+
+  .trips-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  main { padding: 20px 16px 40px; }
+}
+
+/* ── ③ 스마트폰 전용 (≤ 480px) ──────────────────────────────── */
+@media (max-width: 480px) {
+
+  /* ── 헤더: 로고 + 로그인만 1행 ── */
+  header {
+    height: 52px;
+    padding: 0 12px;
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+  .logo { font-size: 16px; }
+  #sync-badge { display: none !important; }
+
+  /* ── 하단 고정 탭바 ── */
+  nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0; top: auto;
+    height: calc(56px + env(safe-area-inset-bottom, 0px));
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    background: var(--nav);
+    border-top: 1px solid rgba(255,255,255,.1);
+    box-shadow: 0 -2px 16px rgba(0,0,0,.3);
+    z-index: 100;
+    display: flex;
+    justify-content: space-around;
+    align-items: stretch;
+    gap: 0;
+    overflow: visible;
+    flex: none;
+    width: 100%;
+  }
+  nav button {
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 2px 6px;
+    border-radius: 0;
+    gap: 0;
+    font-size: 0;       /* 원본 텍스트 숨김 */
+    min-width: 0;
+    height: 56px;
+  }
+  nav button.active { background: rgba(255,255,255,.12); }
+
+  /* nav 아이콘 */
+  .nav-icon { font-size: 20px; line-height: 1.2; display: block; }
+  .nav-label { display: none; }
+
+  /* data-short 속성으로 짧은 라벨 표시 */
+  nav button::after {
+    content: attr(data-short);
+    font-size: 9px;
+    font-weight: 600;
+    color: #7a9a7a;
+    display: block;
+    margin-top: 2px;
+    font-family: 'Noto Sans KR', sans-serif;
+  }
+  nav button.active::after { color: #c8e0c8; }
+
+  /* ── 메인 영역 하단 여백 ── */
+  main {
+    padding: 16px 12px calc(68px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ── 토스트: 탭바 위로 ── */
+  #toast {
+    bottom: calc(68px + env(safe-area-inset-bottom, 0px) + 8px);
+    font-size: 12px;
+    padding: 8px 16px;
+    max-width: calc(100vw - 32px);
+    text-align: center;
+  }
+
+  /* ── 인풋: iOS 포커스 줌인 방지 (≥16px 필수) ── */
+  input, select, textarea { font-size: 16px; }
+
+  /* ── 페이지 타이틀 ── */
+  .page-title { font-size: 18px; margin-bottom: 12px; }
+
+  /* ── 로그인 드롭다운: 화면 너비에 맞춤 ── */
+  #login-dropdown {
+    position: fixed;
+    top: 54px;
+    right: 8px; left: 8px;
+    min-width: unset;
+    width: auto;
+  }
+
+  /* ── 모달: 바텀 시트 ── */
+  .modal-ov { align-items: flex-end; padding: 0; }
+  .modal {
+    border-radius: 18px 18px 0 0;
+    max-width: 100%;
+    max-height: 88vh;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* ── 일정 ── */
+  .trips-grid { grid-template-columns: 1fr; gap: 10px; }
+  .trip-card  { padding: 14px; }
+  .trip-footer { gap: 5px; }
+
+  /* ── 참여자 ── */
+  .users-grid { grid-template-columns: 1fr; }
+
+  /* ── 체크리스트 선택 영역 ── */
+  .cl-top { flex-direction: column; gap: 8px; }
+  .cl-top .form-group { min-width: unset !important; width: 100%; }
+
+  /* ── 체크 행: 이름 먼저, 버튼 줄바꿈 ── */
+  .check-row { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+  .check-row > div:first-child { min-width: 100%; } /* 이름 행 강제 전체폭 */
+  .ck-btn { flex: 1; justify-content: center; }
+
+  /* ── 체크리스트 통계 ── */
+  .cl-stats { flex-direction: column; gap: 8px; }
+
+  /* ── 교차점검 카드 ── */
+  .cross-cards { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .p-card { padding: 10px 12px; }
+
+  /* ── 댓글 들여쓰기 ── */
+  .comment.depth-1 { margin-left: 10px; }
+  .comment.depth-2 { margin-left: 20px; }
+
+  /* ── 아이템 탭 ── */
+  .item-tab { padding: 5px 10px; font-size: 12px; }
+
+  /* ── 버튼 터치 타겟 ── */
+  .btn     { min-height: 40px; }
+  .btn-sm  { min-height: 34px; }
+
+  /* ── 폼 ── */
+  .form-row { gap: 8px; }
+  .stoggle-bd { padding: 12px; }
+}
 </style>
 </head>
 <body>
 <header>
   <div class="logo">🏕 CampCheck</div>
   <nav id="nav">
-    <button data-view="trips"     class="active">📅 일정</button>
-    <button data-view="users">👤 참여자</button>
-    <button data-view="items">🎒 품목</button>
-    <button data-view="checklist">✅ 체크리스트</button>
-    <button data-view="cross">🔍 교차점검</button>
-    <button data-view="review">💬 후기</button>
+    <button data-view="trips"     data-short="일정"   class="active"><span class="nav-icon">📅</span><span class="nav-label"> 일정</span></button>
+    <button data-view="users"     data-short="참여자"><span class="nav-icon">👤</span><span class="nav-label"> 참여자</span></button>
+    <button data-view="items"     data-short="품목"><span class="nav-icon">🎒</span><span class="nav-label"> 품목</span></button>
+    <button data-view="checklist" data-short="체크"><span class="nav-icon">✅</span><span class="nav-label"> 체크리스트</span></button>
+    <button data-view="cross"     data-short="교차"><span class="nav-icon">🔍</span><span class="nav-label"> 교차점검</span></button>
+    <button data-view="review"    data-short="후기"><span class="nav-icon">💬</span><span class="nav-label"> 후기</span></button>
   </nav>
-  <div id="sync-badge" class="s-off" title="Google Drive 동기화 상태">☁️ 미연동</div>
+  <div id="sync-badge" class="s-off" title="Google Drive 동기화 상태" onclick="toggleSyncMenu()" style="cursor:pointer">☁️ 미연동</div>
+
+  <!-- Drive 수동 조작 드롭다운 -->
+  <div id="sync-menu" style="
+    display:none; position:absolute; top:54px; right:8px;
+    background:var(--nav); border:1px solid rgba(255,255,255,.15);
+    border-radius:8px; padding:8px; z-index:200; min-width:180px;
+    box-shadow:0 4px 16px rgba(0,0,0,.4); font-size:12px;
+  ">
+    <div style="color:#7a9a7a; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; padding:2px 6px 6px;">Drive 수동 조작</div>
+    <button onclick="manualDrivePull()" style="
+      width:100%; text-align:left; background:rgba(255,255,255,.06);
+      border:none; color:#c8e0c8; padding:7px 10px; border-radius:5px;
+      cursor:pointer; font-size:12px; font-family:inherit; margin-bottom:4px;
+      display:flex; align-items:center; gap:7px;
+    ">⬇️ Drive에서 불러오기</button>
+    <button onclick="manualDrivePush()" style="
+      width:100%; text-align:left; background:rgba(255,255,255,.06);
+      border:none; color:#c8e0c8; padding:7px 10px; border-radius:5px;
+      cursor:pointer; font-size:12px; font-family:inherit;
+      display:flex; align-items:center; gap:7px;
+    ">⬆️ Drive로 내보내기</button>
+    <div id="sync-menu-msg" style="font-size:11px; color:#7a9a7a; padding:5px 6px 2px; min-height:16px;"></div>
+  </div>
 
   <!-- 로그인 영역 -->
   <div id="login-area">
@@ -445,6 +668,40 @@ async function pollSync() {
   } catch {}
 }
 pollSync(); setInterval(pollSync, 10000);
+
+// ── Drive 수동 조작 드롭다운 ────────────────────────────────────────
+function toggleSyncMenu() {
+  if (!AUTH.user || AUTH.user.role !== 'admin') return; // 관리자만
+  const menu = document.getElementById('sync-menu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#sync-badge') && !e.target.closest('#sync-menu'))
+    document.getElementById('sync-menu').style.display = 'none';
+});
+
+async function manualDrivePull() {
+  const msg = document.getElementById('sync-menu-msg');
+  msg.textContent = '⏳ Drive에서 불러오는 중...';
+  try {
+    const res = await api.post('/admin/drive/pull', {});
+    if (res.error) { msg.textContent = '❌ ' + res.error; return; }
+    msg.textContent = '✅ 불러오기 완료! 새로고침됩니다.';
+    setTimeout(async () => { await loadAll(); pollSync(); document.getElementById('sync-menu').style.display = 'none'; }, 800);
+  } catch (e) { msg.textContent = '❌ 요청 실패'; }
+}
+
+async function manualDrivePush() {
+  const msg = document.getElementById('sync-menu-msg');
+  if (!confirm('로컬 데이터 전체를 Drive에 덮어쓸까요?')) return;
+  msg.textContent = '⏳ Drive로 내보내는 중...';
+  try {
+    const res = await api.post('/admin/drive/push', {});
+    if (res.error) { msg.textContent = '❌ ' + res.error; return; }
+    msg.textContent = '✅ 내보내기 완료!';
+    setTimeout(() => pollSync(), 500);
+  } catch (e) { msg.textContent = '❌ 요청 실패'; }
+}
 
 // ═══════════════════════════════════════════
 // LOGIN DROPDOWN

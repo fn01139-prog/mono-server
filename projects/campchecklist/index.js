@@ -35,7 +35,9 @@ Object.entries(INIT).forEach(([n, v]) => {
 const dirty       = new Set();
 let lastSyncAt    = null;
 let syncStatus    = 'idle';
-let lastSyncError = null; // 마지막 실패 원인 저장
+let lastSyncError = null;
+let lastPullAt    = null;  // 마지막 Drive Pull 성공 시각
+let lastPullError = null;  // 마지막 Drive Pull 실패 원인
 
 const db = {
   read(name) {
@@ -125,13 +127,25 @@ async function drivePush(filename, content) {
 }
 async function pullFromDrive() {
   if (!drive) return;
+  lastPullError = null;
   console.log('[CampCheck] 📥 Drive 복원 중...');
+  let anyFailed = false;
   for (const name of Object.keys(INIT)) {
     try {
       const content = await drivePull(`${name}.json`);
-      if (content) { fs.writeFileSync(path.join(DATA_DIR, `${name}.json`), content, 'utf8'); console.log(`[CampCheck]   ✓ ${name}.json`); }
-    } catch (e) { console.error(`[CampCheck]   ✗ ${name}.json:`, e.message); }
+      if (content) {
+        fs.writeFileSync(path.join(DATA_DIR, `${name}.json`), content, 'utf8');
+        console.log(`[CampCheck]   ✓ ${name}.json`);
+      } else {
+        console.log(`[CampCheck]   ○ ${name}.json — 신규 시작`);
+      }
+    } catch (e) {
+      anyFailed    = true;
+      lastPullError = `[${name}] ${e.message}`;
+      console.error(`[CampCheck]   ✗ ${name}.json:`, e.message);
+    }
   }
+  if (!anyFailed) lastPullAt = now();
 }
 async function syncToDrive() {
   if (!drive || dirty.size === 0) return;
@@ -249,9 +263,37 @@ router.get('/status', (req, res) => res.json({
   syncStatus,
   pendingChanges:  [...dirty],
   lastSyncAt,
-  lastSyncError,   // 마지막 실패 원인 (null이면 정상)
+  lastSyncError,
+  lastPullAt,       // 마지막 Drive Pull 성공 시각
+  lastPullError,    // 마지막 Drive Pull 실패 원인
   syncIntervalSec: SYNC_INTERVAL_MS / 1000,
 }));
+
+// ── 수동 Drive Pull (admin) ─────────────────────────────────────────
+// 서버 시작 시 자동 pull이 실패했거나 데이터가 비어있을 때 수동으로 복원
+router.post('/admin/drive/pull', adminRequired, async (req, res) => {
+  if (!drive) return res.status(400).json({ error: 'Google Drive가 연동되지 않았습니다' });
+  try {
+    await pullFromDrive();
+    _initPromise = null; // 다음 요청에서 ensureInit 재실행 (데이터 갱신 반영)
+    res.json({ ok: true, message: 'Drive에서 데이터 복원 완료', lastPullAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── 수동 Drive Push (admin) ────────────────────────────────────────
+// 전체 데이터를 Drive에 강제 업로드
+router.post('/admin/drive/push', adminRequired, async (req, res) => {
+  if (!drive) return res.status(400).json({ error: 'Google Drive가 연동되지 않았습니다' });
+  ['users','items','trips','checks','accounts','comments'].forEach(n => dirty.add(n));
+  try {
+    await syncToDrive();
+    res.json({ ok: true, message: '전체 데이터 Drive 업로드 완료', lastSyncAt });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ════════════════════════════════════════════════════════════════════
 // AUTH
