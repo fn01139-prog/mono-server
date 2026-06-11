@@ -1,0 +1,23 @@
+node_modules/
+
+# ─────────────────────────────────────────────────────────
+# data/ 폴더 — GitHub push 제외
+# 배포 서버(Railway 등)에 독립적으로 유지되며,
+# Google Drive에 자동 백업됩니다.
+# ─────────────────────────────────────────────────────────
+data/
+
+# 환경 변수 (서비스 계정 키 등 민감 정보)
+.env
+.env.*
+.env.local
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 로그
+*.log
+npm-debug.log*
