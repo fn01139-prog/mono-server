@@ -52,6 +52,9 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 |--------|-------------|-------|
 | `/mdboard` | Markdown document platform | File CRUD + image upload via multer |
 | `/portfolio` | Personal portfolio page builder | SPA mode; JSON file persistence |
+| `/aptloan` | 아파트 대출 계산기 | SPA mode; 입주비용·중도금이자·대출 상환 시뮬레이터 |
+| `/floorplan` | 평면도 그리기 | SPA mode; Google Drive 연동, 관리자 토큰 인증 |
+| `/travellog` | 여행 계획 및 기록 관리 | SPA mode; 지도·계획·기록 기능 |
 
 ### Custom Routes (`config.customRoutes`)
 
@@ -93,6 +96,11 @@ mdboard와 portfolio 모두 동일한 인증 패턴을 사용한다.
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allowed origins (comma-separated) |
 | `MDBOARD_PASSWORD` | (없음) | mdboard 에디터 인증 비밀번호 |
 | `PORTFOLIO_PASSWORD` | (없음) | portfolio `/studio` 관리자 인증 비밀번호 |
+| `ADMIN_TOKENS` | (없음) | floorplan 관리자 토큰 (쉼표 구분, 복수 가능) |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | `./credentials/gdrive-service-account.json` | floorplan Google Drive 서비스 계정 키 경로 |
+| `GDRIVE_FOLDER_ID` | (없음) | floorplan Google Drive 저장 폴더 ID |
+| `USE_LOCAL_FALLBACK` | `true` | floorplan Drive 미설정 시 로컬 파일 폴백 여부 |
+| `LOCAL_DATA_DIR` | `./data` | floorplan 로컬 폴백 데이터 디렉토리 |
 
 ### Deployment
 
