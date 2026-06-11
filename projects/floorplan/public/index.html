@@ -1,0 +1,1560 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>평면도 편집기</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+:root {
+  --bg:#0e1117;--surface:#161b22;--panel:#1c2330;--border:#2d3748;
+  --accent:#58a6ff;--accent2:#f78166;--accent3:#56d364;--accent4:#e3b341;
+  --text:#cdd9e5;--muted:#768390;
+  --wall-color:#c8d6e5;
+  --left-w:160px;--right-w:190px;--header-h:46px;--sb-h:22px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{width:100%;height:100%;overflow:hidden;}
+body{font-family:'IBM Plex Sans KR',sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;height:100vh;}
+
+/* ── HEADER ── */
+#header{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 8px;gap:4px;flex-shrink:0;overflow-x:auto;overflow-y:hidden;}
+#header::-webkit-scrollbar{display:none;}
+#header h1{font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap;margin-right:4px;}
+.sep{width:1px;height:22px;background:var(--border);margin:0 3px;flex-shrink:0;}
+.mode-btn{height:28px;padding:0 8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;border-radius:4px;display:flex;align-items:center;gap:3px;transition:all .12s;white-space:nowrap;font-family:'IBM Plex Sans KR',sans-serif;flex-shrink:0;}
+.mode-btn:hover,.mode-btn:active{background:var(--panel);color:var(--text);}
+.mode-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.mode-btn.admin-only{display:none;}
+.tool-btn{height:28px;padding:0 8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;border-radius:4px;transition:all .12s;white-space:nowrap;font-family:'IBM Plex Sans KR',sans-serif;flex-shrink:0;}
+.tool-btn:hover{background:var(--panel);color:var(--text);}
+.spacer{flex:1;min-width:4px;}
+#admin-badge{padding:2px 8px;background:rgba(227,179,65,.15);border:1px solid rgba(227,179,65,.4);border-radius:10px;font-size:10px;color:var(--accent4);white-space:nowrap;flex-shrink:0;}
+#login-btn{height:26px;padding:0 10px;border:1px solid rgba(88,166,255,.4);background:transparent;color:var(--accent);font-size:11px;cursor:pointer;border-radius:4px;font-family:'IBM Plex Sans KR',sans-serif;white-space:nowrap;flex-shrink:0;}
+#login-btn:hover{background:rgba(88,166,255,.1);}
+
+/* ── LAYOUT ── */
+#layout{flex:1;display:flex;overflow:hidden;position:relative;}
+
+/* ── LEFT PANEL ── */
+#left-panel{width:var(--left-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;transition:transform .2s;}
+.lp-header{padding:7px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.lp-title{font-size:9px;font-weight:600;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;}
+.lp-add-cat{width:18px;height:18px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;border-radius:3px;font-size:14px;display:none;align-items:center;justify-content:center;}
+.lp-add-cat:hover{color:var(--accent3);border-color:var(--accent3);}
+.admin-mode .lp-add-cat{display:flex;}
+.cat-section{border-bottom:1px solid var(--border);flex-shrink:0;}
+.cat-header{padding:5px 8px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;}
+.cat-header:hover{background:rgba(255,255,255,.03);}
+.cat-name{font-size:10px;font-weight:600;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase;}
+.cat-toggle{font-size:9px;color:var(--muted);}
+.cat-body{display:flex;flex-direction:column;gap:2px;padding:4px 6px;}
+.cat-body.collapsed{display:none;}
+.fi{padding:5px 7px;background:var(--panel);border:1px solid var(--border);border-radius:3px;font-size:11px;cursor:grab;color:var(--text);display:flex;align-items:center;gap:5px;transition:all .1s;user-select:none;position:relative;}
+.fi:hover{border-color:var(--accent);background:rgba(88,166,255,.08);}
+.fi em{font-size:13px;font-style:normal;flex-shrink:0;}
+.fi-info{flex:1;min-width:0;}
+.fi-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.fi-size{font-size:9px;color:var(--muted);}
+.fi-del{display:none;position:absolute;right:4px;top:50%;transform:translateY(-50%);background:rgba(247,129,102,.15);border:none;color:var(--accent2);cursor:pointer;border-radius:2px;font-size:10px;padding:1px 4px;}
+.fi:hover .fi-del{display:block;}
+.admin-mode .fi-del{display:none;}
+.admin-mode .fi:hover .fi-del{display:block;}
+#left-scroll{flex:1;overflow-y:auto;overflow-x:hidden;}
+#left-scroll::-webkit-scrollbar{width:3px;}
+#left-scroll::-webkit-scrollbar-thumb{background:var(--border);}
+
+/* ── CANVAS ── */
+#canvas-wrap{flex:1;position:relative;overflow:hidden;background:var(--bg);}
+#main-canvas{position:absolute;top:0;left:0;touch-action:none;}
+
+/* ── RIGHT PANEL ── */
+#right-panel{width:var(--right-w);background:var(--surface);border-left:1px solid var(--border);padding:10px;overflow-y:auto;flex-shrink:0;font-size:11px;transition:transform .2s;}
+#right-panel::-webkit-scrollbar{width:3px;}
+#right-panel::-webkit-scrollbar-thumb{background:var(--border);}
+.rp-t{font-size:9px;font-weight:600;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid var(--border);}
+.pr{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;}
+.pk{color:var(--muted);font-size:10px;}
+.pv{color:var(--text);font-family:'JetBrains Mono',monospace;font-size:10px;}
+.pi{width:76px;height:22px;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:10px;padding:0 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;}
+.pi:focus{border-color:var(--accent);outline:none;}
+.hint{font-size:10px;color:var(--muted);line-height:1.8;}
+.hint b{color:var(--text);}
+.hint hr{border:none;border-top:1px solid var(--border);margin:5px 0;}
+
+/* ── STATUS BAR ── */
+#statusbar{height:var(--sb-h);background:var(--surface);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:14px;font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;flex-shrink:0;}
+#statusbar b{color:var(--text);}
+#sb-msg{color:var(--accent);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ── MODAL ── */
+.modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:2000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:16px;}
+.modal-ov.open{display:flex;}
+.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;width:100%;max-width:480px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.7);overflow:hidden;}
+.modal-hdr{background:var(--panel);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);flex-shrink:0;}
+.modal-hdr h2{font-size:13px;font-weight:600;color:var(--accent);}
+.modal-close{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:0 4px;line-height:1;}
+.modal-close:hover{color:var(--text);}
+.modal-body{padding:14px 16px;overflow-y:auto;flex:1;}
+.modal-body::-webkit-scrollbar{width:3px;}
+.modal-body::-webkit-scrollbar-thumb{background:var(--border);}
+.mtabs{display:flex;gap:2px;margin-bottom:12px;}
+.mtab{flex:1;height:28px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;border-radius:4px;font-family:'IBM Plex Sans KR',sans-serif;transition:all .12s;}
+.mtab:hover{background:var(--panel);color:var(--text);}
+.mtab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+.tab-c{display:none;}
+.tab-c.active{display:block;}
+
+/* Slot list */
+.slot-list{display:flex;flex-direction:column;gap:5px;}
+.slot-item{background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:8px 10px;display:flex;align-items:center;gap:8px;}
+.slot-item.empty{opacity:.55;}
+.slot-icon{font-size:20px;flex-shrink:0;}
+.slot-info{flex:1;min-width:0;}
+.slot-name{font-size:11px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.slot-name:hover{color:var(--accent);}
+.slot-meta{font-size:9px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:1px;}
+.slot-acts{display:flex;gap:3px;flex-shrink:0;}
+.sa{height:22px;padding:0 7px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10px;cursor:pointer;border-radius:3px;font-family:'IBM Plex Sans KR',sans-serif;transition:all .1s;white-space:nowrap;}
+.sa.load{color:var(--accent);border-color:rgba(88,166,255,.4);}
+.sa.save-s{color:var(--accent3);border-color:rgba(86,211,100,.35);}
+.sa.del{color:var(--accent2);border-color:rgba(247,129,102,.3);}
+
+/* File IO */
+.fio-section{margin-bottom:12px;}
+.fio-label{font-size:9px;font-weight:600;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:5px;}
+.fio-desc{font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:6px;}
+.fbtn{width:100%;height:32px;border:1px solid var(--border);background:var(--panel);color:var(--text);font-size:11px;cursor:pointer;border-radius:4px;font-family:'IBM Plex Sans KR',sans-serif;transition:all .12s;}
+.fbtn.primary{border-color:rgba(88,166,255,.4);color:var(--accent);}
+.fbtn.success{border-color:rgba(86,211,100,.35);color:var(--accent3);}
+.fbtn:hover{opacity:.85;}
+#drop-zone{border:2px dashed var(--border);border-radius:5px;padding:16px;text-align:center;font-size:11px;color:var(--muted);margin-top:7px;cursor:pointer;}
+#drop-zone:hover,#drop-zone.hover{border-color:var(--accent);color:var(--text);}
+
+/* Autosave */
+.as-row{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel);border-radius:5px;}
+.as-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+.as-dot.on{background:var(--accent3);box-shadow:0 0 6px var(--accent3);}
+.as-text{flex:1;font-size:11px;color:var(--muted);}
+.as-btn{height:22px;padding:0 8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:10px;cursor:pointer;border-radius:3px;font-family:'IBM Plex Sans KR',sans-serif;}
+
+/* Floorplan select modal */
+.fp-list{display:flex;flex-direction:column;gap:5px;}
+.fp-item{background:var(--panel);border:1px solid var(--border);border-radius:5px;padding:9px 12px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:all .1s;}
+.fp-item:hover{border-color:var(--accent);background:rgba(88,166,255,.06);}
+.fp-item .fp-icon{font-size:22px;}
+.fp-item .fp-name{font-size:12px;font-weight:500;color:var(--text);}
+.fp-item .fp-meta{font-size:9px;color:var(--muted);margin-top:1px;}
+.fp-item-acts{margin-left:auto;display:flex;gap:4px;}
+
+/* Login modal */
+.login-input{width:100%;height:36px;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:13px;padding:0 10px;border-radius:5px;font-family:'IBM Plex Sans KR',sans-serif;margin-bottom:8px;}
+.login-input:focus{border-color:var(--accent);outline:none;}
+.login-submit{width:100%;height:36px;background:var(--accent);border:none;color:#fff;font-size:12px;cursor:pointer;border-radius:5px;font-family:'IBM Plex Sans KR',sans-serif;}
+.login-err{font-size:11px;color:var(--accent2);margin-top:4px;display:none;}
+
+/* Category manager */
+.cat-mgr-item{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:8px 10px;margin-bottom:5px;}
+.cat-mgr-hdr{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.cat-mgr-name{font-size:11px;font-weight:600;color:var(--text);flex:1;}
+.cat-mgr-acts{display:flex;gap:3px;}
+.add-item-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;}
+.add-item-row input,.add-item-row select{height:24px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:10px;padding:0 5px;border-radius:3px;font-family:'IBM Plex Sans KR',sans-serif;}
+.add-item-row input:focus,.add-item-row select:focus{border-color:var(--accent);outline:none;}
+.add-item-btn{height:24px;padding:0 8px;background:rgba(86,211,100,.1);border:1px solid rgba(86,211,100,.3);color:var(--accent3);font-size:10px;cursor:pointer;border-radius:3px;font-family:'IBM Plex Sans KR',sans-serif;white-space:nowrap;}
+.item-chip{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.2);border-radius:3px;font-size:10px;color:var(--text);margin:2px;}
+.item-chip button{background:none;border:none;color:var(--accent2);cursor:pointer;font-size:11px;padding:0;line-height:1;}
+
+/* CTX MENU */
+#ctx-menu{position:fixed;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:4px 0;min-width:140px;z-index:9999;display:none;box-shadow:0 8px 32px rgba(0,0,0,.6);}
+#ctx-menu div{padding:7px 14px;font-size:11px;cursor:pointer;color:var(--text);}
+#ctx-menu div:hover{background:rgba(88,166,255,.12);}
+.ctx-sep{border-top:1px solid var(--border) !important;height:0 !important;padding:0 !important;margin:3px 0;}
+.ctx-del{color:var(--accent2) !important;}
+
+/* TEXT EDITOR */
+#text-editor{position:fixed;display:none;z-index:500;}
+#text-editor input{background:var(--panel);border:2px solid var(--accent);color:var(--text);font-size:13px;font-family:'IBM Plex Sans KR',sans-serif;padding:4px 8px;border-radius:4px;outline:none;min-width:90px;}
+
+/* TOAST */
+#toast{position:fixed;bottom:34px;left:50%;transform:translateX(-50%) translateY(16px);background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:7px 14px;font-size:11px;color:var(--text);z-index:3000;opacity:0;transition:all .22s;pointer-events:none;white-space:nowrap;}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#toast.ok{border-color:rgba(86,211,100,.5);color:var(--accent3);}
+#toast.err{border-color:rgba(247,129,102,.5);color:var(--accent2);}
+
+/* Mobile overlay toggle buttons */
+#mob-left-btn,#mob-right-btn{display:none;position:absolute;top:50%;z-index:100;background:var(--surface);border:1px solid var(--border);color:var(--muted);width:22px;height:44px;cursor:pointer;font-size:11px;align-items:center;justify-content:center;}
+#mob-left-btn{left:0;border-radius:0 5px 5px 0;transform:translateY(-50%);}
+#mob-right-btn{right:0;border-radius:5px 0 0 5px;transform:translateY(-50%);}
+
+/* ── MOBILE ── */
+@media (max-width: 700px) {
+  :root{--left-w:150px;--right-w:170px;}
+  #left-panel,#right-panel{position:absolute;top:0;height:100%;z-index:50;box-shadow:4px 0 20px rgba(0,0,0,.5);}
+  #left-panel{left:0;transform:translateX(-100%);}
+  #left-panel.open{transform:translateX(0);}
+  #right-panel{right:0;transform:translateX(100%);}
+  #right-panel.open{transform:translateX(0);}
+  #mob-left-btn,#mob-right-btn{display:flex;}
+  #header h1{display:none;}
+  .mode-btn{padding:0 6px;font-size:10px;}
+  .tool-btn{padding:0 6px;font-size:10px;}
+  #statusbar{gap:8px;font-size:9px;}
+}
+@media (max-width: 400px) {
+  .mode-btn span{display:none;}
+}
+
+/* snap/grid controls (collapsed on mobile) */
+#view-controls{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+#grid-sz{width:48px;height:24px;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:10px;padding:0 4px;border-radius:3px;font-family:'JetBrains Mono',monospace;}
+#snap-cb{accent-color:var(--accent);cursor:pointer;}
+.vc-label{font-size:10px;color:var(--muted);white-space:nowrap;}
+#door-sel{height:24px;background:var(--panel);border:1px solid var(--border);color:var(--text);font-size:10px;padding:0 4px;border-radius:3px;display:none;}
+@media(max-width:700px){#view-controls{display:none;}}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="header">
+  <h1>🏠 평면도</h1>
+  <div class="sep"></div>
+  <button class="mode-btn active" id="btn-select" onclick="setMode('select')"><span>▶ 선택</span></button>
+  <button class="mode-btn admin-only" id="btn-wall" onclick="setMode('wall')"><span>✏ 벽</span></button>
+  <button class="mode-btn admin-only" id="btn-room" onclick="setMode('room')"><span>T 방</span></button>
+  <button class="mode-btn admin-only" id="btn-door" onclick="setMode('door')"><span>🚪 문</span></button>
+  <button class="mode-btn admin-only" id="btn-measure" onclick="setMode('measure')"><span>↔ 치수</span></button>
+  <select id="door-sel"><option value="door">문</option><option value="window">창문</option></select>
+  <div id="view-controls">
+    <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" id="snap-cb" checked> <span class="vc-label">스냅</span>
+    </label>
+    <span class="vc-label">격자</span>
+    <input id="grid-sz" type="number" value="100" min="50" max="500" step="50" onchange="gridMM=+this.value;render()">
+  </div>
+  <div class="sep"></div>
+  <button class="tool-btn admin-only" onclick="undoAction()">↩ Undo</button>
+  <button class="tool-btn admin-only" style="color:var(--accent2)" onclick="deleteSelected()">✕ 삭제</button>
+  <div class="sep admin-only"></div>
+  <button class="tool-btn" style="color:var(--accent3)" onclick="openSaveModal()">💾 저장</button>
+  <button class="tool-btn" style="color:var(--accent)" onclick="openLoadModal()">📂 열기</button>
+  <button class="tool-btn admin-only" style="color:var(--accent4)" onclick="openCatModal()">⚙ 카테고리</button>
+  <div class="spacer"></div>
+  <button class="tool-btn" onclick="zoomFit()">⊡</button>
+  <button class="tool-btn" onclick="saveImage()">↓PNG</button>
+  <div class="sep"></div>
+  <span id="admin-badge" style="display:none">👑 관리자</span>
+  <button id="login-btn" onclick="openLoginModal()">🔑 관리자</button>
+</div>
+
+<!-- LAYOUT -->
+<div id="layout">
+  <button id="mob-left-btn" onclick="togglePanel('left')">◀</button>
+  <button id="mob-right-btn" onclick="togglePanel('right')">▶</button>
+
+  <!-- LEFT PANEL: Furniture -->
+  <div id="left-panel">
+    <div class="lp-header">
+      <span class="lp-title">가구 팔레트</span>
+      <button class="lp-add-cat" title="카테고리 추가" onclick="openCatModal()">+</button>
+    </div>
+    <div id="left-scroll">
+      <!-- rendered by JS -->
+      <div style="padding:20px;text-align:center;color:var(--muted);font-size:11px">불러오는 중...</div>
+    </div>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <canvas id="main-canvas"></canvas>
+    <!-- Guest: no floorplan loaded yet -->
+    <div id="empty-state" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;display:none">
+      <div style="font-size:48px;margin-bottom:12px">🏗</div>
+      <div style="font-size:14px;color:var(--muted);margin-bottom:8px">평면도를 선택해주세요</div>
+      <button style="pointer-events:all;height:32px;padding:0 16px;background:var(--accent);border:none;color:#fff;border-radius:5px;cursor:pointer;font-family:inherit;font-size:12px" onclick="openLoadModal()">기본 평면도 선택</button>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: Properties -->
+  <div id="right-panel">
+    <div class="rp-t">속성</div>
+    <div id="prop-area">
+      <div class="hint">
+        <b>단축키</b><hr>
+        <b>V</b> 선택 <b>R</b> 회전<br>
+        <b>Del</b> 삭제 <b>Ctrl+Z</b> Undo<br>
+        <b>Ctrl+S</b> 저장<br>
+        <b>휠</b> 줌 <b>Space</b> 이동<br>
+        <hr>
+        <b>관리자 추가 기능</b><hr>
+        <b>W</b> 벽그리기<br>
+        <b>T</b> 방이름<br>
+        <b>D</b> 문/창<br>
+        <b>M</b> 치수선<br>
+        첫점클릭→방닫기<br>
+        더블클릭→열린벽<br>
+      </div>
+    </div>
+    <div id="sel-section" style="display:none">
+      <div class="rp-t" style="margin-top:10px">선택 항목</div>
+      <div id="sel-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div id="statusbar">
+  <span>X:<b id="sb-x">0</b></span>
+  <span>Y:<b id="sb-y">0</b></span>
+  <span id="sb-mode-wrap">모드:<b id="sb-mode">선택</b></span>
+  <span>벽:<b id="sb-walls">0</b></span>
+  <span>가구:<b id="sb-furn">0</b></span>
+  <span id="sb-msg"></span>
+</div>
+
+<!-- ── CONTEXT MENU ── -->
+<div id="ctx-menu">
+  <div onclick="ctxRotate(90)">↻ 90° 회전</div>
+  <div onclick="ctxRotate(-90)">↺ -90° 회전</div>
+  <div onclick="ctxDuplicate()">⧉ 복제</div>
+  <div class="ctx-sep"></div>
+  <div onclick="ctxFront()">⬆ 맨앞으로</div>
+  <div onclick="ctxBack()">⬇ 맨뒤로</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-del" onclick="deleteSelected()">✕ 삭제</div>
+</div>
+
+<!-- TEXT EDITOR -->
+<div id="text-editor"><input id="te-inp" type="text" placeholder="방 이름 입력 후 Enter" maxlength="20"></div>
+
+<!-- ── SAVE MODAL ── -->
+<div class="modal-ov" id="save-modal">
+  <div class="modal-box">
+    <div class="modal-hdr"><h2>💾 저장</h2><button class="modal-close" onclick="closeModal('save-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="mtabs">
+        <button class="mtab active" onclick="switchSaveTab('slots')">슬롯 저장</button>
+        <button class="mtab" onclick="switchSaveTab('file')">파일 내보내기</button>
+        <button class="mtab admin-save-tab" onclick="switchSaveTab('server')" style="display:none">서버 저장</button>
+        <button class="mtab" onclick="switchSaveTab('auto')">자동저장</button>
+      </div>
+      <div id="save-tab-slots" class="tab-c active">
+        <div class="slot-list" id="slot-list"></div>
+      </div>
+      <div id="save-tab-file" class="tab-c">
+        <div class="fio-section">
+          <div class="fio-label">JSON 파일 내보내기</div>
+          <div class="fio-desc">.fpd 파일로 저장합니다. 나중에 다시 불러올 수 있습니다.</div>
+          <button class="fbtn primary" onclick="exportJSON()">⬇ 파일로 내보내기 (.fpd)</button>
+        </div>
+      </div>
+      <div id="save-tab-server" class="tab-c">
+        <div class="fio-section">
+          <div class="fio-label">서버(Google Drive) 저장</div>
+          <div class="fio-desc">평면도를 서버에 저장합니다. 관리자 전용입니다.</div>
+          <div style="display:flex;gap:6px;margin-bottom:8px">
+            <input id="server-save-name" class="pi" style="width:100%;height:28px" placeholder="평면도 이름 (예: 59A형)">
+          </div>
+          <button class="fbtn success" onclick="saveToServer()">☁ 서버에 저장</button>
+        </div>
+        <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          <div class="fio-label" style="margin-bottom:6px">저장된 평면도 목록</div>
+          <div id="server-fp-list" style="font-size:11px;color:var(--muted)">불러오는 중...</div>
+        </div>
+      </div>
+      <div id="save-tab-auto" class="tab-c">
+        <div style="font-size:10px;color:var(--muted);line-height:1.8;margin-bottom:10px">
+          <b style="color:var(--text)">30초</b>마다 브라우저에 자동 백업합니다.
+        </div>
+        <div class="as-row">
+          <div class="as-dot" id="as-dot"></div>
+          <span class="as-text" id="as-text">비활성화</span>
+          <button class="as-btn" onclick="toggleAutosave()" id="as-btn">활성화</button>
+        </div>
+        <div style="margin-top:8px;font-size:10px;color:var(--muted)">마지막: <span id="as-last" style="color:var(--text)">없음</span></div>
+        <div style="margin-top:10px;display:flex;gap:5px">
+          <button class="fbtn primary" style="flex:1" onclick="loadAutosave()">⬆ 자동저장 불러오기</button>
+          <button class="fbtn" style="flex:1;border-color:rgba(247,129,102,.3);color:var(--accent2)" onclick="clearAutosave()">🗑 삭제</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── LOAD MODAL ── -->
+<div class="modal-ov" id="load-modal">
+  <div class="modal-box">
+    <div class="modal-hdr"><h2>📂 불러오기</h2><button class="modal-close" onclick="closeModal('load-modal')">✕</button></div>
+    <div class="modal-body">
+      <div class="mtabs">
+        <button class="mtab active" onclick="switchLoadTab('server')">기본 평면도</button>
+        <button class="mtab" onclick="switchLoadTab('slots')">내 슬롯</button>
+        <button class="mtab" onclick="switchLoadTab('file')">파일 가져오기</button>
+      </div>
+      <div id="load-tab-server" class="tab-c active">
+        <div class="fio-desc" style="font-size:10px;color:var(--muted);margin-bottom:10px">서버에 등록된 기본 평면도를 선택하세요. 이후 내 슬롯에 저장하여 사용합니다.</div>
+        <div class="fp-list" id="server-template-list">
+          <div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">불러오는 중...</div>
+        </div>
+      </div>
+      <div id="load-tab-slots" class="tab-c">
+        <div class="slot-list" id="load-slot-list"></div>
+      </div>
+      <div id="load-tab-file" class="tab-c">
+        <div class="fio-section">
+          <div class="fio-label">파일 가져오기</div>
+          <div class="fio-desc">.fpd 파일을 불러옵니다.</div>
+          <button class="fbtn success" onclick="document.getElementById('file-inp').click()">⬆ 파일 선택</button>
+          <input type="file" id="file-inp" accept=".fpd,.json" style="display:none" onchange="importFile(this)">
+          <div id="drop-zone" onclick="document.getElementById('file-inp').click()">
+            📂 파일을 드래그하거나 클릭하여 선택
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── LOGIN MODAL ── -->
+<div class="modal-ov" id="login-modal">
+  <div class="modal-box" style="max-width:320px">
+    <div class="modal-hdr"><h2>🔑 관리자 로그인</h2><button class="modal-close" onclick="closeModal('login-modal')">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">관리자 토큰을 입력하면 평면도 제작 및 서버 저장 기능이 활성화됩니다.</div>
+      <input class="login-input" type="password" id="login-token-inp" placeholder="관리자 토큰 입력...">
+      <button class="login-submit" onclick="doLogin()">확인</button>
+      <div class="login-err" id="login-err">토큰이 올바르지 않습니다</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CATEGORY MODAL (ADMIN) ── -->
+<div class="modal-ov" id="cat-modal">
+  <div class="modal-box" style="max-width:520px">
+    <div class="modal-hdr"><h2>⚙ 카테고리 / 가구 관리</h2><button class="modal-close" onclick="closeModal('cat-modal')">✕</button></div>
+    <div class="modal-body">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+        <button class="fbtn success" style="width:auto;padding:0 12px;height:28px" onclick="addCategory()">+ 카테고리 추가</button>
+      </div>
+      <div id="cat-mgr-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ── BASE PATH ────────────────────────────────────────────────────────
+// 현재 페이지 URL 기준으로 API 경로 자동 결정
+// /floorplan/ → BASE='/floorplan'
+// /           → BASE=''
+// → 어느 경로에 마운트돼도 별도 설정 없이 동작
+const BASE = (() => {
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  // 첫 번째 세그먼트가 'api'가 아니면 베이스로 사용
+  if (parts.length > 0 && parts[0] !== 'api') return '/' + parts[0];
+  return '';
+})();
+
+// ═══════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════
+const canvas = document.getElementById('main-canvas');
+const ctx    = canvas.getContext('2d');
+const wrap   = document.getElementById('canvas-wrap');
+
+let isAdmin  = false;
+let adminToken = '';
+let mode     = 'select';
+let snapOn   = true;
+let gridMM   = 100;
+let SCALE    = 0.1;
+let PAN      = {x:80, y:80};
+
+let walls    = [];
+let furns    = [];
+let labels   = [];
+let doors    = [];
+let measures = [];
+let categories = [];
+
+let history  = [];
+let zCtr     = 1;
+
+let drawingWall  = null;
+let previewPt    = null;
+let measureStart = null;
+let selected     = null;
+let hovNode      = null;
+let isDragging   = false;
+let dragStart    = {x:0,y:0};
+let dragOrigin   = null;
+let panMode      = false;
+let panStart     = {x:0,y:0};
+let resizingFurn = null;
+let resizeOrigin = null;
+
+// Touch
+let lastTouchDist = 0;
+let touches = [];
+
+// ═══════════════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════════════
+async function init() {
+  resize();
+  PAN = {x: wrap.clientWidth/2 - 500, y: wrap.clientHeight/2 - 350};
+
+  // Load categories from server
+  await loadCategories();
+
+  // Check autosave
+  checkAutosaveNotice();
+
+  // Check empty state
+  checkEmptyState();
+
+  render();
+}
+
+window.addEventListener('resize', resize);
+function resize() {
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  ADMIN AUTH
+// ═══════════════════════════════════════════════════════════════════════
+function openLoginModal() {
+  if (isAdmin) { doLogout(); return; }
+  document.getElementById('login-token-inp').value = '';
+  document.getElementById('login-err').style.display = 'none';
+  openModal('login-modal');
+}
+
+async function doLogin() {
+  const token = document.getElementById('login-token-inp').value.trim();
+  if (!token) return;
+  try {
+    const res  = await fetch(BASE + '/api/auth/verify', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ token })
+    });
+    const data = await res.json();
+    if (data.isAdmin) {
+      isAdmin    = true;
+      adminToken = token;
+      applyAdminMode(true);
+      closeModal('login-modal');
+      showToast('👑 관리자로 로그인됨', 'ok');
+    } else {
+      document.getElementById('login-err').style.display = 'block';
+    }
+  } catch {
+    showToast('서버 연결 오류', 'err');
+  }
+}
+
+function doLogout() {
+  if (!confirm('관리자 모드를 종료하시겠습니까?')) return;
+  isAdmin = false; adminToken = '';
+  applyAdminMode(false);
+  showToast('관리자 모드 종료');
+}
+
+function applyAdminMode(on) {
+  document.body.classList.toggle('admin-mode', on);
+  document.querySelectorAll('.admin-only').forEach(el => {
+    el.style.display = on ? '' : 'none';
+  });
+  document.getElementById('admin-badge').style.display = on ? '' : 'none';
+  document.getElementById('login-btn').textContent = on ? '🔓 로그아웃' : '🔑 관리자';
+  document.querySelector('.admin-save-tab').style.display = on ? '' : 'none';
+  if (on) {
+    loadServerFPList();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  CATEGORIES
+// ═══════════════════════════════════════════════════════════════════════
+async function loadCategories() {
+  try {
+    const res  = await fetch(BASE + '/api/categories');
+    const data = await res.json();
+    if (data.ok) categories = data.data;
+    else categories = [];
+  } catch {
+    categories = [];
+  }
+  renderLeftPanel();
+}
+
+function renderLeftPanel() {
+  const scroll = document.getElementById('left-scroll');
+  scroll.innerHTML = '';
+  categories.forEach(cat => {
+    const sec = document.createElement('div');
+    sec.className = 'cat-section';
+    sec.innerHTML = `
+      <div class="cat-header" onclick="toggleCat(this)">
+        <span class="cat-name">${cat.name}</span>
+        <span class="cat-toggle">▾</span>
+      </div>
+      <div class="cat-body" data-catid="${cat.id}">
+        ${cat.items.map(item => `
+          <div class="fi" draggable="true"
+            data-fw="${item.w}" data-fh="${item.h}" data-fc="${item.color||'#2a3a4a'}" data-fl="${item.label}" data-ficon="${item.icon||'📦'}">
+            <em>${item.icon||'📦'}</em>
+            <div class="fi-info">
+              <div class="fi-label">${item.label}</div>
+              <div class="fi-size">${Math.round(item.w/10)}×${Math.round(item.h/10)}cm</div>
+            </div>
+            <button class="fi-del" onclick="deleteFurnItem(event,'${cat.id}','${item.id}')">✕</button>
+          </div>
+        `).join('')}
+      </div>`;
+    scroll.appendChild(sec);
+  });
+  // Re-attach drag events
+  scroll.querySelectorAll('.fi').forEach(el => {
+    el.addEventListener('dragstart', onFurnDragStart);
+    el.addEventListener('touchstart', onFurnTouchStart, {passive:false});
+  });
+}
+
+function toggleCat(hdr) {
+  const body = hdr.nextElementSibling;
+  body.classList.toggle('collapsed');
+  hdr.querySelector('.cat-toggle').textContent = body.classList.contains('collapsed') ? '▸' : '▾';
+}
+
+async function deleteFurnItem(e, catId, itemId) {
+  e.stopPropagation();
+  if (!isAdmin || !confirm('항목을 삭제할까요?')) return;
+  await apiFetch(`/api/categories/${catId}/items/${itemId}`, 'DELETE');
+  await loadCategories();
+  showToast('항목 삭제됨');
+}
+
+// ── Category modal ─────────────────────────────────
+function openCatModal() {
+  if (!isAdmin) { showToast('관리자 권한이 필요합니다', 'err'); return; }
+  renderCatMgr();
+  openModal('cat-modal');
+}
+
+function renderCatMgr() {
+  const list = document.getElementById('cat-mgr-list');
+  list.innerHTML = categories.map(cat => `
+    <div class="cat-mgr-item">
+      <div class="cat-mgr-hdr">
+        <span class="cat-mgr-name">${cat.name} <span style="color:var(--muted);font-size:9px">(${cat.id})</span></span>
+        <div class="cat-mgr-acts">
+          <button class="sa del" onclick="deleteCat('${cat.id}')">카테고리 삭제</button>
+        </div>
+      </div>
+      <div style="margin-bottom:6px;flex-wrap:wrap;display:flex">
+        ${cat.items.map(it => `
+          <span class="item-chip">${it.icon||'📦'} ${it.label} <button onclick="deleteFurnItemCat('${cat.id}','${it.id}')">×</button></span>
+        `).join('')}
+        ${cat.items.length===0?'<span style="font-size:10px;color:var(--muted)">항목 없음</span>':''}
+      </div>
+      <div class="add-item-row">
+        <select id="icon-sel-${cat.id}" style="width:50px">
+          ${['🛏','🛋','📺','🚪','🖥','☕','🍽','🧊','🌀','📚','🎹','🌿','🛁','🚽','🚿','📦','🛠','🪑','🛒','🖼'].map(i=>`<option>${i}</option>`).join('')}
+        </select>
+        <input id="name-inp-${cat.id}" placeholder="이름" style="width:70px">
+        <input id="w-inp-${cat.id}" type="number" placeholder="W(mm)" style="width:65px" value="1000">
+        <input id="h-inp-${cat.id}" type="number" placeholder="H(mm)" style="width:65px" value="1000">
+        <input id="color-inp-${cat.id}" type="color" value="#2a3a4a" style="width:28px;height:24px;padding:0;border:none;cursor:pointer;background:transparent">
+        <button class="add-item-btn" onclick="addFurnItem('${cat.id}')">+ 추가</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function addFurnItem(catId) {
+  const icon  = document.getElementById('icon-sel-'+catId).value;
+  const label = document.getElementById('name-inp-'+catId).value.trim();
+  const w     = parseInt(document.getElementById('w-inp-'+catId).value);
+  const h     = parseInt(document.getElementById('h-inp-'+catId).value);
+  const color = document.getElementById('color-inp-'+catId).value;
+  if (!label || !w || !h) { showToast('이름, 너비, 깊이를 입력하세요', 'err'); return; }
+  await apiFetch(`/api/categories/${catId}/items`, 'POST', { label, w, h, color, icon });
+  await loadCategories();
+  renderCatMgr();
+  showToast(`"${label}" 추가됨`, 'ok');
+}
+
+async function deleteFurnItemCat(catId, itemId) {
+  if (!confirm('항목을 삭제할까요?')) return;
+  await apiFetch(`/api/categories/${catId}/items/${itemId}`, 'DELETE');
+  await loadCategories();
+  renderCatMgr();
+  showToast('항목 삭제됨');
+}
+
+async function addCategory() {
+  const id   = prompt('카테고리 ID (영문 소문자):')?.trim();
+  const name = prompt('카테고리 이름:')?.trim();
+  if (!id || !name) return;
+  const r = await apiFetch('/api/categories', 'POST', { id, name });
+  if (r.ok) { await loadCategories(); renderCatMgr(); showToast('카테고리 추가됨', 'ok'); }
+  else showToast(r.error, 'err');
+}
+
+async function deleteCat(catId) {
+  if (!confirm('카테고리를 삭제할까요?')) return;
+  await apiFetch('/api/categories/' + catId, 'DELETE');
+  await loadCategories();
+  renderCatMgr();
+  showToast('카테고리 삭제됨');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  API HELPER
+// ═══════════════════════════════════════════════════════════════════════
+async function apiFetch(url, method='GET', body=null) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+  };
+  if (body) opts.body = JSON.stringify(body);
+  // BASE_PATH 자동 적용: url이 /api/로 시작하면 앞에 BASE 붙임
+  const fullUrl = url.startsWith('/api/') ? BASE + url : url;
+  try {
+    const res  = await fetch(fullUrl, opts);
+    return await res.json();
+  } catch (e) {
+    showToast('네트워크 오류: ' + e.message, 'err');
+    return { ok: false, error: e.message };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SERVER FLOORPLAN SAVE / LOAD
+// ═══════════════════════════════════════════════════════════════════════
+async function loadServerFPList() {
+  const el = document.getElementById('server-fp-list');
+  if (el) el.innerHTML = '불러오는 중...';
+  const r = await apiFetch('/api/floorplans');
+  if (!r.ok) { if(el) el.innerHTML = '로드 실패'; return; }
+  if (!el) return;
+  if (!r.data.length) { el.innerHTML = '<span style="color:var(--muted);font-size:11px">저장된 평면도 없음</span>'; return; }
+  el.innerHTML = r.data.map(fp => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:11px">🏠 ${fp.name}</span>
+      <div style="display:flex;gap:4px">
+        <button class="sa del" onclick="deleteServerFP('${fp.id}','${fp.name}')">삭제</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveToServer() {
+  const name = document.getElementById('server-save-name').value.trim();
+  if (!name) { showToast('이름을 입력하세요', 'err'); return; }
+  const r = await apiFetch('/api/floorplans', 'POST', { name, data: getState() });
+  if (r.ok) { showToast(`☁ "${name}" 서버 저장됨`, 'ok'); loadServerFPList(); }
+  else showToast(r.error, 'err');
+}
+
+async function deleteServerFP(id, name) {
+  if (!confirm(`"${name}"을 삭제할까요?`)) return;
+  const r = await apiFetch('/api/floorplans/' + id, 'DELETE');
+  if (r.ok) { showToast('삭제됨'); loadServerFPList(); }
+  else showToast(r.error, 'err');
+}
+
+async function loadServerTemplates() {
+  const el = document.getElementById('server-template-list');
+  el.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">불러오는 중...</div>';
+  const r = await apiFetch('/api/floorplans');
+  if (!r.ok || !r.data.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">등록된 기본 평면도가 없습니다.<br>관리자가 평면도를 등록해야 사용할 수 있습니다.</div>';
+    return;
+  }
+  el.innerHTML = '';
+  r.data.forEach(fp => {
+    const item = document.createElement('div');
+    item.className = 'fp-item';
+    item.innerHTML = `<span class="fp-icon">🏠</span><div><div class="fp-name">${fp.name}</div><div class="fp-meta">${new Date(fp.modifiedTime||Date.now()).toLocaleDateString('ko-KR')}</div></div>`;
+    item.addEventListener('click', () => loadServerFP(fp.id, fp.name));
+    el.appendChild(item);
+  });
+}
+
+async function loadServerFP(id, name) {
+  const r = await apiFetch('/api/floorplans/' + id);
+  if (!r.ok) { showToast('불러오기 실패: ' + r.error, 'err'); return; }
+  pushHistory();
+  loadState(r.data);
+  showToast(`📂 "${name}" 불러옴`);
+  closeModal('load-modal');
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  STATE SERIALIZE
+// ═══════════════════════════════════════════════════════════════════════
+function getState() {
+  return { v:1, walls, furns, labels, doors, measures,
+    meta: { savedAt: new Date().toISOString(), wallCount: walls.length, furnCount: furns.length } };
+}
+function loadState(data) {
+  if (!data || data.v !== 1) throw new Error('파일 형식 오류');
+  walls = data.walls||[]; furns = data.furns||[]; labels = data.labels||[];
+  doors = data.doors||[]; measures = data.measures||[];
+  selected = null; updatePropPanel(); updateSB(); zoomFit();
+  checkEmptyState();
+}
+
+function checkEmptyState() {
+  const empty = walls.length===0 && furns.length===0 && labels.length===0;
+  const el = document.getElementById('empty-state');
+  el.style.display = empty ? 'flex' : 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  COORDS
+// ═══════════════════════════════════════════════════════════════════════
+const tc = mm => ({x: mm.x*SCALE+PAN.x, y: mm.y*SCALE+PAN.y});
+const tm = px => ({x: (px.x-PAN.x)/SCALE, y: (px.y-PAN.y)/SCALE});
+const sn = mm => {
+  if (!snapOn) return mm;
+  const g = gridMM;
+  return {x: Math.round(mm.x/g)*g, y: Math.round(mm.y/g)*g};
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════════════════════
+function render() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0e1117'; ctx.fillRect(0,0,W,H);
+  drawGrid(W,H);
+  drawFloors();
+  drawMeasures();
+  drawWalls();
+  drawDoors();
+  drawFurns();
+  drawLabels();
+  if(mode==='wall') drawWallPreview();
+  if(mode==='measure'&&measureStart) drawMeasurePreview();
+}
+
+function drawGrid(W,H) {
+  const gp=gridMM*SCALE; if(gp<4) return;
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,.035)'; ctx.lineWidth=1;
+  const sx=((PAN.x%gp)+gp)%gp, sy=((PAN.y%gp)+gp)%gp;
+  for(let x=sx;x<W;x+=gp){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=sy;y<H;y+=gp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  const bg=500*SCALE;
+  if(bg>10){
+    ctx.strokeStyle='rgba(255,255,255,.06)';
+    const bx=((PAN.x%bg)+bg)%bg,by=((PAN.y%bg)+bg)%bg;
+    for(let x=bx;x<W;x+=bg){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+    for(let y=by;y<H;y+=bg){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  }
+  ctx.restore();
+}
+
+function drawFloors() {
+  walls.forEach(w=>{
+    if(!w.closed||w.pts.length<3) return;
+    ctx.save(); ctx.beginPath();
+    const p0=tc(w.pts[0]); ctx.moveTo(p0.x,p0.y);
+    w.pts.slice(1).forEach(p=>{const c=tc(p);ctx.lineTo(c.x,c.y);});
+    ctx.closePath(); ctx.fillStyle='rgba(205,185,155,.1)'; ctx.fill(); ctx.restore();
+  });
+}
+
+function drawWalls() {
+  const wt=Math.max(2,14*SCALE);
+  walls.forEach((w,wi)=>{
+    if(w.pts.length<1) return;
+    const isSel=selected&&selected.type==='wall'&&selected.idx===wi;
+    ctx.save();
+    ctx.beginPath();
+    const p0=tc(w.pts[0]); ctx.moveTo(p0.x,p0.y);
+    for(let i=1;i<w.pts.length;i++){const p=tc(w.pts[i]);ctx.lineTo(p.x,p.y);}
+    if(w.closed) ctx.closePath();
+    ctx.strokeStyle=isSel?'#58a6ff':'#c8d6e5'; ctx.lineWidth=wt; ctx.lineCap='square'; ctx.lineJoin='miter';
+    ctx.stroke();
+    if(SCALE>0.05){
+      const all=w.closed?[...w.pts,w.pts[0]]:w.pts;
+      ctx.font=`${Math.max(9,10*SCALE)}px JetBrains Mono,monospace`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      for(let i=0;i<all.length-1;i++){
+        const a=all[i],b=all[i+1];
+        const len=Math.round(Math.hypot(b.x-a.x,b.y-a.y));
+        if(len<50) continue;
+        const cp=tc({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
+        const ang=Math.atan2(b.y-a.y,b.x-a.x);
+        ctx.save(); ctx.translate(cp.x,cp.y); ctx.rotate(ang);
+        ctx.fillStyle=isSel?'rgba(88,166,255,.9)':'rgba(120,160,200,.65)';
+        ctx.fillText(len>=1000?(len/1000).toFixed(2)+'m':len+'mm',0,-wt/2-5);
+        ctx.restore();
+      }
+    }
+    if(isSel||mode==='select'){
+      w.pts.forEach((pt,pi)=>{
+        const cp=tc(pt);
+        const isH=hovNode&&hovNode.wi===wi&&hovNode.pi===pi;
+        ctx.beginPath(); ctx.arc(cp.x,cp.y,isH?8:5,0,Math.PI*2);
+        ctx.fillStyle=isH?'#f78166':'#58a6ff'; ctx.fill();
+        ctx.strokeStyle='#0e1117'; ctx.lineWidth=1.5; ctx.stroke();
+      });
+    }
+    ctx.restore();
+  });
+  // Drawing preview
+  if(drawingWall&&drawingWall.pts.length>0){
+    ctx.save();
+    ctx.strokeStyle='#58a6ff'; ctx.lineWidth=Math.max(2,14*SCALE);
+    ctx.setLineDash([8,5]); ctx.lineCap='round';
+    ctx.beginPath();
+    const p0=tc(drawingWall.pts[0]); ctx.moveTo(p0.x,p0.y);
+    drawingWall.pts.slice(1).forEach(pt=>{const p=tc(pt);ctx.lineTo(p.x,p.y);});
+    if(previewPt){const pp=tc(previewPt);ctx.lineTo(pp.x,pp.y);}
+    ctx.stroke(); ctx.setLineDash([]);
+    drawingWall.pts.forEach((pt,i)=>{
+      const cp=tc(pt); ctx.beginPath(); ctx.arc(cp.x,cp.y,i===0?8:5,0,Math.PI*2);
+      ctx.fillStyle=i===0?'#f78166':'#58a6ff'; ctx.fill();
+    });
+    ctx.restore();
+  }
+}
+
+function drawFurns() {
+  [...furns.map((f,i)=>({...f,_i:i}))].sort((a,b)=>a.z-b.z).forEach(f=>{
+    const cp=tc({x:f.x,y:f.y}); const pw=f.w*SCALE,ph=f.h*SCALE;
+    const isSel=selected&&selected.type==='furn'&&selected.idx===f._i;
+    ctx.save(); ctx.translate(cp.x+pw/2,cp.y+ph/2); ctx.rotate((f.rot||0)*Math.PI/180);
+    ctx.shadowColor='rgba(0,0,0,.5)'; ctx.shadowBlur=isSel?16:5; ctx.shadowOffsetX=2; ctx.shadowOffsetY=2;
+    ctx.fillStyle=f.color||'#2a3a4a'; ctx.strokeStyle=isSel?'#58a6ff':'rgba(255,255,255,.2)'; ctx.lineWidth=isSel?2:1;
+    ctx.beginPath(); ctx.roundRect(-pw/2,-ph/2,pw,ph,3); ctx.fill(); ctx.stroke();
+    ctx.shadowColor='transparent';
+    if(pw>16&&ph>10){
+      const em=f.icon||'📦';
+      if(ph>24){
+        ctx.font=`${Math.min(18,ph*.38)}px serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fillText(em,0,-ph*.15);
+        const fs=Math.max(7,Math.min(12,pw/(f.label.length+1)*1.4));
+        ctx.font=`${fs}px IBM Plex Sans KR,sans-serif`; ctx.fillStyle='rgba(255,255,255,.8)';
+        ctx.fillText(f.label,0,ph*.25);
+      } else {
+        const fs=Math.max(7,Math.min(11,pw/(f.label.length+1)*1.3));
+        ctx.font=`${fs}px IBM Plex Sans KR,sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle='rgba(255,255,255,.8)'; ctx.fillText(f.label,0,0);
+      }
+    }
+    if(isSel){ ctx.fillStyle='#f78166'; ctx.beginPath(); ctx.arc(pw/2,ph/2,5,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  });
+}
+
+function drawLabels() {
+  labels.forEach((l,li)=>{
+    const cp=tc({x:l.x,y:l.y}); const isSel=selected&&selected.type==='label'&&selected.idx===li;
+    ctx.save();
+    const fs=(l.size||1.8)*SCALE*8;
+    ctx.font=`${fs}px IBM Plex Sans KR,sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle';
+    if(isSel){ ctx.strokeStyle='rgba(88,166,255,.3)'; ctx.lineWidth=1;
+      const tw=ctx.measureText(l.text).width;
+      ctx.strokeRect(cp.x-tw/2-4,cp.y-fs/2-2,tw+8,fs+4); }
+    ctx.fillStyle=isSel?'#58a6ff':'rgba(200,215,230,.75)'; ctx.fillText(l.text,cp.x,cp.y);
+    ctx.restore();
+  });
+}
+
+function drawDoors() {
+  doors.forEach((d,di)=>{
+    const cp=tc({x:d.x,y:d.y}); const isSel=selected&&selected.type==='door'&&selected.idx===di;
+    ctx.save(); ctx.translate(cp.x,cp.y); ctx.rotate(d.angle||0);
+    const r=(d.size||900)*SCALE;
+    if(d.type==='window'){
+      ctx.strokeStyle=isSel?'#58a6ff':'#90caf9'; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(-r/2,0); ctx.lineTo(r/2,0); ctx.stroke();
+      ctx.lineWidth=1.5; [-r/2,r/2].forEach(x=>{ctx.beginPath();ctx.moveTo(x,-5);ctx.lineTo(x,5);ctx.stroke();});
+    } else {
+      ctx.strokeStyle=isSel?'#58a6ff':'#e0c87a'; ctx.fillStyle='rgba(255,230,100,.04)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(r,0); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,r,0,-Math.PI/2,true); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r,0,-Math.PI/2,true); ctx.lineTo(0,0); ctx.fill();
+    }
+    ctx.restore();
+  });
+}
+
+function drawMeasures() {
+  measures.forEach((m,mi)=>{
+    const a=tc({x:m.x1,y:m.y1}),b=tc({x:m.x2,y:m.y2});
+    const isSel=selected&&selected.type==='measure'&&selected.idx===mi;
+    ctx.save(); ctx.strokeStyle=isSel?'#f78166':'rgba(247,129,102,.6)'; ctx.lineWidth=1.5;
+    ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    ctx.setLineDash([]);
+    const ang=Math.atan2(b.y-a.y,b.x-a.x)+Math.PI/2;
+    [[a.x,a.y],[b.x,b.y]].forEach(([px,py])=>{
+      ctx.beginPath(); ctx.moveTo(px+Math.cos(ang)*5,py+Math.sin(ang)*5);
+      ctx.lineTo(px-Math.cos(ang)*5,py-Math.sin(ang)*5); ctx.stroke();
+    });
+    const len=Math.round(Math.hypot(m.x2-m.x1,m.y2-m.y1));
+    const mx=(a.x+b.x)/2,my=(a.y+b.y)/2,la=Math.atan2(b.y-a.y,b.x-a.x);
+    ctx.save(); ctx.translate(mx,my); ctx.rotate(la);
+    ctx.font='10px JetBrains Mono,monospace'; ctx.fillStyle=isSel?'#f78166':'rgba(247,129,102,.85)';
+    ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText(len>=1000?(len/1000).toFixed(3)+'m':len+'mm',0,-4);
+    ctx.restore(); ctx.restore();
+  });
+}
+
+function drawWallPreview() {
+  if(!previewPt) return;
+  if(snapOn){ const cp=tc(previewPt); ctx.save(); ctx.strokeStyle='rgba(88,166,255,.4)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(cp.x,cp.y,9,0,Math.PI*2); ctx.stroke(); ctx.restore(); }
+}
+function drawMeasurePreview() {
+  if(!measureStart||!previewPt) return;
+  const a=tc(measureStart),b=tc(previewPt); ctx.save(); ctx.strokeStyle='rgba(247,129,102,.4)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MOUSE EVENTS
+// ═══════════════════════════════════════════════════════════════════════
+function getPos(e) {
+  const r=canvas.getBoundingClientRect();
+  return {x:e.clientX-r.left,y:e.clientY-r.top};
+}
+
+canvas.addEventListener('mousemove', e=>{
+  const px=getPos(e); const snMM=sn(tm(px));
+  previewPt=snMM;
+  document.getElementById('sb-x').textContent=Math.round(snMM.x);
+  document.getElementById('sb-y').textContent=Math.round(snMM.y);
+  if(panMode&&e.buttons===1){PAN.x+=e.clientX-panStart.x;PAN.y+=e.clientY-panStart.y;panStart={x:e.clientX,y:e.clientY};render();return;}
+  if(resizingFurn!==null&&e.buttons===1){
+    const f=furns[resizingFurn]; const dx=(px.x-resizeOrigin.px)/SCALE,dy=(px.y-resizeOrigin.py)/SCALE;
+    f.w=Math.max(200,resizeOrigin.fw+dx); f.h=Math.max(200,resizeOrigin.fh+dy);
+    updatePropPanel();render();return;
+  }
+  if(isDragging&&selected&&e.buttons===1){
+    const dx=(px.x-dragStart.x)/SCALE,dy=(px.y-dragStart.y)/SCALE;
+    if(selected.type==='furn'){furns[selected.idx].x=dragOrigin.x+dx;furns[selected.idx].y=dragOrigin.y+dy;}
+    else if(selected.type==='label'){labels[selected.idx].x=dragOrigin.x+dx;labels[selected.idx].y=dragOrigin.y+dy;}
+    else if(selected.type==='node'){walls[selected.wallIdx].pts[selected.ptIdx]=sn({x:dragOrigin.x+dx,y:dragOrigin.y+dy});}
+    else if(selected.type==='door'){doors[selected.idx].x=dragOrigin.x+dx;doors[selected.idx].y=dragOrigin.y+dy;}
+    else if(selected.type==='measure'){measures[selected.idx]={x1:dragOrigin.x1+dx,y1:dragOrigin.y1+dy,x2:dragOrigin.x2+dx,y2:dragOrigin.y2+dy};}
+    updatePropPanel();render();return;
+  }
+  hovNode=null;
+  if(mode==='select') walls.forEach((w,wi)=>w.pts.forEach((pt,pi)=>{const cp=tc(pt);if(Math.hypot(cp.x-px.x,cp.y-px.y)<10)hovNode={wi,pi};}));
+  render();
+});
+
+canvas.addEventListener('mousedown', e=>{
+  hideCtxMenu();
+  const px=getPos(e); const snMM=sn(tm(px));
+  if(e.button===1||(e.button===0&&e.altKey)){panMode=true;panStart={x:e.clientX,y:e.clientY};e.preventDefault();return;}
+  if(e.button===2) return; if(panMode) return;
+  if(mode==='wall'&&isAdmin){handleWallClick(snMM);return;}
+  if(mode==='door'&&isAdmin){handleDoorClick(snMM);return;}
+  if(mode==='measure'&&isAdmin){handleMeasureClick(snMM);return;}
+  if(mode==='select'||mode==='room') handleSelectDown(e,px,snMM,false);
+});
+canvas.addEventListener('mouseup', e=>{
+  panMode=false; isDragging=false; resizingFurn=null;
+  if(mode==='room'&&e.button===0&&isAdmin){
+    const px=getPos(e); openTE(e.clientX,e.clientY,sn(tm(px)));
+  }
+  render();
+});
+canvas.addEventListener('dblclick',e=>{if(mode==='wall'&&drawingWall&&drawingWall.pts.length>=2)finishWall(false);});
+canvas.addEventListener('contextmenu',e=>{e.preventDefault();const px=getPos(e);handleSelectDown(e,px,tm(px),true);if(selected)showCtxMenu(e.clientX,e.clientY);});
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();const px=getPos(e);const zf=e.deltaY<0?1.12:0.89;
+  const old=SCALE;SCALE=Math.max(0.015,Math.min(0.8,SCALE*zf));
+  PAN.x=px.x-(px.x-PAN.x)*(SCALE/old);PAN.y=px.y-(px.y-PAN.y)*(SCALE/old);render();
+},{passive:false});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  TOUCH EVENTS (mobile)
+// ═══════════════════════════════════════════════════════════════════════
+function getTouchPos(t) {
+  const r=canvas.getBoundingClientRect();
+  return {x:t.clientX-r.left,y:t.clientY-r.top};
+}
+
+canvas.addEventListener('touchstart', e=>{
+  e.preventDefault();
+  touches = Array.from(e.touches);
+  if(touches.length===1){
+    const px=getTouchPos(touches[0]); const snMM=sn(tm(px));
+    panStart={x:touches[0].clientX,y:touches[0].clientY};
+    if(mode==='select'){handleSelectDown(e,px,snMM,false);}
+    else if(mode==='wall'&&isAdmin){handleWallClick(snMM);}
+    else if(mode==='door'&&isAdmin){handleDoorClick(snMM);}
+    else if(mode==='measure'&&isAdmin){handleMeasureClick(snMM);}
+    else if(mode==='room'&&isAdmin){openTE(touches[0].clientX,touches[0].clientY,snMM);}
+  }
+  if(touches.length===2){
+    lastTouchDist=Math.hypot(touches[1].clientX-touches[0].clientX,touches[1].clientY-touches[0].clientY);
+    isDragging=false; selected=null;
+  }
+},{passive:false});
+
+canvas.addEventListener('touchmove', e=>{
+  e.preventDefault();
+  touches=Array.from(e.touches);
+  if(touches.length===1){
+    const dx=touches[0].clientX-panStart.x, dy=touches[0].clientY-panStart.y;
+    if(isDragging&&selected){
+      const px=getTouchPos(touches[0]); const sca=(px.x-dragStart.x)/SCALE, scy=(px.y-dragStart.y)/SCALE;
+      if(selected.type==='furn'){furns[selected.idx].x=dragOrigin.x+sca;furns[selected.idx].y=dragOrigin.y+scy;}
+      else if(selected.type==='label'){labels[selected.idx].x=dragOrigin.x+sca;labels[selected.idx].y=dragOrigin.y+scy;}
+      else if(selected.type==='node'){walls[selected.wallIdx].pts[selected.ptIdx]=sn({x:dragOrigin.x+sca,y:dragOrigin.y+scy});}
+    } else {
+      PAN.x+=dx; PAN.y+=dy;
+      panStart={x:touches[0].clientX,y:touches[0].clientY};
+    }
+    render();
+  }
+  if(touches.length===2){
+    const dist=Math.hypot(touches[1].clientX-touches[0].clientX,touches[1].clientY-touches[0].clientY);
+    const zf=dist/lastTouchDist; lastTouchDist=dist;
+    const mx=(touches[0].clientX+touches[1].clientX)/2-canvas.getBoundingClientRect().left;
+    const my=(touches[0].clientY+touches[1].clientY)/2-canvas.getBoundingClientRect().top;
+    const old=SCALE; SCALE=Math.max(0.015,Math.min(0.8,SCALE*zf));
+    PAN.x=mx-(mx-PAN.x)*(SCALE/old); PAN.y=my-(my-PAN.y)*(SCALE/old);
+    render();
+  }
+},{passive:false});
+
+canvas.addEventListener('touchend', e=>{
+  isDragging=false; resizingFurn=null;
+  touches=Array.from(e.touches);
+  if(touches.length===0) render();
+},{passive:false});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  WALL / DOOR / MEASURE
+// ═══════════════════════════════════════════════════════════════════════
+function handleWallClick(snMM){
+  if(!drawingWall){pushHistory();drawingWall={pts:[snMM],closed:false};}
+  else{
+    const s=drawingWall.pts[0],sp=tc(s),cp=tc(snMM);
+    if(drawingWall.pts.length>=3&&Math.hypot(sp.x-cp.x,sp.y-cp.y)<14){finishWall(true);return;}
+    drawingWall.pts.push(snMM);
+  }
+  render();
+}
+function finishWall(closed){
+  if(!drawingWall||drawingWall.pts.length<2){drawingWall=null;render();return;}
+  walls.push({pts:drawingWall.pts,closed});drawingWall=null;previewPt=null;checkEmptyState();updateSB();render();
+}
+function handleDoorClick(snMM){
+  pushHistory();
+  const t=document.getElementById('door-sel').value;
+  doors.push({x:snMM.x,y:snMM.y,angle:0,type:t,size:t==='door'?900:1200});
+  updateSB();render();
+}
+function handleMeasureClick(snMM){
+  if(!measureStart){measureStart=snMM;}
+  else{pushHistory();measures.push({x1:measureStart.x,y1:measureStart.y,x2:snMM.x,y2:snMM.y});measureStart=null;render();}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SELECT
+// ═══════════════════════════════════════════════════════════════════════
+function handleSelectDown(e,px,mm,ctxM){
+  if(!ctxM&&selected&&selected.type==='furn'){
+    const f=furns[selected.idx];const cp=tc({x:f.x,y:f.y});const pw=f.w*SCALE,ph=f.h*SCALE;
+    if(Math.hypot(px.x-(cp.x+pw),px.y-(cp.y+ph))<10){resizingFurn=selected.idx;resizeOrigin={px:px.x,py:px.y,fw:f.w,fh:f.h};return;}
+  }
+  if(!ctxM){
+    for(let wi=0;wi<walls.length;wi++) for(let pi=0;pi<walls[wi].pts.length;pi++){
+      const cp=tc(walls[wi].pts[pi]);
+      if(Math.hypot(cp.x-px.x,cp.y-px.y)<10){selected={type:'node',wallIdx:wi,ptIdx:pi};isDragging=true;dragStart=px;dragOrigin={...walls[wi].pts[pi]};updatePropPanel();render();return;}
+    }
+  }
+  const sf=[...furns.map((f,i)=>({...f,_i:i}))].sort((a,b)=>b.z-a.z);
+  for(const f of sf){
+    const cp=tc({x:f.x,y:f.y});const pw=f.w*SCALE,ph=f.h*SCALE;
+    if(px.x>=cp.x&&px.x<=cp.x+pw&&px.y>=cp.y&&px.y<=cp.y+ph){
+      selected={type:'furn',idx:f._i};
+      if(!ctxM){isDragging=true;dragStart=px;dragOrigin={x:f.x,y:f.y};furns[f._i].z=++zCtr;}
+      updatePropPanel();render();return;
+    }
+  }
+  for(let li=labels.length-1;li>=0;li--){
+    const l=labels[li];const cp=tc({x:l.x,y:l.y});const fs=(l.size||1.8)*SCALE*8;
+    ctx.font=`${fs}px IBM Plex Sans KR,sans-serif`;const tw=ctx.measureText(l.text).width;
+    if(Math.abs(px.x-cp.x)<tw/2+5&&Math.abs(px.y-cp.y)<fs/2+4){
+      selected={type:'label',idx:li};
+      if(!ctxM){isDragging=true;dragStart=px;dragOrigin={x:l.x,y:l.y};}
+      updatePropPanel();render();return;
+    }
+  }
+  for(let di=doors.length-1;di>=0;di--){
+    const d=doors[di];const cp=tc({x:d.x,y:d.y});
+    if(Math.hypot(cp.x-px.x,cp.y-px.y)<20){selected={type:'door',idx:di};if(!ctxM){isDragging=true;dragStart=px;dragOrigin={x:d.x,y:d.y};}updatePropPanel();render();return;}
+  }
+  for(let mi=measures.length-1;mi>=0;mi--){
+    const m=measures[mi];const a=tc({x:m.x1,y:m.y1}),b=tc({x:m.x2,y:m.y2});
+    if(distSeg(px,a,b)<8){selected={type:'measure',idx:mi};if(!ctxM){isDragging=true;dragStart=px;dragOrigin={x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2};}updatePropPanel();render();return;}
+  }
+  for(let wi=walls.length-1;wi>=0;wi--){
+    const w=walls[wi];const all=w.closed?[...w.pts,w.pts[0]]:w.pts;
+    for(let i=0;i<all.length-1;i++){const a=tc(all[i]),b=tc(all[i+1]);if(distSeg(px,a,b)<10){selected={type:'wall',idx:wi};updatePropPanel();render();return;}}
+  }
+  if(!ctxM){selected=null;updatePropPanel();render();}
+}
+
+function distSeg(p,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y;
+  const t=Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/(dx*dx+dy*dy||1)));
+  return Math.hypot(p.x-(a.x+t*dx),p.y-(a.y+t*dy));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  FURNITURE DRAG (mouse + touch)
+// ═══════════════════════════════════════════════════════════════════════
+let touchDragFurn = null;
+let touchDragOffset = {x:0,y:0};
+
+function onFurnDragStart(e) {
+  const el=e.currentTarget;
+  ['fw','fh','fc','fl','ficon'].forEach(k=>e.dataTransfer.setData(k,el.dataset[k]||''));
+}
+
+function onFurnTouchStart(e) {
+  const el=e.currentTarget;
+  const t=e.touches[0];
+  const fw=+el.dataset.fw,fh=+el.dataset.fh;
+  const fc=el.dataset.fc,fl=el.dataset.fl,ficon=el.dataset.ficon||'📦';
+  // Place immediately in center of canvas
+  const cx=wrap.clientWidth/2, cy=wrap.clientHeight/2;
+  const snMM=sn(tm({x:cx,y:cy}));
+  pushHistory();
+  furns.push({x:snMM.x-fw/2,y:snMM.y-fh/2,w:fw,h:fh,color:fc,label:fl,icon:ficon,rot:0,z:++zCtr});
+  selected={type:'furn',idx:furns.length-1};
+  checkEmptyState(); updateSB(); updatePropPanel(); render();
+  showToast(`${ficon} ${fl} 배치됨 (선택 후 이동 가능)`);
+}
+
+canvas.addEventListener('dragover',e=>e.preventDefault());
+canvas.addEventListener('drop',e=>{
+  e.preventDefault();
+  const fw=+e.dataTransfer.getData('fw'),fh=+e.dataTransfer.getData('fh');
+  const fc=e.dataTransfer.getData('fc'),fl=e.dataTransfer.getData('fl'),ficon=e.dataTransfer.getData('ficon')||'📦';
+  if(!fw||!fl) return;
+  const px=getPos(e);const snMM=sn(tm(px));
+  pushHistory();
+  furns.push({x:snMM.x-fw/2,y:snMM.y-fh/2,w:fw,h:fh,color:fc,label:fl,icon:ficon,rot:0,z:++zCtr});
+  selected={type:'furn',idx:furns.length-1};
+  checkEmptyState();updateSB();updatePropPanel();render();
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  CTX MENU
+// ═══════════════════════════════════════════════════════════════════════
+const ctxEl=document.getElementById('ctx-menu');
+function showCtxMenu(cx,cy){ctxEl.style.display='block';ctxEl.style.left=cx+'px';ctxEl.style.top=cy+'px';}
+function hideCtxMenu(){ctxEl.style.display='none';}
+document.addEventListener('click',hideCtxMenu);
+function ctxRotate(deg){if(!selected)return;if(selected.type==='furn')furns[selected.idx].rot=((furns[selected.idx].rot||0)+deg+360)%360;else if(selected.type==='door')doors[selected.idx].angle+=deg*Math.PI/180;hideCtxMenu();render();updatePropPanel();}
+function ctxFront(){if(selected&&selected.type==='furn')furns[selected.idx].z=++zCtr;hideCtxMenu();render();}
+function ctxBack(){if(selected&&selected.type==='furn')furns[selected.idx].z=1;hideCtxMenu();render();}
+function ctxDuplicate(){
+  if(!selected)return;
+  if(selected.type==='furn'){const f=furns[selected.idx];furns.push({...f,x:f.x+200,y:f.y+200,z:++zCtr});selected={type:'furn',idx:furns.length-1};}
+  else if(selected.type==='label'){const l=labels[selected.idx];labels.push({...l,x:l.x+200,y:l.y+200});selected={type:'label',idx:labels.length-1};}
+  hideCtxMenu();render();updateSB();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  DELETE / UNDO
+// ═══════════════════════════════════════════════════════════════════════
+function deleteSelected(){
+  if(!selected)return; pushHistory();
+  if(selected.type==='furn')furns.splice(selected.idx,1);
+  else if(selected.type==='wall')walls.splice(selected.idx,1);
+  else if(selected.type==='label')labels.splice(selected.idx,1);
+  else if(selected.type==='door')doors.splice(selected.idx,1);
+  else if(selected.type==='measure')measures.splice(selected.idx,1);
+  else if(selected.type==='node'){const w=walls[selected.wallIdx];w.pts.splice(selected.ptIdx,1);if(w.pts.length<2)walls.splice(selected.wallIdx,1);}
+  selected=null;updatePropPanel();updateSB();checkEmptyState();render();hideCtxMenu();
+}
+function pushHistory(){history.push({walls:JSON.parse(JSON.stringify(walls)),furns:JSON.parse(JSON.stringify(furns)),labels:JSON.parse(JSON.stringify(labels)),doors:JSON.parse(JSON.stringify(doors)),measures:JSON.parse(JSON.stringify(measures))});if(history.length>60)history.shift();}
+function undoAction(){if(!history.length)return;const p=history.pop();walls=p.walls;furns=p.furns;labels=p.labels;doors=p.doors;measures=p.measures;selected=null;updatePropPanel();updateSB();checkEmptyState();render();}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  PROP PANEL
+// ═══════════════════════════════════════════════════════════════════════
+function updatePropPanel(){
+  const s=document.getElementById('sel-section'),c=document.getElementById('sel-content');
+  if(!selected){s.style.display='none';return;}
+  s.style.display='block';
+  if(selected.type==='furn'){
+    const f=furns[selected.idx];
+    c.innerHTML=`
+      <div class="pr"><span class="pk">종류</span><span class="pv">${f.label}</span></div>
+      <div class="pr"><span class="pk">X</span><input class="pi" value="${Math.round(f.x)}" onchange="furns[${selected.idx}].x=+this.value;render()"></div>
+      <div class="pr"><span class="pk">Y</span><input class="pi" value="${Math.round(f.y)}" onchange="furns[${selected.idx}].y=+this.value;render()"></div>
+      <div class="pr"><span class="pk">너비mm</span><input class="pi" value="${Math.round(f.w)}" onchange="furns[${selected.idx}].w=+this.value;render()"></div>
+      <div class="pr"><span class="pk">깊이mm</span><input class="pi" value="${Math.round(f.h)}" onchange="furns[${selected.idx}].h=+this.value;render()"></div>
+      <div class="pr"><span class="pk">회전°</span><input class="pi" value="${f.rot||0}" onchange="furns[${selected.idx}].rot=+this.value;render()"></div>`;
+  } else if(selected.type==='wall'){
+    const w=walls[selected.idx];
+    c.innerHTML=`<div class="pr"><span class="pk">노드수</span><span class="pv">${w.pts.length}</span></div><div class="pr"><span class="pk">닫힘</span><span class="pv">${w.closed?'예':'아니오'}</span></div><div style="font-size:9px;color:var(--muted);margin-top:4px">노드(파란점) 드래그로 수정</div>`;
+  } else if(selected.type==='label'){
+    const l=labels[selected.idx];
+    c.innerHTML=`<div class="pr"><span class="pk">텍스트</span><input class="pi" style="width:110px" value="${l.text}" onchange="labels[${selected.idx}].text=this.value;render()"></div><div class="pr"><span class="pk">크기</span><input class="pi" type="number" step="0.1" value="${l.size||1.8}" onchange="labels[${selected.idx}].size=+this.value;render()"></div>`;
+  } else if(selected.type==='door'){
+    const d=doors[selected.idx];
+    c.innerHTML=`<div class="pr"><span class="pk">종류</span><select class="pi" style="width:78px" onchange="doors[${selected.idx}].type=this.value;render()"><option value="door" ${d.type==='door'?'selected':''}>문</option><option value="window" ${d.type==='window'?'selected':''}>창문</option></select></div><div class="pr"><span class="pk">크기mm</span><input class="pi" value="${d.size}" onchange="doors[${selected.idx}].size=+this.value;render()"></div><div class="pr"><span class="pk">각도°</span><input class="pi" value="${Math.round((d.angle||0)*180/Math.PI)}" onchange="doors[${selected.idx}].angle=+this.value*Math.PI/180;render()"></div>`;
+  } else if(selected.type==='measure'){
+    const m=measures[selected.idx];const len=Math.round(Math.hypot(m.x2-m.x1,m.y2-m.y1));
+    c.innerHTML=`<div class="pr"><span class="pk">길이</span><span class="pv">${len>=1000?(len/1000).toFixed(3)+'m':len+'mm'}</span></div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MODE
+// ═══════════════════════════════════════════════════════════════════════
+const modeLabels={select:'선택',wall:'벽그리기',room:'방이름',door:'문/창',measure:'치수'};
+function setMode(m){
+  if((m!=='select')&&!isAdmin){showToast('관리자 전용 기능입니다','err');return;}
+  mode=m;drawingWall=null;previewPt=null;measureStart=null;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+  const btn=document.getElementById('btn-'+m);if(btn)btn.classList.add('active');
+  document.getElementById('sb-mode').textContent=modeLabels[m]||m;
+  document.getElementById('door-sel').style.display=m==='door'?'':'none';
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  ROOM LABEL
+// ═══════════════════════════════════════════════════════════════════════
+let pendingLP=null;
+const teInp=document.getElementById('te-inp'),teEl=document.getElementById('text-editor');
+function openTE(cx,cy,snMM){pendingLP=snMM;teEl.style.display='block';teEl.style.left=cx+'px';teEl.style.top=cy+'px';teInp.value='';teInp.focus();}
+teInp.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){const txt=teInp.value.trim();if(txt&&pendingLP){pushHistory();labels.push({x:pendingLP.x,y:pendingLP.y,text:txt,size:1.8});}teEl.style.display='none';pendingLP=null;render();updateSB();checkEmptyState();}
+  if(e.key==='Escape'){teEl.style.display='none';pendingLP=null;}
+  e.stopPropagation();
+});
+teInp.addEventListener('blur',()=>setTimeout(()=>{teEl.style.display='none';},200));
+
+// ═══════════════════════════════════════════════════════════════════════
+//  STATUS / ZOOM
+// ═══════════════════════════════════════════════════════════════════════
+function updateSB(){document.getElementById('sb-walls').textContent=walls.length;document.getElementById('sb-furn').textContent=furns.length;}
+function zoomFit(){
+  const pts=[...walls.flatMap(w=>w.pts),...furns.map(f=>({x:f.x,y:f.y})),...furns.map(f=>({x:f.x+f.w,y:f.y+f.h})),...labels.map(l=>({x:l.x,y:l.y}))];
+  if(!pts.length){SCALE=0.1;PAN={x:80,y:80};render();return;}
+  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+  const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+  const pad=60;
+  SCALE=Math.min((canvas.width-pad*2)/(maxX-minX||1),(canvas.height-pad*2)/(maxY-minY||1));
+  PAN={x:pad-minX*SCALE,y:pad-minY*SCALE};render();
+}
+function saveImage(){const a=document.createElement('a');a.download='평면도.png';a.href=canvas.toDataURL('image/png');a.click();}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SAVE / LOAD MODAL
+// ═══════════════════════════════════════════════════════════════════════
+const LS_PRE='fp_slot_',LS_AS='fp_autosave',LS_ASF='fp_autosave_on';
+const N_SLOTS=5;
+let autosaveOn=localStorage.getItem(LS_ASF)==='true';
+let asTimer=null;
+
+function openSaveModal(){
+  openModal('save-modal');
+  renderSlots('slot-list');
+  renderAutoTab();
+  if(isAdmin){document.querySelector('.admin-save-tab').style.display='';loadServerFPList();}
+}
+function openLoadModal(){
+  openModal('load-modal');
+  renderSlots('load-slot-list',true);
+  loadServerTemplates();
+}
+
+function switchSaveTab(tab){
+  document.querySelectorAll('#save-modal .mtab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#save-modal .tab-c').forEach(c=>c.classList.remove('active'));
+  document.getElementById('save-tab-'+tab).classList.add('active');
+  event.target.classList.add('active');
+}
+function switchLoadTab(tab){
+  document.querySelectorAll('#load-modal .mtab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('#load-modal .tab-c').forEach(c=>c.classList.remove('active'));
+  document.getElementById('load-tab-'+tab).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function getSlot(i){try{return JSON.parse(localStorage.getItem(LS_PRE+i));}catch{return null;}}
+function setSlot(i,d){localStorage.setItem(LS_PRE+i,JSON.stringify(d));}
+function delSlot(i){localStorage.removeItem(LS_PRE+i);}
+
+function renderSlots(elId, loadMode=false) {
+  const list=document.getElementById(elId); list.innerHTML='';
+  for(let i=0;i<N_SLOTS;i++){
+    const slot=getSlot(i);
+    const item=document.createElement('div');
+    item.className='slot-item'+(slot?'':' empty');
+    if(slot){
+      const d=new Date(slot.meta?.savedAt||0);
+      const dt=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+      const name=slot.meta?.name||`슬롯 ${i+1}`;
+      if(loadMode){
+        item.innerHTML=`<span class="slot-icon">🏠</span><div class="slot-info"><div class="slot-name">${name}</div><div class="slot-meta">벽${slot.walls?.length||0}·가구${slot.furns?.length||0}·${dt}</div></div><div class="slot-acts"><button class="sa load" onclick="loadSlot(${i})">불러오기</button></div>`;
+      } else {
+        item.innerHTML=`<span class="slot-icon">🏠</span><div class="slot-info"><div class="slot-name" ondblclick="editSlotName(${i})">${name}</div><div class="slot-meta">벽${slot.walls?.length||0}·가구${slot.furns?.length||0}·${dt}</div></div><div class="slot-acts"><button class="sa save-s" onclick="saveSlot(${i})">저장</button><button class="sa del" onclick="deleteSlot(${i})">✕</button></div>`;
+      }
+    } else {
+      if(!loadMode) item.innerHTML=`<span class="slot-icon" style="opacity:.3">🏠</span><div class="slot-info"><div class="slot-name" style="color:var(--muted)">슬롯 ${i+1} — 비어있음</div></div><div class="slot-acts"><button class="sa save-s" onclick="saveSlot(${i})">여기 저장</button></div>`;
+      else item.innerHTML=`<span class="slot-icon" style="opacity:.3">🏠</span><div class="slot-info"><div class="slot-name" style="color:var(--muted)">슬롯 ${i+1} — 비어있음</div></div>`;
+    }
+    list.appendChild(item);
+  }
+}
+
+function saveSlot(i){
+  const state=getState(); const ex=getSlot(i);
+  state.meta.name=ex?.meta?.name||`슬롯 ${i+1}`;
+  setSlot(i,state); renderSlots('slot-list'); showToast(`✅ 슬롯 ${i+1} 저장됨`,'ok');
+}
+function loadSlot(i){
+  const slot=getSlot(i);if(!slot){showToast('빈 슬롯입니다','err');return;}
+  if(!confirm(`슬롯 ${i+1}을 불러올까요?`)) return;
+  pushHistory(); loadState(slot); showToast(`📂 슬롯 ${i+1} 불러옴`); closeModal('load-modal');
+}
+function deleteSlot(i){if(!confirm('삭제할까요?'))return;delSlot(i);renderSlots('slot-list');showToast('삭제됨');}
+function editSlotName(i){
+  const el=document.querySelector(`#slot-list .slot-item:nth-child(${i+1}) .slot-name`);if(!el)return;
+  const cur=el.textContent;
+  const inp=document.createElement('input');inp.style.cssText='background:var(--bg);border:1px solid var(--accent);color:var(--text);font-size:11px;padding:2px 5px;border-radius:3px;width:100%';inp.value=cur;inp.maxLength=24;
+  el.replaceWith(inp);inp.focus();inp.select();
+  const done=()=>{const n=inp.value.trim()||cur;const s=getSlot(i);if(s){s.meta=s.meta||{};s.meta.name=n;setSlot(i,s);}renderSlots('slot-list');};
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')done();if(e.key==='Escape')renderSlots('slot-list');e.stopPropagation();});
+  inp.addEventListener('blur',done);
+}
+
+function exportJSON(){
+  const blob=new Blob([JSON.stringify(getState(),null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`평면도_${new Date().toISOString().slice(0,16).replace(/[T:]/g,'_')}.fpd`;a.click();
+  URL.revokeObjectURL(url);showToast('📄 파일 내보내기 완료','ok');
+}
+function importFile(inp){
+  const f=inp.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=e=>{try{const d=JSON.parse(e.target.result);if(!confirm('불러올까요?'))return;pushHistory();loadState(d);showToast(`📂 "${f.name}" 불러옴`);closeModal('load-modal');}catch(er){showToast('파일 오류: '+er.message,'err');}};
+  rd.readAsText(f);inp.value='';
+}
+const dz=document.getElementById('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('hover');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('hover'));
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('hover');
+  const f=e.dataTransfer.files[0];if(!f)return;
+  const rd=new FileReader();rd.onload=ev=>{try{const d=JSON.parse(ev.target.result);if(!confirm('불러올까요?'))return;pushHistory();loadState(d);showToast(`📂 "${f.name}" 불러옴`);closeModal('load-modal');}catch(er){showToast('파일 오류: '+er.message,'err');}};rd.readAsText(f);
+});
+
+// Autosave
+function renderAutoTab(){
+  const dot=document.getElementById('as-dot'),text=document.getElementById('as-text'),btn=document.getElementById('as-btn');
+  dot.className='as-dot'+(autosaveOn?' on':'');
+  text.textContent=autosaveOn?'활성화됨 (30초마다)':'비활성화';
+  btn.textContent=autosaveOn?'비활성화':'활성화';
+  const t=localStorage.getItem(LS_AS+'_t');
+  document.getElementById('as-last').textContent=t?new Date(t).toLocaleString('ko-KR'):'없음';
+}
+function toggleAutosave(){autosaveOn=!autosaveOn;localStorage.setItem(LS_ASF,autosaveOn);autosaveOn?startAS():stopAS();renderAutoTab();showToast(autosaveOn?'⏱ 자동저장 활성화':'⏸ 비활성화');}
+function startAS(){stopAS();asTimer=setInterval(doAS,30000);}
+function stopAS(){if(asTimer){clearInterval(asTimer);asTimer=null;}}
+function doAS(){localStorage.setItem(LS_AS,JSON.stringify(getState()));localStorage.setItem(LS_AS+'_t',new Date().toISOString());const m=document.getElementById('sb-msg');m.textContent='⏱ 자동저장';setTimeout(()=>{m.textContent='';},1500);}
+function loadAutosave(){const r=localStorage.getItem(LS_AS);if(!r){showToast('데이터 없음','err');return;}try{const d=JSON.parse(r);if(!confirm('자동저장 불러올까요?'))return;pushHistory();loadState(d);showToast('⏱ 자동저장 불러옴');closeModal('save-modal');}catch(e){showToast('오류: '+e.message,'err');}}
+function clearAutosave(){if(!confirm('삭제할까요?'))return;localStorage.removeItem(LS_AS);localStorage.removeItem(LS_AS+'_t');renderAutoTab();showToast('삭제됨');}
+if(autosaveOn)startAS();
+
+function checkAutosaveNotice(){
+  const raw=localStorage.getItem(LS_AS);const t=localStorage.getItem(LS_AS+'_t');
+  if(!raw||!t)return;
+  const m=document.getElementById('sb-msg');
+  m.innerHTML=`💡 자동저장 있음 (${new Date(t).toLocaleString('ko-KR')}) — <span style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="loadAutosave()">불러오기</span>`;
+  setTimeout(()=>{if(m.innerHTML.includes('자동저장'))m.innerHTML='';},12000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MODAL HELPERS
+// ═══════════════════════════════════════════════════════════════════════
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.modal-ov').forEach(ov=>{ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('open');});});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  TOAST
+// ═══════════════════════════════════════════════════════════════════════
+let toastT=null;
+function showToast(msg,type='ok'){const t=document.getElementById('toast');t.textContent=msg;t.className='show '+type;clearTimeout(toastT);toastT=setTimeout(()=>t.className='',2200);}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MOBILE PANELS
+// ═══════════════════════════════════════════════════════════════════════
+function togglePanel(side){
+  const el=document.getElementById(side+'-panel');
+  const isOpen=el.classList.toggle('open');
+  document.getElementById('mob-'+side+'-btn').textContent=side==='left'?(isOpen?'◀':'▶'):(isOpen?'▶':'◀');
+  if(isOpen){
+    const other=side==='left'?'right':'left';
+    document.getElementById(other+'-panel').classList.remove('open');
+    document.getElementById('mob-'+other+'-btn').textContent=other==='left'?'▶':'◀';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════════════════════════════════
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+  if(e.ctrlKey&&e.key==='s'){e.preventDefault();openSaveModal();return;}
+  if(e.ctrlKey&&e.key==='o'){e.preventDefault();openLoadModal();return;}
+  if(e.ctrlKey&&e.key==='z'){undoAction();e.preventDefault();return;}
+  if(e.key==='v'||e.key==='V')setMode('select');
+  if(isAdmin){
+    if(e.key==='w'||e.key==='W')setMode('wall');
+    if(e.key==='t'||e.key==='T')setMode('room');
+    if(e.key==='d'||e.key==='D')setMode('door');
+    if(e.key==='m'||e.key==='M')setMode('measure');
+  }
+  if(e.key==='Delete'||e.key==='Backspace')deleteSelected();
+  if(e.key==='r'||e.key==='R')ctxRotate(90);
+  if(e.key==='Escape'){drawingWall=null;measureStart=null;previewPt=null;selected=null;updatePropPanel();render();}
+  if(e.key===' '){panMode=true;e.preventDefault();}
+  if(selected&&selected.type==='furn'){
+    const step=e.shiftKey?100:10;
+    if(e.key==='ArrowLeft'){furns[selected.idx].x-=step;render();e.preventDefault();}
+    if(e.key==='ArrowRight'){furns[selected.idx].x+=step;render();e.preventDefault();}
+    if(e.key==='ArrowUp'){furns[selected.idx].y-=step;render();e.preventDefault();}
+    if(e.key==='ArrowDown'){furns[selected.idx].y+=step;render();e.preventDefault();}
+  }
+  if(e.key==='Enter'&&mode==='login'){doLogin();}
+});
+document.addEventListener('keyup',e=>{if(e.key===' ')panMode=false;});
+document.getElementById('login-token-inp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+
+// ═══════════════════════════════════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════════════════════════════════
+init();
+</script>
+</body>
+</html>

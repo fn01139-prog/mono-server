@@ -4,4 +4,5 @@ module.exports = {
   description: '입주비용·중도금이자·대출 상환 시뮬레이터',
   icon:        '🏠',
   enabled:     true,
+  spa:         true,
 };

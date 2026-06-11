@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TravelLog · 사진 업로드</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" />
+  <!-- exifr: 브라우저에서 EXIF 파싱 -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.cjs"></script>
+  <style>
+    :root {
+      --bg: #0a1628; --panel: #0d1e38; --card: #122040; --card-hover: #172a55;
+      --border: #1e3660; --accent: #e8a020; --accent-dim: #b07a10;
+      --text: #c8d8e8; --text-dim: #6b8099; --text-bright: #e8f2ff;
+      --success: #3ec97a; --danger: #e74c3c; --radius: 8px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Noto Sans KR', sans-serif; font-size: 13px; background: var(--bg); color: var(--text); min-height: 100vh; }
+    a { color: var(--accent); }
+    button { cursor: pointer; font-family: inherit; font-size: 13px; border: none; }
+
+    /* ── Header ── */
+    .header {
+      background: rgba(9,18,38,.95); border-bottom: 1px solid var(--border);
+      padding: 0 20px; height: 52px; display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 50;
+    }
+    .logo { font-size: 15px; font-weight: 700; color: var(--accent); }
+    .header-back { color: var(--text-dim); font-size: 12px; transition: color .15s; }
+    .header-back:hover { color: var(--accent); }
+
+    /* ── Layout ── */
+    .page { max-width: 960px; margin: 0 auto; padding: 24px 20px; }
+    .page-title { font-size: 20px; font-weight: 700; color: var(--text-bright); margin-bottom: 4px; }
+    .page-desc { color: var(--text-dim); font-size: 13px; margin-bottom: 24px; }
+
+    /* ── Trip Selector ── */
+    .section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; }
+    .section-title { font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+    select {
+      width: 100%; padding: 8px 12px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text-bright); outline: none; cursor: pointer;
+    }
+    select:focus { border-color: var(--accent); }
+
+    /* ── Drop Zone ── */
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 40px 20px; text-align: center; cursor: pointer;
+      transition: all .2s; background: var(--panel);
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(232,160,32,.05); }
+    .drop-icon { font-size: 40px; margin-bottom: 12px; }
+    .drop-text { font-size: 15px; color: var(--text-bright); margin-bottom: 6px; font-weight: 500; }
+    .drop-sub  { font-size: 12px; color: var(--text-dim); }
+    .drop-btn  {
+      margin-top: 14px; padding: 8px 20px; border-radius: var(--radius);
+      background: var(--accent); color: #000; font-weight: 600;
+    }
+    .drop-btn:hover { background: var(--accent-dim); }
+    #fileInput { display: none; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .toolbar-left  { display: flex; align-items: center; gap: 10px; }
+    .toolbar-right { display: flex; gap: 8px; }
+    .count-badge {
+      padding: 4px 10px; border-radius: 20px; font-size: 12px;
+      background: var(--card); border: 1px solid var(--border); color: var(--text-dim);
+    }
+    .count-badge span { color: var(--accent); font-weight: 700; }
+    .btn-select-all, .btn-deselect {
+      padding: 5px 12px; border-radius: var(--radius); font-size: 12px;
+      border: 1px solid var(--border); color: var(--text);
+      background: var(--card); transition: all .15s;
+    }
+    .btn-select-all:hover, .btn-deselect:hover { border-color: var(--accent-dim); color: var(--accent); }
+    .btn-upload-all {
+      padding: 8px 20px; border-radius: var(--radius);
+      background: var(--accent); color: #000; font-weight: 700; font-size: 14px;
+      transition: background .2s; display: flex; align-items: center; gap: 6px;
+    }
+    .btn-upload-all:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; }
+    .btn-upload-all:not(:disabled):hover { background: var(--accent-dim); }
+
+    /* ── Photo Grid ── */
+    .photo-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .photo-card {
+      background: var(--card); border: 2px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; transition: border-color .2s; position: relative;
+    }
+    .photo-card.selected { border-color: var(--accent); }
+    .photo-card.uploaded { border-color: var(--success); opacity: .7; }
+    .photo-card.error    { border-color: var(--danger); }
+
+    .photo-thumb {
+      position: relative; aspect-ratio: 4/3; overflow: hidden; cursor: pointer;
+      background: var(--bg);
+    }
+    .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo-check {
+      position: absolute; top: 8px; left: 8px; z-index: 2;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(0,0,0,.6); border: 2px solid rgba(255,255,255,.5);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; cursor: pointer; transition: all .15s;
+    }
+    .photo-card.selected .photo-check { background: var(--accent); border-color: var(--accent); color: #000; }
+    .photo-status {
+      position: absolute; top: 8px; right: 8px; z-index: 2;
+      font-size: 16px; filter: drop-shadow(0 1px 3px rgba(0,0,0,.8));
+    }
+
+    .photo-meta { padding: 10px 12px; }
+    .photo-name { font-size: 11px; color: var(--text-bright); font-weight: 500; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta-row { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+    .meta-label { font-size: 10px; color: var(--text-dim); width: 14px; flex-shrink: 0; }
+    .meta-value { font-size: 11px; color: var(--text); flex: 1; }
+    .meta-input {
+      flex: 1; padding: 3px 6px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text-bright); font-size: 11px; font-family: inherit; outline: none;
+    }
+    .meta-input:focus { border-color: var(--accent); }
+    .exif-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 1px 6px; border-radius: 10px; font-size: 10px;
+      background: rgba(62,201,122,.12); color: var(--success); margin-top: 4px;
+    }
+    .no-exif { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+
+    /* ── Upload Progress ── */
+    .progress-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); transition: width .3s; }
+
+    /* ── Result Panel ── */
+    .result-panel {
+      background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px 20px; margin-top: 20px; display: none;
+    }
+    .result-panel.show { display: block; }
+    .result-ok   { color: var(--success); font-weight: 700; margin-bottom: 8px; }
+    .result-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .result-thumb {
+      width: 60px; height: 60px; border-radius: 4px; object-fit: cover;
+      border: 1px solid var(--success);
+    }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      z-index: 1000; padding: 10px 20px; border-radius: 20px;
+      background: rgba(13,30,56,.95); border: 1px solid var(--border);
+      color: var(--text-bright); font-size: 13px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.5); white-space: nowrap; display: none;
+    }
+    .toast.success { border-color: var(--success); color: var(--success); }
+    .toast.error   { border-color: var(--danger);  color: var(--danger); }
+    .toast.show    { display: block; }
+
+    /* ── Empty State ── */
+    .no-photos { text-align: center; padding: 40px; color: var(--text-dim); }
+
+    @media (max-width: 600px) {
+      .photo-grid { grid-template-columns: repeat(2, 1fr); }
+      .toolbar { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="header">
+  <span class="logo">🗺️ TravelLog · 사진 업로드</span>
+  <a href="/travellog/" class="header-back">← 메인으로</a>
+</header>
+
+<div class="page">
+  <h1 class="page-title">사진 업로드</h1>
+  <p class="page-desc">사진을 선택하면 EXIF에서 촬영 시각과 GPS 위치를 자동 추출합니다. 확인 후 선택한 사진만 Google Drive에 업로드합니다.</p>
+
+  <!-- 여행 선택 -->
+  <div class="section">
+    <div class="section-title">여행 선택</div>
+    <select id="tripSelect">
+      <option value="">-- 여행 불러오는 중... --</option>
+    </select>
+  </div>
+
+  <!-- 드롭 존 -->
+  <div class="section" style="padding:0">
+    <div class="drop-zone" id="dropZone">
+      <div class="drop-icon">📷</div>
+      <div class="drop-text">사진을 드래그하거나 버튼으로 선택</div>
+      <div class="drop-sub">JPG · PNG · HEIC 지원 · 한 번에 최대 30장</div>
+      <button class="drop-btn" onclick="document.getElementById('fileInput').click()">파일 선택</button>
+      <input type="file" id="fileInput" accept="image/*" multiple />
+    </div>
+  </div>
+
+  <!-- 툴바 (사진 있을 때) -->
+  <div id="photoSection" style="display:none">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="count-badge">전체 <span id="totalCount">0</span>장 · 선택 <span id="selectedCount">0</span>장</div>
+        <button class="btn-select-all" onclick="Upload.selectAll()">모두 선택</button>
+        <button class="btn-deselect"   onclick="Upload.deselectAll()">선택 해제</button>
+      </div>
+      <div class="toolbar-right">
+        <button class="btn-upload-all" id="uploadBtn" onclick="Upload.uploadSelected()" disabled>
+          ⬆ 선택 사진 업로드
+        </button>
+      </div>
+    </div>
+
+    <!-- 진행바 -->
+    <div id="progressWrap" style="display:none; margin-bottom:12px">
+      <div style="font-size:12px; color:var(--text-dim); margin-bottom:4px" id="progressLabel">업로드 중...</div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+    </div>
+
+    <!-- 사진 그리드 -->
+    <div class="photo-grid" id="photoGrid"></div>
+
+    <!-- 업로드 결과 -->
+    <div class="result-panel" id="resultPanel">
+      <div class="result-ok" id="resultTitle"></div>
+      <div class="result-list" id="resultList"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const Upload = (() => {
+  const photos = [];     // { file, dataUrl, exif, selected, status }
+  let trips = [];
+
+  // ── 초기화 ──────────────────────────────────────────────────────────
+  async function init() {
+    await loadTrips();
+    bindDrop();
+    document.getElementById('fileInput').addEventListener('change', e => addFiles(e.target.files));
+  }
+
+  async function loadTrips() {
+    try {
+      const res = await fetch('/travellog/api/trips');
+      trips = await res.json();
+      const sel = document.getElementById('tripSelect');
+      sel.innerHTML = '<option value="">-- 여행 선택 --</option>' +
+        trips.map(t => `<option value="${t.id}">${t.name} (${t.startDate} ~ ${t.endDate})</option>`).join('');
+    } catch (e) {
+      document.getElementById('tripSelect').innerHTML = '<option value="">여행 로드 실패</option>';
+    }
+  }
+
+  // ── 드래그&드롭 ─────────────────────────────────────────────────────
+  function bindDrop() {
+    const zone = document.getElementById('dropZone');
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault(); zone.classList.remove('drag-over');
+      addFiles(e.dataTransfer.files);
+    });
+  }
+
+  // ── 파일 추가 ────────────────────────────────────────────────────────
+  async function addFiles(fileList) {
+    const newFiles = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    if (!newFiles.length) return toast('이미지 파일만 선택해주세요', 'error');
+
+    document.getElementById('photoSection').style.display = '';
+
+    for (const file of newFiles) {
+      if (photos.some(p => p.file.name === file.name && p.file.size === file.size)) continue;
+
+      const idx = photos.length;
+      photos.push({ file, dataUrl: null, exif: null, selected: true, status: 'pending' });
+
+      // 비동기로 프리뷰 + EXIF 추출
+      readPhoto(idx, file);
+    }
+
+    updateToolbar();
+    renderGrid();
+  }
+
+  async function readPhoto(idx, file) {
+    // 썸네일 DataURL
+    const dataUrl = await fileToDataUrl(file);
+    photos[idx].dataUrl = dataUrl;
+
+    // EXIF 추출
+    try {
+      const exif = await exifr.parse(file, {
+        gps: true, DateTimeOriginal: true, Make: true, Model: true,
+        ImageWidth: true, ImageHeight: true, ExifImageWidth: true, ExifImageHeight: true,
+      });
+      photos[idx].exif = exif || null;
+    } catch (_) {
+      photos[idx].exif = null;
+    }
+
+    updateCard(idx);
+  }
+
+  function fileToDataUrl(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // ── 렌더링 ──────────────────────────────────────────────────────────
+  function renderGrid() {
+    const grid = document.getElementById('photoGrid');
+    if (!photos.length) { grid.innerHTML = '<div class="no-photos">선택된 사진이 없습니다</div>'; return; }
+    grid.innerHTML = photos.map((p, i) => buildCard(i, p)).join('');
+  }
+
+  function buildCard(idx, p) {
+    const thumbSrc = p.dataUrl || 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    const statusIcon = p.status === 'done' ? '✅' : p.status === 'error' ? '❌' : '';
+    const exif = p.exif;
+    const hasGps  = exif?.latitude && exif?.longitude;
+    const hasTime = !!exif?.DateTimeOriginal;
+
+    const takenAt   = exif?.DateTimeOriginal ? formatExifDate(exif.DateTimeOriginal) : '';
+    const latVal    = hasGps ? exif.latitude.toFixed(6)  : '';
+    const lngVal    = hasGps ? exif.longitude.toFixed(6) : '';
+    const camera    = [exif?.Make, exif?.Model].filter(Boolean).join(' ');
+    const w = exif?.ImageWidth  || exif?.ExifImageWidth  || '';
+    const h = exif?.ImageHeight || exif?.ExifImageHeight || '';
+
+    return `<div class="photo-card ${p.selected ? 'selected' : ''} ${p.status === 'done' ? 'uploaded' : ''} ${p.status === 'error' ? 'error' : ''}" id="card-${idx}">
+      <div class="photo-thumb" onclick="Upload.toggleSelect(${idx})">
+        <img src="${thumbSrc}" alt="${p.file.name}" loading="lazy" />
+        <div class="photo-check" onclick="event.stopPropagation(); Upload.toggleSelect(${idx})">${p.selected ? '✓' : ''}</div>
+        ${statusIcon ? `<div class="photo-status">${statusIcon}</div>` : ''}
+      </div>
+      <div class="photo-meta">
+        <div class="photo-name" title="${p.file.name}">${p.file.name}</div>
+        ${takenAt ? `<div class="meta-row"><span class="meta-label">📅</span><input class="meta-input" id="time-${idx}" value="${takenAt}" placeholder="YYYY-MM-DD HH:MM" /></div>` : `<div class="meta-row"><span class="meta-label">📅</span><input class="meta-input" id="time-${idx}" value="" placeholder="촬영 시각 (선택)" /></div>`}
+        <div class="meta-row">
+          <span class="meta-label">📍</span>
+          <input class="meta-input" id="lat-${idx}"  value="${latVal}"  placeholder="위도"  style="width:48%;margin-right:4%" />
+          <input class="meta-input" id="lng-${idx}"  value="${lngVal}"  placeholder="경도" style="width:48%" />
+        </div>
+        ${camera ? `<div class="meta-row"><span class="meta-label">📷</span><span class="meta-value">${camera}${w && h ? ` (${w}×${h})` : ''}</span></div>` : ''}
+        ${(hasGps || hasTime) ? `<div class="exif-badge">✓ EXIF 자동 추출됨</div>` : `<div class="no-exif">EXIF 없음 · 직접 입력 가능</div>`}
+        ${p.status === 'error' ? `<div style="color:var(--danger);font-size:11px;margin-top:4px">업로드 실패</div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  function updateCard(idx) {
+    const el = document.getElementById(`card-${idx}`);
+    if (el) el.outerHTML = buildCard(idx, photos[idx]);
+    updateToolbar();
+  }
+
+  // ── 선택 ────────────────────────────────────────────────────────────
+  function toggleSelect(idx) {
+    if (photos[idx].status === 'done') return;
+    photos[idx].selected = !photos[idx].selected;
+    const card = document.getElementById(`card-${idx}`);
+    if (card) {
+      card.classList.toggle('selected', photos[idx].selected);
+      card.querySelector('.photo-check').textContent = photos[idx].selected ? '✓' : '';
+    }
+    updateToolbar();
+  }
+
+  function selectAll()   { photos.forEach((p, i) => { if (p.status !== 'done') { p.selected = true;  updateCard(i); } }); updateToolbar(); }
+  function deselectAll() { photos.forEach((p, i) => { if (p.status !== 'done') { p.selected = false; updateCard(i); } }); updateToolbar(); }
+
+  function updateToolbar() {
+    const total    = photos.length;
+    const selected = photos.filter(p => p.selected && p.status !== 'done').length;
+    document.getElementById('totalCount').textContent    = total;
+    document.getElementById('selectedCount').textContent = selected;
+    document.getElementById('uploadBtn').disabled        = selected === 0;
+  }
+
+  // ── 업로드 ──────────────────────────────────────────────────────────
+  async function uploadSelected() {
+    const tripId = document.getElementById('tripSelect').value;
+    const targets = photos.map((p, i) => ({ ...p, idx: i })).filter(p => p.selected && p.status !== 'done');
+
+    if (!targets.length) return toast('선택된 사진이 없습니다', 'error');
+
+    const progressWrap = document.getElementById('progressWrap');
+    const progressFill = document.getElementById('progressFill');
+    const progressLabel = document.getElementById('progressLabel');
+    progressWrap.style.display = '';
+    document.getElementById('uploadBtn').disabled = true;
+
+    let done = 0, failed = 0;
+
+    // 5장씩 배치 업로드
+    const BATCH = 5;
+    for (let b = 0; b < targets.length; b += BATCH) {
+      const batch = targets.slice(b, b + BATCH);
+
+      const files   = batch.map(p => p.file);
+      const metaList = batch.map(p => ({
+        takenAt:     document.getElementById(`time-${p.idx}`)?.value || null,
+        lat:         document.getElementById(`lat-${p.idx}`)?.value  || null,
+        lng:         document.getElementById(`lng-${p.idx}`)?.value  || null,
+        cameraMake:  p.exif?.Make  || null,
+        cameraModel: p.exif?.Model || null,
+        width:       p.exif?.ImageWidth  || p.exif?.ExifImageWidth  || null,
+        height:      p.exif?.ImageHeight || p.exif?.ExifImageHeight || null,
+      }));
+
+      try {
+        const fd = new FormData();
+        files.forEach(f => fd.append('photos', f));
+        fd.append('tripId', tripId);
+        fd.append('metaJson', JSON.stringify(metaList));
+
+        progressLabel.textContent = `업로드 중... (${b + 1}~${Math.min(b + BATCH, targets.length)} / ${targets.length})`;
+        progressFill.style.width = `${((b + BATCH) / targets.length * 100).toFixed(0)}%`;
+
+        const res  = await fetch('/travellog/api/photos/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+        batch.forEach(p => { photos[p.idx].status = 'done'; photos[p.idx].selected = false; });
+        done += batch.length;
+      } catch (e) {
+        batch.forEach(p => { photos[p.idx].status = 'error'; });
+        failed += batch.length;
+        console.error('업로드 오류:', e);
+      }
+
+      // 카드 상태 업데이트
+      batch.forEach(p => updateCard(p.idx));
+    }
+
+    progressFill.style.width = '100%';
+    progressLabel.textContent = `완료: ${done}장 성공, ${failed}장 실패`;
+    setTimeout(() => { progressWrap.style.display = 'none'; }, 2000);
+
+    // 결과 패널
+    const resultPanel = document.getElementById('resultPanel');
+    const uploadedPhotos = photos.filter(p => p.status === 'done');
+    document.getElementById('resultTitle').textContent = `✅ ${done}장 업로드 완료${failed ? ` (실패 ${failed}장)` : ''}`;
+    document.getElementById('resultList').innerHTML = uploadedPhotos.slice(-20).map(p =>
+      `<img class="result-thumb" src="${p.dataUrl}" alt="${p.file.name}" title="${p.file.name}" />`
+    ).join('');
+    resultPanel.classList.add('show');
+
+    updateToolbar();
+    if (!failed) toast(`✅ ${done}장 업로드 완료`, 'success');
+    else         toast(`⚠️ ${done}장 성공, ${failed}장 실패`, 'error');
+  }
+
+  // ── 유틸 ────────────────────────────────────────────────────────────
+  function formatExifDate(d) {
+    if (d instanceof Date) return d.toISOString().slice(0, 16).replace('T', ' ');
+    if (typeof d === 'string') return d.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3').slice(0, 16);
+    return '';
+  }
+
+  // ── Toast ────────────────────────────────────────────────────────────
+  let _toastTimer;
+  function toast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `toast show${type ? ' ' + type : ''}`;
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  window.addEventListener('DOMContentLoaded', init);
+  return { toggleSelect, selectAll, deselectAll, uploadSelected };
+})();
+</script>
+</body>
+</html>

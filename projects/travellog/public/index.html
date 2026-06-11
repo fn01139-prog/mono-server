@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TravelLog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" />
+  <link rel="stylesheet" href="/travellog/css/app.css" />
+</head>
+<body>
+
+<!-- ───────────────── HEADER ───────────────── -->
+<header class="header">
+  <div class="header-left">
+    <span class="logo">🗺️ TravelLog</span>
+  </div>
+  <div class="header-center">
+    <div class="trip-selector" id="tripSelector">
+      <button class="trip-btn" id="tripBtn" onclick="App.toggleTripDropdown()">
+        <span id="tripBtnLabel">여행 선택</span>
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+      </button>
+      <div class="trip-dropdown" id="tripDropdown">
+        <div class="trip-dropdown-head">
+          <span>여행 목록</span>
+          <button class="btn-icon" onclick="App.openTripModal()">＋</button>
+        </div>
+        <div id="tripList" class="trip-list"></div>
+      </div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="tab-group">
+      <button class="tab-btn active" id="tabPlan" onclick="App.setTab('plan')">📅 일정 계획</button>
+      <button class="tab-btn" id="tabRecord" onclick="App.setTab('record')">📸 여행 기록</button>
+    </div>
+    <a href="/travellog/upload.html" class="btn-upload" target="_blank">⬆ 사진 업로드</a>
+  </div>
+</header>
+
+<!-- ───────────────── MAIN ───────────────── -->
+<main class="main">
+
+  <!-- 사이드바 -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- PLAN TAB -->
+    <div class="tab-panel" id="panelPlan">
+      <div class="sidebar-toolbar">
+        <div class="day-tabs" id="dayTabs"></div>
+        <button class="btn-add" onclick="Plan.openAddModal()">＋ 일정 추가</button>
+      </div>
+      <div class="schedule-list" id="scheduleList">
+        <div class="empty-state">여행을 선택하고<br/>일정을 추가해보세요</div>
+      </div>
+    </div>
+
+    <!-- RECORD TAB -->
+    <div class="tab-panel hidden" id="panelRecord">
+      <div class="sidebar-toolbar">
+        <span class="sidebar-title">여행 기록</span>
+        <button class="btn-add" onclick="Record.openAddModal()">＋ 기록 추가</button>
+      </div>
+      <div class="record-list" id="recordList">
+        <div class="empty-state">여행을 선택하고<br/>기록을 남겨보세요</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 지도 -->
+  <section class="map-section">
+    <div id="map"></div>
+
+    <!-- 지도 위 컨트롤 -->
+    <div class="map-controls">
+      <div class="place-search-box" id="placeSearchBox">
+        <input type="text" id="placeSearchInput" placeholder="장소 검색..." autocomplete="off" />
+        <button onclick="Map.searchPlace()">🔍</button>
+      </div>
+
+      <div class="nearby-panel" id="nearbyPanel">
+        <div class="nearby-types">
+          <button class="type-btn active" data-type="맛집"     onclick="Map.searchNearby(this)">🍜 맛집</button>
+          <button class="type-btn"        data-type="카페"     onclick="Map.searchNearby(this)">☕ 카페</button>
+          <button class="type-btn"        data-type="볼거리"   onclick="Map.searchNearby(this)">🏛️ 볼거리</button>
+          <button class="type-btn"        data-type="레크레이션" onclick="Map.searchNearby(this)">🎡 레크</button>
+          <button class="type-btn"        data-type="숙박"     onclick="Map.searchNearby(this)">🏨 숙박</button>
+        </div>
+        <div class="nearby-keyword">
+          <input type="text" id="nearbyKeyword" placeholder="키워드 (예: 해물, 카페)" />
+          <button onclick="Map.runNearbySearch()">검색</button>
+        </div>
+        <div class="nearby-results" id="nearbyResults"></div>
+      </div>
+    </div>
+
+    <!-- 지도 우측 버튼 -->
+    <div class="map-fab-group">
+      <button class="map-fab" title="현재 위치" onclick="Map.gotoMyLocation()">📍</button>
+      <button class="map-fab" title="경로 표시" onclick="Map.toggleRoute()" id="routeBtn">🔀</button>
+      <button class="map-fab active" title="추천 검색" onclick="Map.toggleNearby()" id="nearbyBtn">✨</button>
+    </div>
+  </section>
+</main>
+
+<!-- ───────────────── MODALS ───────────────── -->
+
+<!-- 여행 추가/수정 -->
+<div class="modal-overlay hidden" id="tripModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="tripModalTitle">새 여행</h3>
+      <button class="modal-close" onclick="App.closeTripModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="tripId" />
+      <label>여행 이름 *</label>
+      <input type="text" id="tripName" placeholder="예: 제주도 여행" />
+      <div class="form-row">
+        <div>
+          <label>시작일 *</label>
+          <input type="date" id="tripStart" />
+        </div>
+        <div>
+          <label>종료일 *</label>
+          <input type="date" id="tripEnd" />
+        </div>
+      </div>
+      <label>참여자</label>
+      <input type="text" id="tripParticipants" placeholder="나, 아내 (쉼표 구분)" />
+      <label>메모</label>
+      <textarea id="tripNote" rows="2" placeholder="여행 메모"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="App.closeTripModal()">취소</button>
+      <button class="btn-primary" onclick="App.saveTrip()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 일정 추가/수정 -->
+<div class="modal-overlay hidden" id="scheduleModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="scheduleModalTitle">일정 추가</h3>
+      <button class="modal-close" onclick="Plan.closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="scheduleId" />
+      <div class="form-row">
+        <div>
+          <label>날짜 *</label>
+          <input type="date" id="scheduleDate" />
+        </div>
+        <div>
+          <label>시간</label>
+          <input type="time" id="scheduleTime" />
+        </div>
+      </div>
+      <label>장소 *</label>
+      <div class="place-input-wrap">
+        <input type="text" id="schedulePlaceName" placeholder="장소명 검색..." autocomplete="off" />
+        <div class="place-autocomplete" id="placeAutocomplete"></div>
+      </div>
+      <input type="hidden" id="scheduleLat" />
+      <input type="hidden" id="scheduleLng" />
+      <input type="hidden" id="schedulePlaceId" />
+      <input type="hidden" id="schedulePlaceAddress" />
+      <label>카테고리</label>
+      <select id="scheduleCategory">
+        <option value="관광">🏛️ 관광</option>
+        <option value="식사">🍽️ 식사</option>
+        <option value="카페">☕ 카페</option>
+        <option value="숙박">🏨 숙박</option>
+        <option value="교통">🚗 교통</option>
+        <option value="쇼핑">🛍️ 쇼핑</option>
+        <option value="기타">📌 기타</option>
+      </select>
+      <label>소요 시간 (분)</label>
+      <input type="number" id="scheduleDuration" placeholder="90" min="0" step="15" />
+      <label>메모</label>
+      <textarea id="scheduleMemo" rows="2" placeholder="입장료, 예약 필요 여부 등"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="Plan.closeModal()">취소</button>
+      <button class="btn-primary" onclick="Plan.saveSchedule()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 기록 추가/수정 -->
+<div class="modal-overlay hidden" id="recordModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="recordModalTitle">기록 추가</h3>
+      <button class="modal-close" onclick="Record.closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="recordId" />
+      <div class="form-row">
+        <div>
+          <label>날짜 *</label>
+          <input type="date" id="recordDate" />
+        </div>
+        <div>
+          <label>별점</label>
+          <div class="star-input" id="starInput">
+            <span class="star" data-v="1">★</span>
+            <span class="star" data-v="2">★</span>
+            <span class="star" data-v="3">★</span>
+            <span class="star" data-v="4">★</span>
+            <span class="star" data-v="5">★</span>
+          </div>
+          <input type="hidden" id="recordRating" value="0" />
+        </div>
+      </div>
+      <label>장소명 *</label>
+      <input type="text" id="recordPlaceName" placeholder="장소명" />
+      <label>참여자</label>
+      <input type="text" id="recordParticipants" placeholder="나, 아내 (쉼표 구분)" />
+      <label>메모 *</label>
+      <textarea id="recordMemo" rows="3" placeholder="이런 일이 있었다..."></textarea>
+      <label>연결된 사진 (Drive 업로드 기준)</label>
+      <div class="photo-picker" id="photoPicker"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="Record.closeModal()">취소</button>
+      <button class="btn-primary" onclick="Record.saveRecord()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 사진 상세 -->
+<div class="modal-overlay hidden" id="photoModal">
+  <div class="modal modal-photo">
+    <button class="modal-close-photo" onclick="App.closePhotoModal()">✕</button>
+    <img id="photoFull" src="" alt="사진" />
+    <div class="photo-info" id="photoInfo"></div>
+  </div>
+</div>
+
+<!-- 로딩 토스트 -->
+<div class="toast hidden" id="toast"></div>
+
+<script src="/travellog/js/api.js"></script>
+<script src="/travellog/js/app.js"></script>
+<script src="/travellog/js/map.js"></script>
+<script src="/travellog/js/plan.js"></script>
+<script src="/travellog/js/record.js"></script>
+</body>
+</html>
