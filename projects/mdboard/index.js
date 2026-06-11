@@ -9,7 +9,7 @@ const path    = require('path');
 const multer  = require('multer');
 const os      = require('os');
 const crypto  = require('crypto');
-const github  = require('./github');
+const drive   = require('./drive');
 const router  = express.Router();
 
 /* ── 인증 헬퍼 ────────────────────────────────────────────────────────── */
@@ -98,6 +98,14 @@ router.post('/auth', (req, res) => {
   res.json({ success: true, token: makeToken(pwd) });
 });
 
+// Drive Lazy Init — auth/health 라우트 이후, 파일 라우트 이전에 적용
+// 초기화 실패 시에도 next()를 호출해 로컬 파일로 동작 유지
+router.use((req, res, next) => {
+  drive.ensureInit()
+    .then(() => next())
+    .catch(() => next());
+});
+
 router.get('/files', (req, res) => {
   try {
     const files = fs.readdirSync(CONTENTS_DIR)
@@ -138,10 +146,10 @@ router.post('/save', requireAuth, async (req, res) => {
       const oldPath = safePath(originalName);
       if (oldPath && fs.existsSync(oldPath)) {
         fs.unlinkSync(oldPath);
-        github.deleteFile(originalName).catch(() => {});
+        drive.deleteFile(originalName).catch(() => {});
       }
     }
-    github.upsertFile(name, content).catch(() => {});
+    drive.pushFile(name, content).catch(() => {});
     res.json({ success: true, name });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
@@ -152,7 +160,7 @@ router.delete('/file/:name', requireAuth, (req, res) => {
     if (!filePath)                return res.status(403).json({ error: 'Forbidden' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
     fs.unlinkSync(filePath);
-    github.deleteFile(req.params.name).catch(() => {});
+    drive.deleteFile(req.params.name).catch(() => {});
     res.json({ success: true });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
 });
