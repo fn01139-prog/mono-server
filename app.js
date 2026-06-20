@@ -3,6 +3,7 @@ const express = require('express');
 const morgan  = require('morgan');
 const cors    = require('cors');
 const loader  = require('./core/loader');
+const pool    = require('./shared/db');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -85,7 +86,20 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
-app.listen(PORT, () => {
-  console.log(`\n🚀 mono-server running on http://localhost:${PORT}`);
-  loader.printStatus();
-});
+async function start() {
+  if (process.env.DATABASE_URL) {
+    try {
+      await require('./scripts/migrate').run(pool);
+      console.log('[DB] Migration check complete.');
+    } catch (e) {
+      console.error('[DB] Migration failed:', e.message);
+    }
+  }
+
+  app.listen(PORT, () => {
+    console.log(`\n🚀 mono-server running on http://localhost:${PORT}`);
+    loader.printStatus();
+  });
+}
+
+start();

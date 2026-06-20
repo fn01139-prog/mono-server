@@ -1,10 +1,9 @@
 /**
  * scripts/migrate.js
- * Run once: node scripts/migrate.js
- * Creates all project tables in PostgreSQL.
+ * - 직접 실행: node scripts/migrate.js
+ * - 모듈로 사용: require('./scripts/migrate').run(pool)
+ * CREATE TABLE IF NOT EXISTS 이므로 반복 실행해도 데이터 보존
  */
-require('dotenv').config();
-const pool = require('../shared/db');
 
 const SQL = `
 /* ── portfolio ─────────────────────────────────────────────────────── */
@@ -134,21 +133,28 @@ CREATE TABLE IF NOT EXISTS travel_photos (
 );
 `;
 
-async function migrate() {
+async function run(pool) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(SQL);
     await client.query('COMMIT');
-    console.log('Migration complete.');
   } catch (e) {
     await client.query('ROLLBACK');
-    console.error('Migration failed:', e.message);
-    process.exit(1);
+    throw e;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-migrate();
+// 직접 실행 시
+if (require.main === module) {
+  require('dotenv').config();
+  const pool = require('../shared/db');
+  run(pool)
+    .then(() => { console.log('Migration complete.'); process.exit(0); })
+    .catch(e => { console.error('Migration failed:', e.message); process.exit(1); })
+    .finally(() => pool.end());
+}
+
+module.exports = { run };
