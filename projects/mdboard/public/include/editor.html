@@ -20,14 +20,17 @@
 
   <!-- ── 헤더 ──────────────────────────────── -->
   <div class="editor-header">
-    <input
-      type="text"
-      id="titleInput"
-      class="editor-title-input"
-      placeholder="파일명 (저장 시 제목.md로 저장됩니다)"
-      spellcheck="false"
-      autocomplete="off"
-    >
+    <div style="display:flex; flex-direction:column; flex:1; min-width:0; gap:3px;">
+      <input
+        type="text"
+        id="titleInput"
+        class="editor-title-input"
+        placeholder="파일명 (저장 시 제목.md로 저장됩니다)"
+        spellcheck="false"
+        autocomplete="off"
+      >
+      <span id="folderBadge" style="display:none; font-size:10px; color:#7a8ba0; padding-left:2px;"></span>
+    </div>
     <div class="editor-header-right">
       <!-- 뷰 모드 -->
       <div class="view-toggle">
@@ -161,6 +164,12 @@
       placeholder="파일명 입력"
       onkeydown="if(event.key==='Enter')confirmSave()"
     >
+    <div style="margin-bottom:14px;">
+      <label style="font-size:11px; color:#7a8ba0; display:block; margin-bottom:5px;">폴더</label>
+      <select id="saveFolderSelect" style="width:100%; padding:7px 10px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#e0e8f0; font-size:13px; outline:none;">
+        <option value="">기본</option>
+      </select>
+    </div>
     <div class="save-dialog-btns">
       <button class="ed-btn ed-btn-secondary" onclick="closeSaveDialog()">취소</button>
       <button class="ed-btn ed-btn-primary"   onclick="confirmSave()">저장</button>

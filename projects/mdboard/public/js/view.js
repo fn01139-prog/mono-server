@@ -34,12 +34,14 @@ function setEditBtnVisible(show) {
 }
 
 /* ── 파일 로드 & 렌더 ──────────────────────────────────────────────────── */
-async function loadFile(name) {
-  currentFile = name;
+async function loadFile(filePath) {
+  currentFile = filePath;
   showLoading();
 
   try {
-    const data = await API.get(`/mdboard/api/file/${encodeURIComponent(name)}`);
+    // 폴더 포함 경로 지원: 슬래시를 인코딩하지 않고 각 파트만 인코딩
+    const urlPath = filePath.split('/').map(encodeURIComponent).join('/');
+    const data = await API.get(`/mdboard/api/file/${urlPath}`);
     if (!data.success) throw new Error(data.error || '파일 로드 실패');
     renderMarkdown(data);
   } catch (e) {
@@ -125,9 +127,9 @@ function renderMarkdown(data) {
     downPowerPoint.dataset.mdFile = data.name;
   }
 
-  // 부모에 제목 전달
+  // 부모에 제목 전달 (path 포함)
   const titleMatch = data.content.match(/^#\s+(.+)/m);
-  notifyParent({ type: 'file-loaded', name: data.name, title: titleMatch?.[1] || data.name });
+  notifyParent({ type: 'file-loaded', path: data.path || currentFile, name: data.name, title: titleMatch?.[1] || data.name });
 }
 
 /* ── 테마 ──────────────────────────────────────────────────────────────── */
@@ -156,7 +158,7 @@ function initThemeSwitcher() {
 /* ── 편집 버튼 ─────────────────────────────────────────────────────────── */
 function editFile() {
   if (!currentFile) return;
-  notifyParent({ type: 'open-editor', name: currentFile });
+  notifyParent({ type: 'open-editor', path: currentFile, name: currentFile });
 }
 
 /* ── 상태 표시 ─────────────────────────────────────────────────────────── */

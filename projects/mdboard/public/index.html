@@ -223,6 +223,95 @@
       font-size: 13px; cursor: pointer; line-height: 1;
     }
     .btn-auth-cancel:hover { color: #4a5568; }
+
+    /* ── 폴더 트리 ──────────────────────────────────── */
+    .sidebar-folder { margin-bottom: 2px; }
+    .sidebar-folder-hd {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px; border-radius: 4px;
+      cursor: pointer; color: var(--shell-sidebar-text);
+      font-size: 12px; transition: background .15s;
+      user-select: none;
+    }
+    .sidebar-folder-hd:hover { background: var(--shell-sidebar-hover); }
+    .sf-arrow { font-size: 10px; flex-shrink: 0; width: 12px; transition: transform .15s; }
+    .sf-icon  { font-size: 13px; flex-shrink: 0; }
+    .sf-name  { flex: 1; font-weight: 600; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sf-count {
+      font-size: 10px; color: var(--shell-text-muted);
+      background: rgba(255,255,255,.07); padding: 1px 5px;
+      border-radius: 8px; flex-shrink: 0;
+    }
+    .sf-menu-btn {
+      display: none; background: none; border: none;
+      color: var(--shell-text-muted); cursor: pointer;
+      padding: 1px 4px; border-radius: 3px; font-size: 13px;
+      line-height: 1; flex-shrink: 0;
+    }
+    .sidebar-folder-hd:hover .sf-menu-btn { display: block; }
+    .sf-menu-btn:hover { color: var(--shell-danger); background: rgba(224,85,85,.12); }
+
+    .sidebar-folder-body { padding-left: 10px; }
+
+    .file-move-btn {
+      display: none; background: none; border: none;
+      color: var(--shell-text-muted); cursor: pointer;
+      padding: 2px 4px; border-radius: 3px; font-size: 11px;
+      flex-shrink: 0;
+    }
+    .sidebar-item:hover .file-move-btn { display: block; }
+    .file-move-btn:hover { color: var(--shell-accent); background: rgba(74,143,212,.12); }
+
+    .sidebar-add-folder {
+      display: none; margin: 6px 10px; padding: 5px 10px;
+      border: 1px dashed rgba(74,143,212,.3); border-radius: 4px;
+      color: var(--shell-text-muted); font-size: 11px;
+      cursor: pointer; text-align: center; transition: all .15s;
+    }
+    .sidebar-add-folder.visible { display: block; }
+    .sidebar-add-folder:hover { border-color: var(--shell-accent); color: #7ab8e8; }
+
+    /* ── 모달 ──────────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; top:0; left:0; right:0; bottom:0;
+      background: rgba(0,0,0,.6); z-index: 9999;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #1a2535; border: 1px solid rgba(74,143,212,.3);
+      border-radius: 10px; padding: 20px 24px;
+      min-width: 260px; max-width: 340px; width: 90vw;
+      box-shadow: 0 8px 40px rgba(0,0,0,.6);
+    }
+    .modal h3 { font-size: 14px; font-weight: 700; color: #e8ecf2; margin-bottom: 12px; }
+    .modal p  { font-size: 12px; color: #7a8ba0; margin-bottom: 12px; }
+    .modal input[type=text] {
+      width: 100%; padding: 8px 10px;
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+      border-radius: 6px; color: #e0e8f0; font-size: 13px;
+      outline: none; margin-bottom: 14px; box-sizing: border-box;
+    }
+    .modal input[type=text]:focus { border-color: var(--shell-accent); }
+    .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-btn {
+      padding: 6px 14px; border-radius: 6px;
+      font-size: 12px; font-weight: 600; cursor: pointer; border: none;
+    }
+    .modal-btn-cancel { background: rgba(255,255,255,.07); color: #7a8ba0; }
+    .modal-btn-cancel:hover { background: rgba(255,255,255,.14); color: #e0e8f0; }
+    .modal-btn-primary { background: var(--shell-accent); color: #fff; }
+    .modal-btn-primary:hover { background: #3a7fc4; }
+
+    .move-folder-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; max-height: 220px; overflow-y: auto; }
+    .move-folder-opt {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-radius: 6px; cursor: pointer;
+      color: #b8c5d6; font-size: 13px;
+      border: 1px solid transparent; transition: all .1s;
+    }
+    .move-folder-opt:hover { background: rgba(74,143,212,.1); border-color: rgba(74,143,212,.2); }
+    .move-folder-opt.selected { background: rgba(74,143,212,.15); border-color: var(--shell-accent); color: #fff; }
   </style>
 
 </head>
@@ -461,10 +550,15 @@
 <script src="/mdboard/js/common.js"></script>
 <script>
 /* ── 전역 상태 ─────────────────────────────────────────────────────── */
-let allFiles      = [];
-let activeItem    = null;
-let currentMode   = 'home'; // 'home' | 'view' | 'editor'
-let authRequired  = false;
+let allFiles        = [];
+let foldersData     = [];
+let rootFiles_      = [];
+let activeItem      = null;
+let currentMode     = 'home';
+let authRequired    = false;
+let expandedFolders = new Set(['__root__']);
+let moveTarget      = { file: null, fromFolder: null };
+let selectedMoveFolder = null;
 
 /* ── 초기화 ───────────────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
@@ -474,61 +568,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('message', onFrameMessage);
 });
 
-/* ── 인증 초기화 ──────────────────────────────────────────────────── */
+/* ── 인증 ─────────────────────────────────────────────────────────── */
 async function initAuth() {
   try {
     const res = await API.authCheck();
     authRequired = res.required;
-  } catch (e) {
-    authRequired = false;
-  }
+  } catch (e) { authRequired = false; }
 
   const authArea = document.getElementById('authArea');
-  if (!authRequired) {
-    // 비밀번호 미설정 → 인증 영역 숨기고 모든 기능 허용
-    authArea.style.display = 'none';
-    showNewDocBtn(true);
-    return;
-  }
-
+  if (!authRequired) { authArea.style.display = 'none'; showNewDocBtn(true); return; }
   authArea.style.display = 'flex';
   updateAuthUI();
 }
 
 function updateAuthUI() {
-  const locked   = document.getElementById('authLocked');
-  const inputWrap= document.getElementById('authInputWrap');
-  const unlocked = document.getElementById('authUnlocked');
-  const authed   = Auth.isAuthenticated();
-
-  locked.style.display    = authed ? 'none'  : 'block';
+  const locked    = document.getElementById('authLocked');
+  const inputWrap = document.getElementById('authInputWrap');
+  const unlocked  = document.getElementById('authUnlocked');
+  const authed    = Auth.isAuthenticated();
+  locked.style.display   = authed ? 'none' : 'block';
   inputWrap.classList.remove('visible');
-  unlocked.style.display  = authed ? 'flex'  : 'none';
+  unlocked.style.display = authed ? 'flex'  : 'none';
   showNewDocBtn(authed);
-
-  // view.html iframe에 인증 상태 전달
   const frame = document.getElementById('mainFrame');
-  if (frame && frame.contentWindow) {
+  if (frame && frame.contentWindow)
     frame.contentWindow.postMessage({ type: 'auth-changed', authed }, '*');
-  }
+  renderSidebar();
 }
 
 function showNewDocBtn(show) {
   document.getElementById('sidebarNewBtn').style.display = show ? '' : 'none';
 }
-
 function showAuthInput() {
   document.getElementById('authLocked').style.display = 'none';
   document.getElementById('authInputWrap').classList.add('visible');
   document.getElementById('authPasswordInput').focus();
 }
-
 function hideAuthInput() {
   document.getElementById('authPasswordInput').value = '';
   document.getElementById('authInputWrap').classList.remove('visible');
   document.getElementById('authLocked').style.display = 'block';
 }
-
 async function submitAuth() {
   const pw = document.getElementById('authPasswordInput').value;
   if (!pw) return;
@@ -538,29 +618,20 @@ async function submitAuth() {
       Auth.setToken(res.token);
       hideAuthInput();
       updateAuthUI();
-      showToast('✅ 인증되었습니다.', 'success');
+      showToast('인증되었습니다.', 'success');
     } else {
-      showToast('❌ ' + (res.error || '비밀번호가 틀렸습니다.'), 'error');
+      showToast(res.error || '비밀번호가 틀렸습니다.', 'error');
       document.getElementById('authPasswordInput').select();
     }
-  } catch (e) {
-    showToast('❌ 인증 요청 실패', 'error');
-  }
+  } catch (e) { showToast('인증 요청 실패', 'error'); }
 }
-
 function logout() {
-  Auth.clear();
-  updateAuthUI();
-  showToast('🔐 인증이 해제되었습니다.', 'info');
-  // 에디터 모드였다면 홈으로
+  Auth.clear(); updateAuthUI();
+  showToast('인증이 해제되었습니다.', 'info');
   if (currentMode === 'editor') loadHome();
 }
-
 function onNewDocument() {
-  if (authRequired && !Auth.isAuthenticated()) {
-    showToast('🔐 인증 후 이용 가능합니다.', 'error');
-    return;
-  }
+  if (authRequired && !Auth.isAuthenticated()) { showToast('인증 후 이용 가능합니다.', 'error'); return; }
   openEditor(null);
 }
 
@@ -569,138 +640,235 @@ async function loadFileList() {
   try {
     const data = await API.get('/mdboard/api/files');
     if (!data.success) return;
-    allFiles = data.files;
-    renderSidebar(allFiles);
-  } catch (e) {
-    console.error('파일 목록 로드 실패', e);
-  }
+    allFiles    = data.files    || [];
+    rootFiles_  = data.rootFiles || [];
+    foldersData = data.folders  || [];
+    renderSidebar();
+  } catch (e) { console.error('파일 목록 로드 실패', e); }
 }
 
 /* ── 통계 로드 ────────────────────────────────────────────────────── */
 async function loadStats() {
   try {
     const data = await API.get('/mdboard/api/stats');
-console.log(data);
     if (!data.success) return;
-
-    document.getElementById('statFiles').textContent  = data.totalFiles ?? '-';
+    document.getElementById('statFiles').textContent  = data.totalFiles  ?? '-';
     document.getElementById('statImages').textContent = data.totalImages ?? '-';
     document.getElementById('statSize').textContent   = formatSize(data.totalSize || 0);
     document.getElementById('statLastMod').textContent =
       data.lastModified ? formatDate(data.lastModified) : '-';
 
-    // 최근 파일 목록
     const recentList = document.getElementById('recentList');
     if (!data.recentFiles || !data.recentFiles.length) {
-      recentList.innerHTML = `
-        <div class="home-empty">
-          <div class="home-empty-icon">📂</div>
-          아직 작성된 문서가 없습니다.<br>
-          왼쪽의 <strong>새 문서 작성</strong>을 눌러 첫 번째 문서를 작성하세요!
-        </div>`;
+      recentList.innerHTML = '<div class="home-empty"><div class="home-empty-icon">📂</div>아직 작성된 문서가 없습니다.<br>왼쪽의 <strong>새 문서 작성</strong>을 눌러 첫 번째 문서를 작성하세요!</div>';
       return;
     }
-    recentList.innerHTML = data.recentFiles.map(f => `
-      <div class="recent-item" onclick="openView('${escHtml(f.name)}')">
-        <div class="recent-item-icon">📄</div>
-        <div class="recent-item-body">
-          <div class="recent-item-title">${escHtml(f.title || f.name)}</div>
-          <div class="recent-item-preview">${escHtml(f.preview || '')}</div>
-        </div>
-        <div class="recent-item-date">${formatDate(f.modified)}</div>
-      </div>
-    `).join('');
+    recentList.innerHTML = data.recentFiles.map(f => '<div class="recent-item" onclick="openView(\'' + escHtml(f.path || f.name) + '\')">' +
+      '<div class="recent-item-icon">📄</div>' +
+      '<div class="recent-item-body">' +
+        '<div class="recent-item-title">' + escHtml(f.title || f.name) + '</div>' +
+        '<div class="recent-item-preview">' + escHtml(f.preview || '') + '</div>' +
+      '</div>' +
+      '<div class="recent-item-date">' + formatDate(f.modified) + '</div>' +
+    '</div>').join('');
 
-    // 최근 시스템변경내역
     const changeList = document.getElementById('changeList');
     if (!data.changeList || !data.changeList.length) {
-      changeList.innerHTML = `
-        <div class="home-empty">
-          <div class="home-empty-icon">🖥️</div>
-          아직 변경된 내역이 없습니다.
-        </div>`;
+      changeList.innerHTML = '<div class="home-empty"><div class="home-empty-icon">🖥️</div>아직 변경된 내역이 없습니다.</div>';
       return;
     }
-console.log(data.changeList);
-    changeList.innerHTML = data.changeList.map(f => `
-      <div class="recent-item">
-        <div class="recent-item-icon">📄</div>
-        <div class="recent-item-body">
-          <div class="recent-item-title">${escHtml(f.title)}</div>
-          <div class="recent-item-preview">${escHtml(f.contents || '')}</div>
-        </div>
-        <div class="recent-item-date">${formatDate(f.modified)}</div>
-      </div>
-    `).join('');
-
-  } catch (e) {
-    console.error('통계 로드 실패', e);
-  }
+    changeList.innerHTML = data.changeList.map(f => '<div class="recent-item">' +
+      '<div class="recent-item-icon">📄</div>' +
+      '<div class="recent-item-body">' +
+        '<div class="recent-item-title">' + escHtml(f.title) + '</div>' +
+        '<div class="recent-item-preview">' + escHtml(f.contents || '') + '</div>' +
+      '</div>' +
+      '<div class="recent-item-date">' + formatDate(f.modified) + '</div>' +
+    '</div>').join('');
+  } catch (e) { console.error('통계 로드 실패', e); }
 }
 
-/* ── 사이드바 렌더 ────────────────────────────────────────────────── */
-function renderSidebar(files) {
-  const list = document.getElementById('sidebarList');
-  if (!files.length) {
-    list.innerHTML = `
-      <div class="sidebar-empty">
-        <div style="font-size:20px;margin-bottom:6px">📝</div>
-        작성된 문서가 없습니다.<br>
-        새 문서를 작성해보세요!
-      </div>`;
+/* ── 사이드바 렌더 (폴더 트리) ───────────────────────────────────── */
+function renderSidebar(searchQuery) {
+  const q       = typeof searchQuery === 'string' ? searchQuery
+                  : (document.getElementById('searchInput') ? document.getElementById('searchInput').value : '');
+  const list    = document.getElementById('sidebarList');
+  const canEdit = !authRequired || Auth.isAuthenticated();
+
+  if (q) {
+    const ql = q.toLowerCase();
+    const filtered = allFiles.filter(f =>
+      (f.title || f.name).toLowerCase().includes(ql) ||
+      (f.preview || '').toLowerCase().includes(ql)
+    );
+    if (!filtered.length) {
+      list.innerHTML = '<div class="sidebar-empty"><div style="font-size:20px;margin-bottom:6px">🔍</div>검색 결과가 없습니다.</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(f => renderFileItem(f)).join('');
     return;
   }
-  list.innerHTML = files.map(f => `
-    <div
-      class="sidebar-item"
-      id="si-${escHtml(f.name)}"
-      onclick="openView('${escHtml(f.name)}')"
-      title="${escHtml(f.title || f.name)}"
-    >
-      <span class="sidebar-item-icon">📄</span>
-      <div class="sidebar-item-body">
-        <div class="sidebar-item-title">${escHtml(f.title || f.name)}</div>
-        <div class="sidebar-item-meta">${formatDate(f.modified)} · ${formatSize(f.size)}</div>
-      </div>
-    </div>
-  `).join('');
+
+  if (allFiles.length === 0) {
+    list.innerHTML = '<div class="sidebar-empty"><div style="font-size:20px;margin-bottom:6px">📝</div>작성된 문서가 없습니다.<br>새 문서를 작성해보세요!</div>';
+    return;
+  }
+
+  let html = '';
+  if (rootFiles_.length > 0 || foldersData.length === 0)
+    html += renderFolderSection('__root__', '기본', rootFiles_, false);
+  foldersData.forEach(f => { html += renderFolderSection(f.name, f.name, f.files, true); });
+  html += '<div class="sidebar-add-folder ' + (canEdit ? 'visible' : '') + '" id="sidebarAddFolder" onclick="showNewFolderDialog()">＋ 새 폴더</div>';
+  list.innerHTML = html;
+}
+
+function renderFolderSection(key, displayName, files, isCustom) {
+  const isExpanded = expandedFolders.has(key);
+  const canEdit    = !authRequired || Auth.isAuthenticated();
+  const idKey      = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const filesHtml  = files.length
+    ? files.map(f => renderFileItem(f)).join('')
+    : '<div style="padding:5px 10px 5px 6px; font-size:11px; color:#4a6275; font-style:italic;">빈 폴더</div>';
+  const menuBtn = isCustom && canEdit
+    ? '<button class="sf-menu-btn" onclick="event.stopPropagation();deleteFolderConfirm(\'' + escHtml(key) + '\')" title="폴더 삭제">🗑</button>'
+    : '';
+  return '<div class="sidebar-folder" id="sf-' + escHtml(idKey) + '">' +
+    '<div class="sidebar-folder-hd" onclick="toggleFolder(\'' + escHtml(key) + '\',\'' + escHtml(idKey) + '\')">' +
+      '<span class="sf-arrow">' + (isExpanded ? '▾' : '▸') + '</span>' +
+      '<span class="sf-icon">📁</span>' +
+      '<span class="sf-name">' + escHtml(displayName) + '</span>' +
+      '<span class="sf-count">' + files.length + '</span>' +
+      menuBtn +
+    '</div>' +
+    '<div class="sidebar-folder-body" id="sfb-' + escHtml(idKey) + '" ' + (isExpanded ? '' : 'style="display:none"') + '>' +
+      filesHtml +
+    '</div>' +
+  '</div>';
+}
+
+function renderFileItem(f) {
+  const filePath    = f.path || f.name;
+  const displayName = f.title || f.name.replace(/\.md$/i, '');
+  const canEdit     = !authRequired || Auth.isAuthenticated();
+  const moveBtn     = canEdit
+    ? '<button class="file-move-btn" onclick="event.stopPropagation();showMoveDialog(\'' + escHtml(filePath) + '\')" title="폴더 이동">↗</button>'
+    : '';
+  return '<div class="sidebar-item" id="si-' + escHtml(filePath) + '" onclick="openView(\'' + escHtml(filePath) + '\')" title="' + escHtml(displayName) + '">' +
+    '<span class="sidebar-item-icon">📄</span>' +
+    '<div class="sidebar-item-body">' +
+      '<div class="sidebar-item-title">' + escHtml(displayName) + '</div>' +
+      '<div class="sidebar-item-meta">' + formatDate(f.modified) + ' · ' + formatSize(f.size) + '</div>' +
+    '</div>' +
+    moveBtn +
+  '</div>';
+}
+
+function toggleFolder(key, idKey) {
+  if (expandedFolders.has(key)) expandedFolders.delete(key);
+  else expandedFolders.add(key);
+  const body = document.getElementById('sfb-' + idKey);
+  const hd   = document.querySelector('#sf-' + idKey + ' .sf-arrow');
+  const open = expandedFolders.has(key);
+  if (body) body.style.display = open ? '' : 'none';
+  if (hd)   hd.textContent    = open ? '▾' : '▸';
 }
 
 /* ── 검색 필터 ────────────────────────────────────────────────────── */
-function filterFiles(query) {
-  const q = query.toLowerCase();
-  const filtered = q
-    ? allFiles.filter(f =>
-        (f.title || f.name).toLowerCase().includes(q) ||
-        (f.preview || '').toLowerCase().includes(q)
-      )
-    : allFiles;
-  renderSidebar(filtered);
+function filterFiles(query) { renderSidebar(query); }
+
+/* ── 새 폴더 다이얼로그 ───────────────────────────────────────────── */
+function showNewFolderDialog() {
+  if (authRequired && !Auth.isAuthenticated()) { showToast('인증 후 이용 가능합니다.', 'error'); return; }
+  document.getElementById('newFolderInput').value = '';
+  document.getElementById('newFolderModal').classList.add('open');
+  setTimeout(() => document.getElementById('newFolderInput').focus(), 50);
+}
+function closeNewFolderDialog() {
+  document.getElementById('newFolderModal').classList.remove('open');
+}
+async function confirmCreateFolder() {
+  const name = document.getElementById('newFolderInput').value.trim();
+  if (!name) { showToast('폴더명을 입력하세요.', 'error'); return; }
+  try {
+    const data = await API.post('/mdboard/api/folders', { name });
+    if (!data.success) throw new Error(data.error);
+    showToast('폴더 생성: ' + data.name, 'success');
+    closeNewFolderDialog();
+    expandedFolders.add(data.name);
+    loadFileList();
+  } catch (e) { showToast('폴더 생성 실패: ' + e.message, 'error'); }
+}
+
+/* ── 폴더 삭제 ────────────────────────────────────────────────────── */
+function deleteFolderConfirm(folderName) {
+  if (!confirm('"' + folderName + '" 폴더를 삭제하시겠습니까?\n폴더가 비어있어야 삭제할 수 있습니다.')) return;
+  API.delete('/mdboard/api/folders/' + encodeURIComponent(folderName))
+    .then(data => {
+      if (!data.success) throw new Error(data.error);
+      showToast('폴더 삭제 완료', 'success');
+      loadFileList();
+    }).catch(e => showToast(e.message, 'error'));
+}
+
+/* ── 파일 이동 다이얼로그 ─────────────────────────────────────────── */
+function showMoveDialog(filePath) {
+  if (authRequired && !Auth.isAuthenticated()) { showToast('인증 후 이용 가능합니다.', 'error'); return; }
+  const parts     = filePath.split('/');
+  const curFolder = parts.length > 1 ? parts.slice(0, -1).join('/') : null;
+  const filename  = parts[parts.length - 1];
+  moveTarget         = { file: filename, fromFolder: curFolder };
+  selectedMoveFolder = curFolder;
+
+  document.getElementById('moveFileName').textContent = filename.replace(/\.md$/i, '');
+
+  let html = '<div class="move-folder-opt ' + (!curFolder ? 'selected' : '') + '" onclick="selectMoveFolder(null,this)">📁 기본</div>';
+  foldersData.forEach(f => {
+    html += '<div class="move-folder-opt ' + (curFolder === f.name ? 'selected' : '') + '" onclick="selectMoveFolder(\'' + escHtml(f.name) + '\',this)">📁 ' + escHtml(f.name) + '</div>';
+  });
+  document.getElementById('moveFolderList').innerHTML = html;
+  document.getElementById('moveFileModal').classList.add('open');
+}
+
+function selectMoveFolder(folder, el) {
+  selectedMoveFolder = folder;
+  document.querySelectorAll('.move-folder-opt').forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+}
+function closeMoveDialog() { document.getElementById('moveFileModal').classList.remove('open'); }
+async function confirmMove() {
+  const { file, fromFolder } = moveTarget;
+  const toFolder = selectedMoveFolder;
+  if (fromFolder === toFolder) { closeMoveDialog(); return; }
+  try {
+    const data = await API.post('/mdboard/api/move', { file, fromFolder, toFolder });
+    if (!data.success) throw new Error(data.error);
+    showToast('이동 완료', 'success');
+    closeMoveDialog();
+    const oldPath = fromFolder ? fromFolder + '/' + file : file;
+    const newPath = data.path || (toFolder ? toFolder + '/' + file : file);
+    if (activeItem === oldPath) activeItem = newPath;
+    loadFileList();
+  } catch (e) { showToast('이동 실패: ' + e.message, 'error'); }
 }
 
 /* ── 뷰어 열기 ────────────────────────────────────────────────────── */
-function openView(name) {
-  setActiveItem(name);
-  showIframe(`./include/view.html?file=${encodeURIComponent(name)}`);
+function openView(filePath) {
+  setActiveItem(filePath);
+  showIframe('./include/view.html?file=' + encodeURIComponent(filePath));
   currentMode = 'view';
-  document.getElementById('headerFileInfo').textContent = name.replace(/\.md$/i, '');
+  document.getElementById('headerFileInfo').textContent = filePath.split('/').pop().replace(/\.md$/i, '');
   closeSidebar();
 }
 
 /* ── 에디터 열기 ──────────────────────────────────────────────────── */
-function openEditor(name) {
-  if (authRequired && !Auth.isAuthenticated()) {
-    showToast('🔐 인증 후 이용 가능합니다.', 'error');
-    return;
-  }
-  const url = name
-    ? `./include/editor.html?file=${encodeURIComponent(name)}`
-    : './include/editor.html';
+function openEditor(filePath) {
+  if (authRequired && !Auth.isAuthenticated()) { showToast('인증 후 이용 가능합니다.', 'error'); return; }
+  const url = filePath ? './include/editor.html?file=' + encodeURIComponent(filePath) : './include/editor.html';
   showIframe(url);
   currentMode = 'editor';
-  if (name) {
-    setActiveItem(name);
-    document.getElementById('headerFileInfo').textContent = '편집: ' + name.replace(/\.md$/i, '');
+  if (filePath) {
+    setActiveItem(filePath);
+    document.getElementById('headerFileInfo').textContent = '편집: ' + filePath.split('/').pop().replace(/\.md$/i, '');
   } else {
     setActiveItem(null);
     document.getElementById('headerFileInfo').textContent = '새 문서';
@@ -725,108 +893,112 @@ function showIframe(url) {
   frame.src = url;
   frame.style.display = '';
   content.style.display = 'none';
-  // iframe 로드 완료 후 인증 상태 전달
   frame.onload = () => {
-    frame.contentWindow.postMessage(
-      { type: 'auth-changed', authed: !authRequired || Auth.isAuthenticated() }, '*'
-    );
+    frame.contentWindow.postMessage({ type: 'auth-changed', authed: !authRequired || Auth.isAuthenticated() }, '*');
   };
 }
 
-/* ── 활성 아이템 표시 ─────────────────────────────────────────────── */
-function setActiveItem(name) {
+/* ── 활성 아이템 ──────────────────────────────────────────────────── */
+function setActiveItem(filePath) {
   if (activeItem) {
     const prev = document.getElementById('si-' + activeItem);
     if (prev) prev.classList.remove('active');
   }
-  activeItem = name;
-  if (name) {
-    const el = document.getElementById('si-' + name);
+  activeItem = filePath;
+  if (filePath) {
+    const el = document.getElementById('si-' + filePath);
     if (el) el.classList.add('active');
   }
 }
 
 /* ── iframe 메시지 처리 ───────────────────────────────────────────── */
 function onFrameMessage(e) {
-  const msg = e.data || {};
+  const msg  = e.data || {};
   const { type } = msg;
-  // view.js는 'file' 키, editor.js는 'name' 키 사용 - 둘 다 처리
-  const fileName = msg.name || msg.file;
+  const filePath = msg.path || msg.name || msg.file;
 
   switch (type) {
     case 'open-editor':
-      openEditor(fileName); break;
+      openEditor(filePath); break;
 
     case 'file-saved':
-      loadFileList();
-      loadStats();
-      if (fileName) {
-        setActiveItem(fileName);
-        document.getElementById('headerFileInfo').textContent = fileName;
-        showToast('💾 ' + fileName + ' 저장됨', 'success');
-        // 저장 후 뷰어로 이동
-        setTimeout(() => openView(fileName), 300);
+      loadFileList(); loadStats();
+      if (filePath) {
+        const displayName = (filePath.split('/').pop() || '').replace(/\.md$/i, '');
+        setActiveItem(filePath);
+        document.getElementById('headerFileInfo').textContent = displayName;
+        showToast(displayName + ' 저장됨', 'success');
+        setTimeout(() => openView(filePath), 300);
       }
       break;
 
     case 'file-deleted':
-      loadFileList();
-      loadStats();
-      loadHome();
-      break;
+      loadFileList(); loadStats(); loadHome(); break;
 
     case 'file-loaded':
-      // 뷰어에서 파일 로드 완료 → 사이드바 active 갱신
-      if (name) setActiveItem(name);
-      break;
-
-    case 'theme-change':
-      // 테마 변경 시 처리 (필요시 확장)
-      break;
+      if (filePath) setActiveItem(filePath); break;
   }
 }
 
 /* ── 모니터 토글 ──────────────────────────────────────────────────── */
 function toggleMonitor() {
   const panel = document.getElementById('monitorPanel');
-  if (panel.classList.contains('open')) {
-    panel.classList.remove('open');
-  } else {
-    refreshMonitor();
-  }
+  if (panel.classList.contains('open')) panel.classList.remove('open');
+  else refreshMonitor();
 }
 
-/* ── 헬퍼 ────────────────────────────────────────────────────────── */
-function escHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/* ── 사이드바 토글 (모바일) ──────────────────────────────────────────── */
+/* ── 사이드바 토글 (모바일) ──────────────────────────────────────── */
 function toggleSidebar() {
   const sidebar = document.querySelector('.shell-sidebar');
   const overlay = document.getElementById('sidebarOverlay');
   if (sidebar.classList.contains('open')) {
-    sidebar.classList.remove('open');
-    overlay.classList.remove('show');
+    sidebar.classList.remove('open'); overlay.classList.remove('show');
   } else {
-    sidebar.classList.add('open');
-    overlay.classList.add('show');
+    sidebar.classList.add('open'); overlay.classList.add('show');
   }
 }
-
 function closeSidebar() {
   const sidebar = document.querySelector('.shell-sidebar');
   const overlay = document.getElementById('sidebarOverlay');
   if (sidebar) sidebar.classList.remove('open');
   if (overlay) overlay.classList.remove('show');
 }
+
+/* ── 헬퍼 ────────────────────────────────────────────────────────── */
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 </script>
 
+
+
+<!-- 새 폴더 모달 -->
+<div class="modal-overlay" id="newFolderModal" onclick="if(event.target===this)closeNewFolderDialog()">
+  <div class="modal">
+    <h3>📁 새 폴더 만들기</h3>
+    <input type="text" id="newFolderInput" placeholder="폴더명 입력"
+           onkeydown="if(event.key==='Enter')confirmCreateFolder();if(event.key==='Escape')closeNewFolderDialog()">
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-cancel" onclick="closeNewFolderDialog()">취소</button>
+      <button class="modal-btn modal-btn-primary" onclick="confirmCreateFolder()">만들기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 파일 이동 모달 -->
+<div class="modal-overlay" id="moveFileModal" onclick="if(event.target===this)closeMoveDialog()">
+  <div class="modal">
+    <h3>↗ 파일 이동</h3>
+    <p id="moveFileName" style="margin-bottom:10px; font-size:13px; color:#e0e8f0;"></p>
+    <div class="move-folder-list" id="moveFolderList"></div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-cancel" onclick="closeMoveDialog()">취소</button>
+      <button class="modal-btn modal-btn-primary" onclick="confirmMove()">이동</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
