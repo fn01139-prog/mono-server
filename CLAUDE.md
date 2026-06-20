@@ -46,6 +46,16 @@ module.exports = { name: 'My App', prefix: 'myapp', enabled: true, icon: '🔧',
 
 Create `projects/<name>/index.js` exporting an Express Router, and optionally a `projects/<name>/public/` directory for static assets.
 
+> **중요**: `index.js`의 라우트 경로에 `/api/` 접두사를 붙이지 말 것. `loader.js`가 이미 라우터를 `/<prefix>/api`에 마운트하므로, 내부 라우트에 `/api/`를 추가하면 실제 경로가 `/<prefix>/api/api/...`가 되어 SPA catch-all이 HTML을 반환하는 버그가 발생한다.
+>
+> ```js
+> // ❌ 잘못된 예 — /prefix/api/api/items 로 등록됨
+> router.get('/api/items', ...)
+>
+> // ✅ 올바른 예 — /prefix/api/items 로 등록됨
+> router.get('/items', ...)
+> ```
+
 ### Shared Utilities (`shared/utils.js`)
 
 - `asyncHandler(fn)` — wraps async route handlers to forward errors to Express error middleware
@@ -56,7 +66,7 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 
 | Prefix | Description | Notes |
 |--------|-------------|-------|
-| `/mdboard` | Markdown document platform | File CRUD + image upload via multer; Google Drive 백업 |
+| `/mdboard` | Markdown document platform | 폴더 분류; 파일 CRUD + 이미지 업로드(multer); Marp HTML/PDF 내보내기; Google Drive 백업 |
 | `/portfolio` | Personal portfolio page builder | SPA mode; **PostgreSQL** (`portfolio_pages`) |
 | `/aptloan` | 아파트 대출 계산기 | SPA mode; 입주비용·중도금이자·대출 상환 시뮬레이터 |
 | `/floorplan` | 평면도 그리기 | SPA mode; **PostgreSQL** (`floorplan_templates`, `floorplan_categories`); 관리자 토큰 인증 |
@@ -76,7 +86,9 @@ customRoutes: [
 
 ### Authentication Pattern
 
-mdboard와 portfolio 모두 동일한 인증 패턴을 사용한다.
+프로젝트별로 두 가지 인증 패턴이 사용된다.
+
+#### 패턴 A — HMAC 비밀번호 토큰 (mdboard, portfolio)
 
 **Backend (`index.js`)**
 - `GET /<prefix>/api/auth/check` → `{ required: bool }` — 비밀번호 설정 여부
@@ -87,12 +99,38 @@ mdboard와 portfolio 모두 동일한 인증 패턴을 사용한다.
 **Frontend**
 - 토큰은 `localStorage`에 저장 (`mdboard_token`, `portfolio_token`)
 - 모든 쓰기 API 요청에 `x-auth-token` 헤더 포함
-- mdboard: `index.html` 헤더 우측 "인증하기" 버튼 → 인라인 입력창 → 인증됨 상태
-- portfolio: `/portfolio/studio` 진입 시 전체 화면 오버레이로 비밀번호 입력
 
 **보호 대상 엔드포인트**
-- mdboard: `POST /save`, `DELETE /file/:name`, `POST /upload-image`
+- mdboard: `POST /save`, `DELETE /file/*`, `POST /upload-image`
 - portfolio: `POST /pages`, `PUT /pages/:id`, `DELETE /pages/:id`
+
+#### 패턴 B — 원시 토큰 (floorplan)
+
+**Backend (`index.js`)**
+- `GET /auth/check` → `{ ok, required: bool }` — 토큰 설정 여부
+- `POST /auth/verify` → `{ ok, isAdmin: bool }` — 토큰 일치 여부 확인
+- `requireAdmin` 미들웨어: `x-admin-token` 헤더 검증, 토큰 미설정 시 통과
+- 환경변수 `FLOORPLAN_ADMIN_TOKENS` 또는 `ADMIN_TOKENS` (쉼표 구분 복수 가능)
+
+**Frontend**
+- 로그인 모달에서 토큰 입력 → `POST /api/auth/verify` 호출
+- `isAdmin = true` 시 벽/방/문 그리기 도구 활성화, 서버 저장 탭 표시
+- 관리자일 때 빈 캔버스 오버레이("평면도를 선택해주세요") 숨김 처리
+
+### mdboard 폴더 구조
+
+`projects/mdboard/public/contents/` 하위 디렉토리가 폴더 단위이며, 루트의 `.md` 파일은 "기본" 폴더로 표시된다.
+
+- 파일 식별자: `폴더명/파일명.md` 또는 `파일명.md` (경로 기반 unique key)
+- API 경로 인코딩: `filePath.split('/').map(encodeURIComponent).join('/')` (슬래시는 경로 구분자로 유지)
+- Express 라우트: `router.get('/file/*', ...)` → `req.params[0]`으로 전체 경로 수신
+- 최대 2 depth 제한, `img/` 폴더 접근 불가 (`safePath()` 함수로 검증)
+
+**폴더 관련 API**
+- `GET /folders` — 폴더 목록
+- `POST /folders` — 폴더 생성
+- `DELETE /folders/:name` — 폴더 삭제 (비어있을 때만)
+- `POST /move` — 파일 폴더 이동 `{ file, fromFolder, toFolder }`
 
 ### Environment Variables
 
@@ -104,14 +142,15 @@ mdboard와 portfolio 모두 동일한 인증 패턴을 사용한다.
 | `DATABASE_URL` | (필수) | PostgreSQL 연결 문자열 (Railway 자동 주입) |
 | `MDBOARD_PASSWORD` | (없음) | mdboard 에디터 인증 비밀번호 |
 | `PORTFOLIO_PASSWORD` | (없음) | portfolio `/studio` 관리자 인증 비밀번호 |
-| `ADMIN_TOKENS` | (없음) | floorplan 관리자 토큰 (쉼표 구분, 복수 가능) |
+| `FLOORPLAN_ADMIN_TOKENS` | (없음) | floorplan 관리자 토큰 (우선순위 높음) |
+| `ADMIN_TOKENS` | (없음) | floorplan 관리자 토큰 폴백 (쉼표 구분, 복수 가능) |
 | `JWT_SECRET` | `campcheck-dev-secret-change-in-prod` | campchecklist JWT 서명 키 |
 | `GOOGLE_SERVICE_ACCOUNT` | (없음) | travellog Drive 서비스 계정 JSON (base64) |
 | `DRIVE_FOLDER_ID` | (없음) | travellog 사진 업로드 Drive 폴더 ID |
-| `GDRIVE_CLIENT_ID` | (없음) | campchecklist Drive OAuth2 클라이언트 ID |
-| `GDRIVE_CLIENT_SECRET` | (없음) | campchecklist Drive OAuth2 시크릿 |
-| `GDRIVE_REFRESH_TOKEN` | (없음) | campchecklist Drive OAuth2 리프레시 토큰 |
-| `GDRIVE_FOLDER_ID` | (없음) | campchecklist Drive 폴더 ID |
+| `GDRIVE_CLIENT_ID` | (없음) | mdboard/campchecklist Drive OAuth2 클라이언트 ID |
+| `GDRIVE_CLIENT_SECRET` | (없음) | mdboard/campchecklist Drive OAuth2 시크릿 |
+| `GDRIVE_REFRESH_TOKEN` | (없음) | mdboard/campchecklist Drive OAuth2 리프레시 토큰 |
+| `GDRIVE_FOLDER_ID` | (없음) | mdboard/campchecklist Drive 폴더 ID |
 
 ### Deployment
 
