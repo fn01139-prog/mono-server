@@ -1,180 +1,20 @@
 'use strict';
 
-const express = require('express');
-const fs      = require('fs');
-const path    = require('path');
-const crypto  = require('crypto');
-const bcrypt  = require('bcryptjs');
-const jwt     = require('jsonwebtoken');
+const express    = require('express');
+const crypto     = require('crypto');
+const bcrypt     = require('bcryptjs');
+const jwt        = require('jsonwebtoken');
+const pool       = require('../../shared/db');
 
-const DATA_DIR         = path.join(__dirname, 'data');
-const SYNC_INTERVAL_MS = 30 * 1000;
-const config           = require('./config');
-const JWT_SECRET       = process.env.JWT_SECRET || 'campcheck-dev-secret-change-in-prod';
-const JWT_EXPIRES      = '30d';
-const ADMIN_ID         = config.adminLoginId || 'admin';
-
-// ════════════════════════════════════════════════════════════════════
-// 데이터 디렉토리 및 초기 파일
-// ════════════════════════════════════════════════════════════════════
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-
-const INIT = {
-  users: '[]', items: '[]', trips: '[]', checks: '{}',
-  accounts: '[]',  // { userId, loginId, pwHash, role, createdAt, lastLoginAt }
-  comments: '[]',  // { id, tripId, parentId, depth, authorId, authorName, content, createdAt, updatedAt, edited }
-};
-Object.entries(INIT).forEach(([n, v]) => {
-  const f = path.join(DATA_DIR, `${n}.json`);
-  if (!fs.existsSync(f)) fs.writeFileSync(f, v, 'utf8');
-});
-
-// ════════════════════════════════════════════════════════════════════
-// DB 헬퍼
-// ════════════════════════════════════════════════════════════════════
-const dirty       = new Set();
-let lastSyncAt    = null;
-let syncStatus    = 'idle';
-let lastSyncError = null;
-let lastPullAt    = null;  // 마지막 Drive Pull 성공 시각
-let lastPullError = null;  // 마지막 Drive Pull 실패 원인
-
-const db = {
-  read(name) {
-    try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, `${name}.json`), 'utf8')); }
-    catch { return name === 'checks' ? {} : []; }
-  },
-  write(name, data) {
-    fs.writeFileSync(path.join(DATA_DIR, `${name}.json`), JSON.stringify(data, null, 2), 'utf8');
-    dirty.add(name);
-  },
-};
+const config     = require('./config');
+const JWT_SECRET = process.env.JWT_SECRET || 'campcheck-dev-secret-change-in-prod';
+const JWT_EXPIRES = '30d';
+const ADMIN_ID   = config.adminLoginId || 'admin';
 
 const uid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 
-// ════════════════════════════════════════════════════════════════════
-// Google Drive 연동 (30초 배치)
-// ════════════════════════════════════════════════════════════════════
-const FOLDER_ID = process.env.GDRIVE_FOLDER_ID;
-let drive       = null;
-const fileIdCache = {};
-
-// ── Drive 초기화 (OAuth2 Refresh Token)
-// top-level await 금지 → IIFE Promise로 감싸서 _driveReady에 저장
-// 서비스 계정(GDRIVE_KEY) 대신 OAuth2를 사용하므로:
-//   - 저장 쿼터 문제 없음 (파일 소유권이 본인 구글 계정)
-//   - clock skew 처리 불필요 (googleapis가 토큰 자동 갱신)
-//
-// 필요 환경변수: GDRIVE_CLIENT_ID, GDRIVE_CLIENT_SECRET, GDRIVE_REFRESH_TOKEN, GDRIVE_FOLDER_ID
-// 토큰 발급: node get-token.js 실행
-let _driveReady = null;
-
-const _oauthReady = !!(
-  process.env.GDRIVE_CLIENT_ID &&
-  process.env.GDRIVE_CLIENT_SECRET &&
-  process.env.GDRIVE_REFRESH_TOKEN &&
-  FOLDER_ID
-);
-
-if (_oauthReady) {
-  _driveReady = (async () => {
-    const { google } = require('googleapis');
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GDRIVE_CLIENT_ID,
-      process.env.GDRIVE_CLIENT_SECRET,
-      'http://localhost' // 초기 인증 후에는 redirect_uri 미사용
-    );
-
-    oauth2Client.setCredentials({
-      refresh_token: process.env.GDRIVE_REFRESH_TOKEN,
-    });
-
-    // access_token 만료 시 googleapis가 자동으로 갱신
-    oauth2Client.on('tokens', (tokens) => {
-      if (tokens.refresh_token)
-        console.log('[CampCheck] 🔑 Drive 토큰 갱신됨');
-    });
-
-    drive = google.drive({ version: 'v3', auth: oauth2Client });
-    console.log('[CampCheck] ✅ Google Drive 연동 활성화 (OAuth2)');
-  })().catch(e => console.error('[CampCheck] ❌ Drive 초기화 실패:', e.message));
-}
-
-async function getFileId(filename) {
-  if (fileIdCache[filename]) return fileIdCache[filename];
-  const res = await drive.files.list({ q: `name='${filename}' and '${FOLDER_ID}' in parents and trashed=false`, fields: 'files(id)', spaces: 'drive' });
-  const id  = res.data.files[0]?.id ?? null;
-  if (id) fileIdCache[filename] = id;
-  return id;
-}
-async function drivePull(filename) {
-  const fileId = await getFileId(filename);
-  if (!fileId) return null;
-  const res = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' });
-  return typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
-}
-async function drivePush(filename, content) {
-  const media  = { mimeType: 'application/json', body: content };
-  const fileId = await getFileId(filename);
-  if (fileId) {
-    await drive.files.update({ fileId, media });
-  } else {
-    const c = await drive.files.create({ requestBody: { name: filename, parents: [FOLDER_ID] }, media, fields: 'id' });
-    fileIdCache[filename] = c.data.id;
-  }
-}
-async function pullFromDrive() {
-  if (!drive) return;
-  lastPullError = null;
-  console.log('[CampCheck] 📥 Drive 복원 중...');
-  let anyFailed = false;
-  for (const name of Object.keys(INIT)) {
-    try {
-      const content = await drivePull(`${name}.json`);
-      if (content) {
-        fs.writeFileSync(path.join(DATA_DIR, `${name}.json`), content, 'utf8');
-        console.log(`[CampCheck]   ✓ ${name}.json`);
-      } else {
-        console.log(`[CampCheck]   ○ ${name}.json — 신규 시작`);
-      }
-    } catch (e) {
-      anyFailed    = true;
-      lastPullError = `[${name}] ${e.message}`;
-      console.error(`[CampCheck]   ✗ ${name}.json:`, e.message);
-    }
-  }
-  if (!anyFailed) lastPullAt = now();
-}
-async function syncToDrive() {
-  if (!drive || dirty.size === 0) return;
-  syncStatus    = 'syncing';
-  lastSyncError = null;
-  const toSync  = [...dirty];
-  dirty.clear();
-  const results = [];
-  for (const name of toSync) {
-    try {
-      await drivePush(`${name}.json`, fs.readFileSync(path.join(DATA_DIR, `${name}.json`), 'utf8'));
-      results.push(`✓ ${name}`);
-    } catch (e) {
-      dirty.add(name); // 실패 파일은 다음 주기 재시도
-      lastSyncError = `[${name}] ${e?.errors?.[0]?.message || e.message}`;
-      results.push(`✗ ${name}: ${lastSyncError}`);
-      syncStatus = 'error';
-      console.error(`[CampCheck] ☁️  Drive Push 실패 — ${lastSyncError}`);
-    }
-  }
-  if (syncStatus !== 'error') { syncStatus = 'idle'; lastSyncAt = now(); }
-  console.log(`[CampCheck] ☁️  Drive [${new Date().toLocaleTimeString('ko-KR')}] ${results.join(' | ')}`);
-}
-process.on('SIGTERM', async () => { await syncToDrive(); process.exit(0); });
-process.on('SIGINT',  async () => { await syncToDrive(); process.exit(0); });
-
-// ════════════════════════════════════════════════════════════════════
-// Auth 유틸
-// ════════════════════════════════════════════════════════════════════
+/* ── Auth ─────────────────────────────────────────────────────────────── */
 function makeToken(account, user) {
   const role = (account.loginId === ADMIN_ID) ? 'admin' : account.role;
   return jwt.sign(
@@ -184,417 +24,438 @@ function makeToken(account, user) {
   );
 }
 
-// 이력 객체 생성 헬퍼
 function historyEntry(user, action) {
   return { userId: user.userId, loginId: user.loginId, name: user.name, action, at: now() };
 }
 
-// ════════════════════════════════════════════════════════════════════
-// Auth 미들웨어
-// ════════════════════════════════════════════════════════════════════
 function authOptional(req, res, next) {
   const h = req.headers.authorization;
   if (h?.startsWith('Bearer ')) {
     try {
       const payload = jwt.verify(h.slice(7), JWT_SECRET);
-      // config.adminLoginId 와 일치하면 강제로 admin 적용
       if (payload.loginId === ADMIN_ID) payload.role = 'admin';
       req.user = payload;
     } catch { req.user = null; }
   }
   next();
 }
+
 const authRequired  = (req, res, next) => req.user ? next() : res.status(401).json({ error: '로그인이 필요합니다' });
 const adminRequired = (req, res, next) => {
-  if (!req.user)               return res.status(401).json({ error: '로그인이 필요합니다' });
+  if (!req.user)                return res.status(401).json({ error: '로그인이 필요합니다' });
   if (req.user.role !== 'admin') return res.status(403).json({ error: '관리자 권한이 필요합니다' });
   next();
 };
 
-// ════════════════════════════════════════════════════════════════════
-// Lazy Init — 첫 API 요청 시점에 Drive 초기화
-//
-// 서버(모노서버)가 완전히 listen된 이후 실제 요청이 들어올 때 실행되므로
-// healthcheck 타임아웃 문제가 발생하지 않음
-//
-// _initPromise:
-//   null       → 아직 초기화 안 됨 (첫 요청에서 시작)
-//   Promise    → 초기화 진행 중 또는 완료 (이후 요청은 바로 통과)
-// ════════════════════════════════════════════════════════════════════
-let _initPromise = null;
-
-function ensureInit() {
-  if (_initPromise) return _initPromise;
-  _initPromise = (async () => {
-    // Drive 클라이언트 초기화가 완료될 때까지 대기
-    if (_driveReady) await _driveReady;
-    await pullFromDrive();
-    if (drive) {
-      setInterval(syncToDrive, SYNC_INTERVAL_MS);
-      console.log(`[CampCheck] 🔄 Drive ${SYNC_INTERVAL_MS / 1000}초 동기화 시작`);
-    }
-    console.log('[CampCheck] 🏕️  준비 완료');
-  })().catch(e => {
-    console.error('[CampCheck] 초기화 오류:', e.message);
-    _initPromise = null; // 실패 시 다음 요청에서 재시도
-  });
-  return _initPromise;
-}
-
-// ════════════════════════════════════════════════════════════════════
-// Router
-// ════════════════════════════════════════════════════════════════════
+/* ── Router ───────────────────────────────────────────────────────────── */
 const router = express.Router();
 router.use(express.json());
+router.use(authOptional);
 
-// Lazy Init 미들웨어 — 모든 라우트보다 먼저 등록
-// healthcheck는 여기를 거치지 않으므로 Drive 완료를 기다리지 않음
-router.use((req, res, next) => {
-  ensureInit()
-    .then(() => next())
-    .catch(() => next()); // 초기화 실패해도 요청은 처리 (로컬 데이터로 동작)
+/* ── 상태 ─────────────────────────────────────────────────────────────── */
+router.get('/status', (req, res) => {
+  res.json({ driveEnabled: false, storage: 'postgresql' });
 });
 
-router.use(authOptional); // 모든 요청에 user 첨부 시도
-
-// ── 동기화 상태 ────────────────────────────────────────────────────
-router.get('/status', (req, res) => res.json({
-  driveEnabled:    !!drive,
-  syncStatus,
-  pendingChanges:  [...dirty],
-  lastSyncAt,
-  lastSyncError,
-  lastPullAt,       // 마지막 Drive Pull 성공 시각
-  lastPullError,    // 마지막 Drive Pull 실패 원인
-  syncIntervalSec: SYNC_INTERVAL_MS / 1000,
-}));
-
-// ── 수동 Drive Pull (admin) ─────────────────────────────────────────
-// 서버 시작 시 자동 pull이 실패했거나 데이터가 비어있을 때 수동으로 복원
-router.post('/admin/drive/pull', adminRequired, async (req, res) => {
-  if (!drive) return res.status(400).json({ error: 'Google Drive가 연동되지 않았습니다' });
-  try {
-    await pullFromDrive();
-    _initPromise = null; // 다음 요청에서 ensureInit 재실행 (데이터 갱신 반영)
-    res.json({ ok: true, message: 'Drive에서 데이터 복원 완료', lastPullAt });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── 수동 Drive Push (admin) ────────────────────────────────────────
-// 전체 데이터를 Drive에 강제 업로드
-router.post('/admin/drive/push', adminRequired, async (req, res) => {
-  if (!drive) return res.status(400).json({ error: 'Google Drive가 연동되지 않았습니다' });
-  ['users','items','trips','checks','accounts','comments'].forEach(n => dirty.add(n));
-  try {
-    await syncToDrive();
-    res.json({ ok: true, message: '전체 데이터 Drive 업로드 완료', lastSyncAt });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ════════════════════════════════════════════════════════════════════
-// AUTH
-// ════════════════════════════════════════════════════════════════════
-
-// 회원가입 — 이름+아이디+PW 입력, 기존 user와 자동 연결 또는 신규 생성
+/* ── AUTH ─────────────────────────────────────────────────────────────── */
 router.post('/auth/register', async (req, res) => {
   const { name, loginId, password } = req.body;
   if (!name?.trim() || !loginId?.trim() || !password?.trim())
     return res.status(400).json({ error: '이름, 아이디, 비밀번호를 모두 입력하세요' });
 
-  const accounts = db.read('accounts');
-  if (accounts.find(a => a.loginId === loginId.trim()))
-    return res.status(400).json({ error: '이미 사용 중인 아이디입니다' });
+  try {
+    const { rows: existing } = await pool.query(
+      'SELECT 1 FROM camp_accounts WHERE login_id = $1', [loginId.trim()]
+    );
+    if (existing.length) return res.status(400).json({ error: '이미 사용 중인 아이디입니다' });
 
-  // 같은 이름의 기존 user가 있으면 연결, 없으면 신규 생성
-  const users = db.read('users');
-  let user    = users.find(u => u.name === name.trim());
-  if (!user) {
-    user = { id: uid(), name: name.trim(), color: '#4a7c59', createdAt: now() };
-    users.push(user);
-    db.write('users', users);
+    let { rows: users } = await pool.query(
+      'SELECT * FROM camp_users WHERE name = $1', [name.trim()]
+    );
+    let user = users[0];
+
+    if (!user) {
+      const { rows } = await pool.query(
+        'INSERT INTO camp_users (id, name, color, created_at) VALUES ($1, $2, $3, $4) RETURNING *',
+        [uid(), name.trim(), '#4a7c59', now()]
+      );
+      user = rows[0];
+    } else {
+      const { rows: accRows } = await pool.query(
+        'SELECT 1 FROM camp_accounts WHERE user_id = $1', [user.id]
+      );
+      if (accRows.length) return res.status(400).json({ error: '해당 이름으로 이미 계정이 등록되어 있습니다' });
+    }
+
+    const pwHash = await bcrypt.hash(password, 10);
+    const role   = loginId.trim() === ADMIN_ID ? 'admin' : 'member';
+    const { rows: accRows } = await pool.query(
+      `INSERT INTO camp_accounts (user_id, login_id, pw_hash, role, created_at)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [user.id, loginId.trim(), pwHash, role, now()]
+    );
+    const account = { ...accRows[0], loginId: accRows[0].login_id };
+
+    res.json({
+      token: makeToken(account, user),
+      user: { userId: user.id, loginId: account.loginId, name: user.name, color: user.color, role: account.role }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-
-  // 이미 해당 userId로 계정이 있으면 중복
-  if (accounts.find(a => a.userId === user.id))
-    return res.status(400).json({ error: '해당 이름으로 이미 계정이 등록되어 있습니다' });
-
-  const pwHash  = await bcrypt.hash(password, 10);
-  const role    = loginId.trim() === ADMIN_ID ? 'admin' : 'member';
-  const account = { userId: user.id, loginId: loginId.trim(), pwHash, role, createdAt: now(), lastLoginAt: null };
-  accounts.push(account);
-  db.write('accounts', accounts);
-
-  res.json({ token: makeToken(account, user), user: { userId: user.id, loginId: account.loginId, name: user.name, color: user.color, role: account.role } });
 });
 
-// 로그인
 router.post('/auth/login', async (req, res) => {
   const { loginId, password } = req.body;
   if (!loginId || !password) return res.status(400).json({ error: '아이디와 비밀번호를 입력하세요' });
 
-  const accounts = db.read('accounts');
-  const account  = accounts.find(a => a.loginId === loginId);
-  if (!account || !(await bcrypt.compare(password, account.pwHash)))
-    return res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM camp_accounts WHERE login_id = $1', [loginId]
+    );
+    const account = rows[0];
+    if (!account || !(await bcrypt.compare(password, account.pw_hash)))
+      return res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다' });
 
-  account.lastLoginAt = now();
-  db.write('accounts', accounts);
+    await pool.query(
+      'UPDATE camp_accounts SET last_login_at = $1 WHERE login_id = $2', [now(), loginId]
+    );
 
-  const user = db.read('users').find(u => u.id === account.userId);
-  if (!user) return res.status(500).json({ error: '계정 데이터 오류' });
+    const { rows: userRows } = await pool.query('SELECT * FROM camp_users WHERE id = $1', [account.user_id]);
+    const user = userRows[0];
+    if (!user) return res.status(500).json({ error: '계정 데이터 오류' });
 
-  res.json({ token: makeToken(account, user), user: { userId: user.id, loginId: account.loginId, name: user.name, color: user.color, role: account.role } });
+    const acc = { ...account, loginId: account.login_id };
+    res.json({
+      token: makeToken(acc, user),
+      user: { userId: user.id, loginId: acc.loginId, name: user.name, color: user.color, role: acc.role }
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// 내 정보
 router.get('/auth/me', authRequired, (req, res) => res.json(req.user));
 
-// ════════════════════════════════════════════════════════════════════
-// USERS — 조회 공개, 등록/수정/삭제는 admin
-// ════════════════════════════════════════════════════════════════════
-router.get('/users', (req, res) => {
-  const users    = db.read('users');
-  const accounts = db.read('accounts');
-  const result   = users.map(u => {
-    const acc = accounts.find(a => a.userId === u.id);
-    return { ...u, hasAccount: !!acc, loginId: req.user?.role === 'admin' ? acc?.loginId : undefined };
-  });
-  res.json(result);
+/* ── USERS ────────────────────────────────────────────────────────────── */
+router.get('/users', async (req, res) => {
+  try {
+    const { rows: users }    = await pool.query('SELECT * FROM camp_users ORDER BY created_at');
+    const { rows: accounts } = await pool.query('SELECT * FROM camp_accounts');
+    const result = users.map(u => {
+      const acc = accounts.find(a => a.user_id === u.id);
+      return { ...u, hasAccount: !!acc, loginId: req.user?.role === 'admin' ? acc?.login_id : undefined };
+    });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/users', adminRequired, (req, res) => {
+router.post('/users', adminRequired, async (req, res) => {
   const { name, color } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: '이름을 입력하세요' });
-  const users = db.read('users');
-  const user  = { id: uid(), name: name.trim(), color: color || '#4a7c59', createdAt: now(), createdBy: historyEntry(req.user, '생성') };
-  users.push(user);
-  db.write('users', users);
-  res.json(user);
+  try {
+    const user = { id: uid(), name: name.trim(), color: color || '#4a7c59', created_at: now(), created_by: JSON.stringify(historyEntry(req.user, '생성')) };
+    const { rows } = await pool.query(
+      'INSERT INTO camp_users (id, name, color, created_at, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [user.id, user.name, user.color, user.created_at, user.created_by]
+    );
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/users/:id', adminRequired, (req, res) => {
-  const users = db.read('users');
-  const i     = users.findIndex(u => u.id === req.params.id);
-  if (i < 0) return res.status(404).json({ error: '사용자 없음' });
-  users[i] = { ...users[i], ...req.body, id: users[i].id, updatedBy: historyEntry(req.user, '수정') };
-  db.write('users', users);
-  res.json(users[i]);
+router.put('/users/:id', adminRequired, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'UPDATE camp_users SET name = COALESCE($2, name), color = COALESCE($3, color) WHERE id = $1 RETURNING *',
+      [req.params.id, req.body.name, req.body.color]
+    );
+    if (!rows.length) return res.status(404).json({ error: '사용자 없음' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/users/:id', adminRequired, (req, res) => {
-  db.write('users',    db.read('users').filter(u => u.id !== req.params.id));
-  db.write('items',    db.read('items').filter(i => i.userId !== req.params.id));
-  db.write('accounts', db.read('accounts').filter(a => a.userId !== req.params.id));
-  const trips = db.read('trips');
-  trips.forEach(t => { t.participants = (t.participants || []).filter(p => p !== req.params.id); });
-  db.write('trips', trips);
-  res.json({ ok: true });
+router.delete('/users/:id', adminRequired, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM camp_users WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ════════════════════════════════════════════════════════════════════
-// ITEMS — 조회 공개, 등록/수정/삭제는 본인 or admin
-// ════════════════════════════════════════════════════════════════════
-router.get('/items', (req, res) => {
-  let items = db.read('items');
-  if (req.query.userId) items = items.filter(i => i.userId === req.query.userId);
-  res.json(items);
+/* ── ITEMS ────────────────────────────────────────────────────────────── */
+router.get('/items', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const q = userId
+      ? pool.query('SELECT * FROM camp_items WHERE user_id = $1 ORDER BY created_at', [userId])
+      : pool.query('SELECT * FROM camp_items ORDER BY created_at');
+    const { rows } = await q;
+    res.json(rows.map(r => ({ ...r, userId: r.user_id })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/items', authRequired, (req, res) => {
+router.post('/items', authRequired, async (req, res) => {
   const { userId, name, category, quantity, unit, note } = req.body;
   if (!userId || !name?.trim()) return res.status(400).json({ error: '필수값 누락' });
-  // 본인 아이템 또는 admin
   if (req.user.role !== 'admin' && req.user.userId !== userId)
     return res.status(403).json({ error: '본인 품목만 등록할 수 있습니다' });
-  const items = db.read('items');
-  const item  = { id: uid(), userId, name: name.trim(), category: category || '기타', quantity: Number(quantity) || 1, unit: unit || '개', note: note || '', createdAt: now(), createdBy: historyEntry(req.user, '등록') };
-  items.push(item);
-  db.write('items', items);
-  res.json(item);
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO camp_items (id, user_id, name, category, quantity, unit, note, created_at, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [uid(), userId, name.trim(), category || '기타', Number(quantity) || 1, unit || '개', note || '', now(), JSON.stringify(historyEntry(req.user, '등록'))]
+    );
+    res.json({ ...rows[0], userId: rows[0].user_id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/items/:id', authRequired, (req, res) => {
-  const items = db.read('items');
-  const i     = items.findIndex(x => x.id === req.params.id);
-  if (i < 0) return res.status(404).json({ error: '품목 없음' });
-  if (req.user.role !== 'admin' && req.user.userId !== items[i].userId)
-    return res.status(403).json({ error: '본인 품목만 수정할 수 있습니다' });
-  items[i] = { ...items[i], ...req.body, id: items[i].id, userId: items[i].userId, updatedBy: historyEntry(req.user, '수정') };
-  db.write('items', items);
-  res.json(items[i]);
+router.put('/items/:id', authRequired, async (req, res) => {
+  try {
+    const { rows: cur } = await pool.query('SELECT * FROM camp_items WHERE id = $1', [req.params.id]);
+    if (!cur.length) return res.status(404).json({ error: '품목 없음' });
+    if (req.user.role !== 'admin' && req.user.userId !== cur[0].user_id)
+      return res.status(403).json({ error: '본인 품목만 수정할 수 있습니다' });
+
+    const { name, category, quantity, unit, note } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE camp_items SET
+         name = COALESCE($2, name), category = COALESCE($3, category),
+         quantity = COALESCE($4, quantity), unit = COALESCE($5, unit),
+         note = COALESCE($6, note), updated_by = $7
+       WHERE id = $1 RETURNING *`,
+      [req.params.id, name, category, quantity != null ? Number(quantity) : null, unit, note, JSON.stringify(historyEntry(req.user, '수정'))]
+    );
+    res.json({ ...rows[0], userId: rows[0].user_id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/items/:id', authRequired, (req, res) => {
-  const items = db.read('items');
-  const item  = items.find(x => x.id === req.params.id);
-  if (!item) return res.status(404).json({ error: '품목 없음' });
-  if (req.user.role !== 'admin' && req.user.userId !== item.userId)
-    return res.status(403).json({ error: '본인 품목만 삭제할 수 있습니다' });
-  db.write('items', items.filter(x => x.id !== req.params.id));
-  res.json({ ok: true });
+router.delete('/items/:id', authRequired, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM camp_items WHERE id = $1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: '품목 없음' });
+    if (req.user.role !== 'admin' && req.user.userId !== rows[0].user_id)
+      return res.status(403).json({ error: '본인 품목만 삭제할 수 있습니다' });
+    await pool.query('DELETE FROM camp_items WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ════════════════════════════════════════════════════════════════════
-// TRIPS — 조회 공개, 생성은 로그인, 수정은 로그인+이력, 삭제는 admin만
-// ════════════════════════════════════════════════════════════════════
-router.get('/trips', (req, res) => res.json(db.read('trips')));
+/* ── TRIPS ────────────────────────────────────────────────────────────── */
+function tripRow(r) {
+  return {
+    id: r.id, name: r.name, startDate: r.start_date, endDate: r.end_date,
+    location: r.location, note: r.note, participants: r.participants,
+    createdAt: r.created_at, createdBy: r.created_by, history: r.history,
+  };
+}
 
-router.post('/trips', authRequired, (req, res) => {
+router.get('/trips', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM camp_trips ORDER BY start_date DESC');
+    res.json(rows.map(tripRow));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/trips', authRequired, async (req, res) => {
   const { name, startDate, endDate, location, note, participants } = req.body;
   if (!name?.trim() || !startDate) return res.status(400).json({ error: '필수값 누락' });
-  const trips = db.read('trips');
-  const trip  = {
-    id: uid(), name: name.trim(), startDate, endDate: endDate || startDate,
-    location: location || '', note: note || '', participants: participants || [],
-    createdAt: now(),
-    createdBy: historyEntry(req.user, '생성'),
-    history:   [historyEntry(req.user, '생성')],
-  };
-  trips.push(trip);
-  db.write('trips', trips);
-  res.json(trip);
+  const entry = historyEntry(req.user, '생성');
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO camp_trips (id, name, start_date, end_date, location, note, participants, created_at, created_by, history)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [uid(), name.trim(), startDate, endDate || startDate, location || '', note || '',
+       JSON.stringify(participants || []), now(), JSON.stringify(entry), JSON.stringify([entry])]
+    );
+    res.json(tripRow(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/trips/:id', authRequired, (req, res) => {
-  const trips = db.read('trips');
-  const i     = trips.findIndex(t => t.id === req.params.id);
-  if (i < 0) return res.status(404).json({ error: '일정 없음' });
+router.put('/trips/:id', authRequired, async (req, res) => {
+  try {
+    const { rows: cur } = await pool.query('SELECT * FROM camp_trips WHERE id = $1', [req.params.id]);
+    if (!cur.length) return res.status(404).json({ error: '일정 없음' });
+    const t = cur[0];
 
-  // 일반 유저: 실제 삭제 불가, 'note에 취소됨' 처리는 프론트에서 PUT으로 요청
-  const entry = historyEntry(req.user, req.body._action || '수정');
-  trips[i] = {
-    ...trips[i], ...req.body,
-    id: trips[i].id,
-    createdBy: trips[i].createdBy,
-    history: [...(trips[i].history || []), entry],
-    _action: undefined,
-  };
-  db.write('trips', trips);
-  res.json(trips[i]);
+    const entry   = historyEntry(req.user, req.body._action || '수정');
+    const history = [...(t.history || []), entry];
+    const { name, startDate, endDate, location, note, participants } = req.body;
+
+    const { rows } = await pool.query(
+      `UPDATE camp_trips SET
+         name = COALESCE($2, name),
+         start_date = COALESCE($3, start_date),
+         end_date = COALESCE($4, end_date),
+         location = COALESCE($5, location),
+         note = COALESCE($6, note),
+         participants = COALESCE($7, participants),
+         history = $8
+       WHERE id = $1 RETURNING *`,
+      [req.params.id, name, startDate, endDate, location, note,
+       participants ? JSON.stringify(participants) : null, JSON.stringify(history)]
+    );
+    res.json(tripRow(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 실제 삭제는 admin만
-router.delete('/trips/:id', adminRequired, (req, res) => {
-  db.write('trips', db.read('trips').filter(t => t.id !== req.params.id));
-  const checks = db.read('checks'); delete checks[req.params.id]; db.write('checks', checks);
-  db.write('comments', db.read('comments').filter(c => c.tripId !== req.params.id));
-  res.json({ ok: true });
+router.delete('/trips/:id', adminRequired, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM camp_trips WHERE id = $1', [req.params.id]);
+    await pool.query('DELETE FROM camp_checks WHERE trip_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM camp_comments WHERE trip_id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 일정 참여/탈퇴 (로그인 사용자 본인 기준)
-router.put('/trips/:id/join', authRequired, (req, res) => {
-  const trips = db.read('trips');
-  const i     = trips.findIndex(t => t.id === req.params.id);
-  if (i < 0) return res.status(404).json({ error: '일정 없음' });
-  const parts = new Set(trips[i].participants || []);
-  parts.add(req.user.userId);
-  trips[i].participants = [...parts];
-  trips[i].history = [...(trips[i].history || []), historyEntry(req.user, '참여')];
-  db.write('trips', trips);
-  res.json(trips[i]);
+router.put('/trips/:id/join', authRequired, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM camp_trips WHERE id = $1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: '일정 없음' });
+    const t       = rows[0];
+    const parts   = new Set(t.participants || []);
+    parts.add(req.user.userId);
+    const history = [...(t.history || []), historyEntry(req.user, '참여')];
+    const { rows: updated } = await pool.query(
+      'UPDATE camp_trips SET participants = $2, history = $3 WHERE id = $1 RETURNING *',
+      [req.params.id, JSON.stringify([...parts]), JSON.stringify(history)]
+    );
+    res.json(tripRow(updated[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/trips/:id/join', authRequired, (req, res) => {
-  const trips = db.read('trips');
-  const i     = trips.findIndex(t => t.id === req.params.id);
-  if (i < 0) return res.status(404).json({ error: '일정 없음' });
-  trips[i].participants = (trips[i].participants || []).filter(p => p !== req.user.userId);
-  trips[i].history = [...(trips[i].history || []), historyEntry(req.user, '참여 취소')];
-  db.write('trips', trips);
-  res.json(trips[i]);
+router.delete('/trips/:id/join', authRequired, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM camp_trips WHERE id = $1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: '일정 없음' });
+    const t       = rows[0];
+    const parts   = (t.participants || []).filter(p => p !== req.user.userId);
+    const history = [...(t.history || []), historyEntry(req.user, '참여 취소')];
+    const { rows: updated } = await pool.query(
+      'UPDATE camp_trips SET participants = $2, history = $3 WHERE id = $1 RETURNING *',
+      [req.params.id, JSON.stringify(parts), JSON.stringify(history)]
+    );
+    res.json(tripRow(updated[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ════════════════════════════════════════════════════════════════════
-// CHECKS — 조회 공개, 수정은 본인 또는 admin
-// ════════════════════════════════════════════════════════════════════
-router.get('/trips/:tripId/checks', (req, res) => {
-  res.json(db.read('checks')[req.params.tripId] || {});
+/* ── CHECKS ───────────────────────────────────────────────────────────── */
+router.get('/trips/:tripId/checks', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM camp_checks WHERE trip_id = $1', [req.params.tripId]
+    );
+    const result = {};
+    rows.forEach(r => {
+      (result[r.user_id] ??= {})[r.item_id] = { planned: r.planned, packed: r.packed };
+    });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/trips/:tripId/checks', authRequired, (req, res) => {
+router.put('/trips/:tripId/checks', authRequired, async (req, res) => {
   const { userId, itemId, planned, packed } = req.body;
   if (!userId || !itemId) return res.status(400).json({ error: '필수값 누락' });
   if (req.user.role !== 'admin' && req.user.userId !== userId)
     return res.status(403).json({ error: '본인 체크리스트만 수정할 수 있습니다' });
-  const checks = db.read('checks');
-  const tc     = (checks[req.params.tripId] ??= {});
-  const uc     = (tc[userId] ??= {});
-  const cur    = uc[itemId] ?? { planned: false, packed: false };
-  uc[itemId]   = {
-    planned: planned !== undefined ? Boolean(planned) : cur.planned,
-    packed:  packed  !== undefined ? Boolean(packed)  : cur.packed,
+  try {
+    const { rows: cur } = await pool.query(
+      'SELECT * FROM camp_checks WHERE trip_id=$1 AND user_id=$2 AND item_id=$3',
+      [req.params.tripId, userId, itemId]
+    );
+    const prev = cur[0] || { planned: false, packed: false };
+    await pool.query(
+      `INSERT INTO camp_checks (trip_id, user_id, item_id, planned, packed)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (trip_id, user_id, item_id)
+       DO UPDATE SET planned = EXCLUDED.planned, packed = EXCLUDED.packed`,
+      [req.params.tripId, userId, itemId,
+       planned !== undefined ? Boolean(planned) : prev.planned,
+       packed  !== undefined ? Boolean(packed)  : prev.packed]
+    );
+    const { rows: all } = await pool.query(
+      'SELECT * FROM camp_checks WHERE trip_id = $1', [req.params.tripId]
+    );
+    const result = {};
+    all.forEach(r => {
+      (result[r.user_id] ??= {})[r.item_id] = { planned: r.planned, packed: r.packed };
+    });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── COMMENTS ─────────────────────────────────────────────────────────── */
+function commentRow(r) {
+  return {
+    id: r.id, tripId: r.trip_id, parentId: r.parent_id, depth: r.depth,
+    authorId: r.author_id, authorName: r.author_name, content: r.content,
+    createdAt: r.created_at, updatedAt: r.updated_at, edited: r.edited,
   };
-  db.write('checks', checks);
-  res.json(tc);
+}
+
+router.get('/comments', async (req, res) => {
+  try {
+    const { tripId } = req.query;
+    const q = tripId
+      ? pool.query('SELECT * FROM camp_comments WHERE trip_id = $1 ORDER BY created_at', [tripId])
+      : pool.query('SELECT * FROM camp_comments ORDER BY created_at');
+    const { rows } = await q;
+    res.json(rows.map(commentRow));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ════════════════════════════════════════════════════════════════════
-// COMMENTS — 조회 공개, 작성/수정은 로그인, 삭제는 admin
-// ════════════════════════════════════════════════════════════════════
-router.get('/comments', (req, res) => {
-  const { tripId } = req.query;
-  const comments   = db.read('comments');
-  res.json(tripId ? comments.filter(c => c.tripId === tripId) : comments);
-});
-
-router.post('/comments', authRequired, (req, res) => {
+router.post('/comments', authRequired, async (req, res) => {
   const { tripId, parentId, content } = req.body;
   if (!tripId || !content?.trim()) return res.status(400).json({ error: '필수값 누락' });
-
   let depth = 0;
-  if (parentId) {
-    const parent = db.read('comments').find(c => c.id === parentId);
-    if (!parent) return res.status(404).json({ error: '부모 댓글 없음' });
-    if (parent.depth >= 2) return res.status(400).json({ error: '3차 대댓글까지만 작성 가능합니다' });
-    depth = parent.depth + 1;
-  }
-
-  const comments = db.read('comments');
-  const comment  = {
-    id: uid(), tripId, parentId: parentId || null, depth,
-    authorId: req.user.userId, authorName: req.user.name,
-    content:  content.trim(),
-    createdAt: now(), updatedAt: now(), edited: false,
-  };
-  comments.push(comment);
-  db.write('comments', comments);
-  res.json(comment);
+  try {
+    if (parentId) {
+      const { rows } = await pool.query('SELECT depth FROM camp_comments WHERE id = $1', [parentId]);
+      if (!rows.length) return res.status(404).json({ error: '부모 댓글 없음' });
+      if (rows[0].depth >= 2) return res.status(400).json({ error: '3차 대댓글까지만 작성 가능합니다' });
+      depth = rows[0].depth + 1;
+    }
+    const ts = now();
+    const { rows } = await pool.query(
+      `INSERT INTO camp_comments (id, trip_id, parent_id, depth, author_id, author_name, content, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING *`,
+      [uid(), tripId, parentId || null, depth, req.user.userId, req.user.name, content.trim(), ts]
+    );
+    res.json(commentRow(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 수정 — 본인 or admin (삭제 없음, 수정만)
-router.put('/comments/:id', authRequired, (req, res) => {
+router.put('/comments/:id', authRequired, async (req, res) => {
   const { content } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: '내용을 입력하세요' });
+  try {
+    const { rows: cur } = await pool.query('SELECT * FROM camp_comments WHERE id = $1', [req.params.id]);
+    if (!cur.length) return res.status(404).json({ error: '댓글 없음' });
+    if (req.user.role !== 'admin' && req.user.userId !== cur[0].author_id)
+      return res.status(403).json({ error: '본인 댓글만 수정할 수 있습니다' });
 
-  const comments = db.read('comments');
-  const i        = comments.findIndex(c => c.id === req.params.id);
-  if (i < 0) return res.status(404).json({ error: '댓글 없음' });
-  if (req.user.role !== 'admin' && req.user.userId !== comments[i].authorId)
-    return res.status(403).json({ error: '본인 댓글만 수정할 수 있습니다' });
-
-  comments[i].content   = content.trim();
-  comments[i].updatedAt = now();
-  comments[i].edited    = true;
-  db.write('comments', comments);
-  res.json(comments[i]);
+    const { rows } = await pool.query(
+      'UPDATE camp_comments SET content=$2, updated_at=$3, edited=true WHERE id=$1 RETURNING *',
+      [req.params.id, content.trim(), now()]
+    );
+    res.json(commentRow(rows[0]));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 삭제 — admin 전용
-router.delete('/comments/:id', adminRequired, (req, res) => {
-  const comments = db.read('comments');
-  // 자식 댓글도 함께 삭제
-  const toDelete = new Set();
-  function collectIds(id) {
-    toDelete.add(id);
-    comments.filter(c => c.parentId === id).forEach(c => collectIds(c.id));
-  }
-  collectIds(req.params.id);
-  db.write('comments', comments.filter(c => !toDelete.has(c.id)));
-  res.json({ ok: true, deleted: [...toDelete].length });
+router.delete('/comments/:id', adminRequired, async (req, res) => {
+  try {
+    const { rows: withParent } = await pool.query('SELECT id, parent_id FROM camp_comments');
+    const toDelete = new Set();
+    function collectTree(id) {
+      toDelete.add(id);
+      withParent.filter(r => r.parent_id === id).forEach(c => collectTree(c.id));
+    }
+    collectTree(req.params.id);
+
+    if (toDelete.size) {
+      const ids = [...toDelete];
+      await pool.query(`DELETE FROM camp_comments WHERE id = ANY($1)`, [ids]);
+    }
+    res.json({ ok: true, deleted: toDelete.size });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

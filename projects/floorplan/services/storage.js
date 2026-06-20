@@ -1,63 +1,69 @@
-const config  = require('../config');
-const gdrive  = require('./gdrive');
-const local   = require('./local');
+/**
+ * projects/floorplan/services/storage.js
+ * 데이터 저장소: PostgreSQL (floorplan_templates, floorplan_categories)
+ */
+const pool = require('../../../shared/db');
 
-const USE_DRIVE = () => !!config.gdriveFolderId && gdrive.getDrive();
-
-// ── 평면도 (templates 서브폴더) ─────────────────────
-const TEMPLATES = 'templates';
-const CATS_FILE = 'categories.json';
-const CATS_DIR  = 'config';
-
+/* ── 평면도 ─────────────────────────────────────────────────────────── */
 async function listFloorplans() {
-  if (USE_DRIVE()) {
-    const files = await gdrive.listFiles(TEMPLATES);
-    return files.map(f => ({ id: f.id, name: f.name.replace(/\.fpd$/, ''), modifiedTime: f.modifiedTime }));
-  }
-  return local.listFiles(TEMPLATES).map(f => ({
-    id: f.name, name: f.name.replace(/\.fpd$|\.json$/, ''), modifiedTime: f.modifiedTime
-  }));
+  const { rows } = await pool.query(
+    'SELECT id, name, modified_at FROM floorplan_templates ORDER BY modified_at DESC'
+  );
+  return rows.map(r => ({ id: r.id, name: r.name, modifiedTime: r.modified_at }));
 }
 
 async function getFloorplan(id) {
-  if (USE_DRIVE()) {
-    const raw = await gdrive.readFile(id);
-    return typeof raw === 'string' ? JSON.parse(raw) : raw;
-  }
-  return local.readFile(TEMPLATES, id);
+  const { rows } = await pool.query(
+    'SELECT data FROM floorplan_templates WHERE id = $1', [id]
+  );
+  if (!rows.length) throw new Error('평면도 없음: ' + id);
+  return rows[0].data;
 }
 
 async function saveFloorplan(name, data) {
-  const fileName = name.endsWith('.fpd') ? name : name + '.fpd';
-  if (USE_DRIVE()) return gdrive.saveFile(TEMPLATES, fileName, data);
-  local.saveFile(TEMPLATES, fileName, data);
-  return fileName;
+  const id = name.endsWith('.fpd') ? name : name + '.fpd';
+  await pool.query(
+    `INSERT INTO floorplan_templates (id, name, data, modified_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (id)
+     DO UPDATE SET name = $2, data = $3, modified_at = NOW()`,
+    [id, name.replace(/\.fpd$/, ''), JSON.stringify(data)]
+  );
+  return id;
 }
 
 async function deleteFloorplan(id) {
-  if (USE_DRIVE()) return gdrive.deleteFile(id);
-  local.deleteFile(TEMPLATES, id);
+  await pool.query('DELETE FROM floorplan_templates WHERE id = $1', [id]);
 }
 
-// ── 카테고리 ────────────────────────────────────────
+/* ── 카테고리 ────────────────────────────────────────────────────────── */
 async function getCategories() {
-  try {
-    if (USE_DRIVE()) {
-      const files = await gdrive.listFiles(CATS_DIR);
-      const cf = files.find(f => f.name === CATS_FILE);
-      if (!cf) return getDefaultCategories();
-      const raw = await gdrive.readFile(cf.id);
-      return typeof raw === 'string' ? JSON.parse(raw) : raw;
-    }
-    return local.readFile(CATS_DIR, CATS_FILE);
-  } catch {
-    return getDefaultCategories();
-  }
+  const { rows } = await pool.query(
+    'SELECT id, name, items FROM floorplan_categories ORDER BY sort_order'
+  );
+  if (!rows.length) return getDefaultCategories();
+  return rows;
 }
 
-async function saveCategories(data) {
-  if (USE_DRIVE()) return gdrive.saveFile(CATS_DIR, CATS_FILE, data);
-  local.saveFile(CATS_DIR, CATS_FILE, data);
+async function saveCategories(cats) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM floorplan_categories');
+    for (let i = 0; i < cats.length; i++) {
+      const c = cats[i];
+      await client.query(
+        'INSERT INTO floorplan_categories (id, name, items, sort_order) VALUES ($1,$2,$3,$4)',
+        [c.id, c.name, JSON.stringify(c.items || []), i]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 function getDefaultCategories() {

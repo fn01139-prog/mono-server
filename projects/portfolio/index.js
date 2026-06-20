@@ -1,14 +1,11 @@
 /**
  * projects/portfolio/index.js
- * 기존 namecard server.js (순수 http) → Express Router로 이식
  * → /portfolio/api/* 로 마운트됨
- *
- * 뷰어 SPA 라우팅 (/portfolio/:pageId) 은 loader.js의 catch-all로 처리
+ * 데이터 저장소: PostgreSQL (portfolio_pages 테이블)
  */
 const express = require('express');
-const fs      = require('fs');
-const path    = require('path');
 const crypto  = require('crypto');
+const pool    = require('../../shared/db');
 const router  = express.Router();
 
 /* ── 인증 헬퍼 ────────────────────────────────────────────────────────── */
@@ -33,43 +30,12 @@ function requireAuth(req, res, next) {
   next();
 }
 
-const DATA_FILE = path.join(__dirname, 'data', 'pages.json');
-
-// ─── 데이터 헬퍼 ─────────────────────────────────────────────
-function readPages() {
-  try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8')); }
-  catch (e) { return []; }
-}
-
-function writePages(pages) {
-  const dir = path.dirname(DATA_FILE);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(pages, null, 2), 'utf-8');
-}
-
-// 초기 샘플 데이터 생성
-function ensureDataFile() {
-  if (fs.existsSync(DATA_FILE)) return;
-  const sample = [
-    {
-      id: 'sample1', person: 'user', num: 1, template: 'profile', status: 'published',
-      contents: [
-        { type: 'greeting', data: { name: '이름', title: '직함', bio: '자기소개' } },
-        { type: 'skills',   data: { tags: ['JavaScript', 'Node.js', 'SAP ABAP'] } },
-        { type: 'contact',  data: { email: 'email@example.com', phone: '', links: [] } },
-      ]
-    }
-  ];
-  writePages(sample);
-}
-ensureDataFile();
-
-// ─── 헬스체크 ────────────────────────────────────────────────
+/* ── 헬스체크 ─────────────────────────────────────────────────────────── */
 router.get('/health', (req, res) => {
   res.json({ success: true, project: 'portfolio', time: new Date() });
 });
 
-// ─── 인증 ────────────────────────────────────────────────────
+/* ── 인증 ─────────────────────────────────────────────────────────────── */
 router.get('/auth/check', (req, res) => {
   res.json({ required: !!getPassword() });
 });
@@ -89,67 +55,83 @@ router.post('/auth', (req, res) => {
   res.json({ success: true, token: makeToken(pwd) });
 });
 
-// ─── GET /portfolio/api/pages ─────────────────────────────────
-router.get('/pages', (req, res) => {
-  res.json(readPages());
+/* ── GET /portfolio/api/pages ─────────────────────────────────────────── */
+router.get('/pages', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, person, num, template, status, contents FROM portfolio_pages ORDER BY num'
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ─── GET /portfolio/api/pages/:id ────────────────────────────
-router.get('/pages/:id', (req, res) => {
-  const page = readPages().find(p => p.id === req.params.id);
-  if (!page) return res.status(404).json({ error: 'Page not found' });
-  res.json(page);
+/* ── GET /portfolio/api/pages/:id ────────────────────────────────────── */
+router.get('/pages/:id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, person, num, template, status, contents FROM portfolio_pages WHERE id = $1',
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Page not found' });
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ─── POST /portfolio/api/pages ────────────────────────────────
-router.post('/pages', requireAuth, (req, res) => {
-  const body  = req.body;
-  const pages = readPages();
-
-  if (!body.id || !body.person || !body.num)
+/* ── POST /portfolio/api/pages ───────────────────────────────────────── */
+router.post('/pages', requireAuth, async (req, res) => {
+  const { id, person, num, template, status, contents } = req.body;
+  if (!id || !person || !num)
     return res.status(400).json({ error: 'Missing required fields' });
-  if (pages.find(p => p.id === body.id))
-    return res.status(409).json({ error: 'Page already exists' });
-
-  const newPage = {
-    id:       body.id,
-    person:   body.person,
-    num:      body.num,
-    template: body.template || 'profile',
-    status:   body.status   || 'draft',
-    contents: body.contents || [{ type: 'greeting', data: { name: '', title: '', bio: '' } }],
-  };
-  pages.push(newPage);
-  writePages(pages);
-  res.status(201).json(newPage);
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO portfolio_pages (id, person, num, template, status, contents)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, person, num, template, status, contents`,
+      [id, person, num, template || 'profile', status || 'draft', JSON.stringify(contents || [])]
+    );
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'Page already exists' });
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ─── PUT /portfolio/api/pages/:id ────────────────────────────
-router.put('/pages/:id', requireAuth, (req, res) => {
-  const pages = readPages();
-  const idx   = pages.findIndex(p => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Page not found' });
-
-  const body = req.body;
-  pages[idx] = {
-    ...pages[idx],
-    template: body.template ?? pages[idx].template,
-    status:   body.status   ?? pages[idx].status,
-    contents: body.contents ?? pages[idx].contents,
-  };
-  writePages(pages);
-  res.json(pages[idx]);
+/* ── PUT /portfolio/api/pages/:id ────────────────────────────────────── */
+router.put('/pages/:id', requireAuth, async (req, res) => {
+  const { template, status, contents } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE portfolio_pages
+       SET template   = COALESCE($2, template),
+           status     = COALESCE($3, status),
+           contents   = COALESCE($4, contents),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, person, num, template, status, contents`,
+      [req.params.id, template, status, contents ? JSON.stringify(contents) : null]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Page not found' });
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
-// ─── DELETE /portfolio/api/pages/:id ─────────────────────────
-router.delete('/pages/:id', requireAuth, (req, res) => {
-  let pages = readPages();
-  const idx = pages.findIndex(p => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Page not found' });
-
-  pages.splice(idx, 1);
-  writePages(pages);
-  res.json({ success: true });
+/* ── DELETE /portfolio/api/pages/:id ─────────────────────────────────── */
+router.delete('/pages/:id', requireAuth, async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(
+      'DELETE FROM portfolio_pages WHERE id = $1', [req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Page not found' });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

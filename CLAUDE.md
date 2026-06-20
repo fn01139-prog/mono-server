@@ -14,6 +14,12 @@ npm run dev
 # Production
 npm start          # node app.js
 npm run pm2        # via PM2 process manager
+
+# DB 마이그레이션 (테이블 생성, 최초 1회)
+node scripts/migrate.js
+
+# 기존 JSON 파일 → PostgreSQL 시딩 (최초 1회)
+node scripts/seed.js
 ```
 
 No test or lint scripts are configured.
@@ -50,11 +56,12 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 
 | Prefix | Description | Notes |
 |--------|-------------|-------|
-| `/mdboard` | Markdown document platform | File CRUD + image upload via multer |
-| `/portfolio` | Personal portfolio page builder | SPA mode; JSON file persistence |
+| `/mdboard` | Markdown document platform | File CRUD + image upload via multer; Google Drive 백업 |
+| `/portfolio` | Personal portfolio page builder | SPA mode; **PostgreSQL** (`portfolio_pages`) |
 | `/aptloan` | 아파트 대출 계산기 | SPA mode; 입주비용·중도금이자·대출 상환 시뮬레이터 |
-| `/floorplan` | 평면도 그리기 | SPA mode; Google Drive 연동, 관리자 토큰 인증 |
-| `/travellog` | 여행 계획 및 기록 관리 | SPA mode; 지도·계획·기록 기능 |
+| `/floorplan` | 평면도 그리기 | SPA mode; **PostgreSQL** (`floorplan_templates`, `floorplan_categories`); 관리자 토큰 인증 |
+| `/travellog` | 여행 계획 및 기록 관리 | SPA mode; **PostgreSQL** (`travel_*`); 사진 파일은 Google Drive |
+| `/campchecklist` | 캠핑 체크리스트 | JWT 인증; **PostgreSQL** (`camp_*`) |
 
 ### Custom Routes (`config.customRoutes`)
 
@@ -94,13 +101,17 @@ mdboard와 portfolio 모두 동일한 인증 패턴을 사용한다.
 | `PORT` | `3000` | Server listen port |
 | `NODE_ENV` | `development` | Environment flag |
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS allowed origins (comma-separated) |
+| `DATABASE_URL` | (필수) | PostgreSQL 연결 문자열 (Railway 자동 주입) |
 | `MDBOARD_PASSWORD` | (없음) | mdboard 에디터 인증 비밀번호 |
 | `PORTFOLIO_PASSWORD` | (없음) | portfolio `/studio` 관리자 인증 비밀번호 |
 | `ADMIN_TOKENS` | (없음) | floorplan 관리자 토큰 (쉼표 구분, 복수 가능) |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | `./credentials/gdrive-service-account.json` | floorplan Google Drive 서비스 계정 키 경로 |
-| `GDRIVE_FOLDER_ID` | (없음) | floorplan Google Drive 저장 폴더 ID |
-| `USE_LOCAL_FALLBACK` | `true` | floorplan Drive 미설정 시 로컬 파일 폴백 여부 |
-| `LOCAL_DATA_DIR` | `./data` | floorplan 로컬 폴백 데이터 디렉토리 |
+| `JWT_SECRET` | `campcheck-dev-secret-change-in-prod` | campchecklist JWT 서명 키 |
+| `GOOGLE_SERVICE_ACCOUNT` | (없음) | travellog Drive 서비스 계정 JSON (base64) |
+| `DRIVE_FOLDER_ID` | (없음) | travellog 사진 업로드 Drive 폴더 ID |
+| `GDRIVE_CLIENT_ID` | (없음) | campchecklist Drive OAuth2 클라이언트 ID |
+| `GDRIVE_CLIENT_SECRET` | (없음) | campchecklist Drive OAuth2 시크릿 |
+| `GDRIVE_REFRESH_TOKEN` | (없음) | campchecklist Drive OAuth2 리프레시 토큰 |
+| `GDRIVE_FOLDER_ID` | (없음) | campchecklist Drive 폴더 ID |
 
 ### Deployment
 
