@@ -235,6 +235,9 @@
   ═══════════════════════════════════════════════ -->
   <header class="shell-header">
 
+    <!-- 햄버거 버튼 (모바일 전용) -->
+    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="메뉴">☰</button>
+
     <!-- 로고 -->
     <a class="header-logo" href="/" onclick="loadHome(); return false;" title="홈으로">
       <div class="logo-icon">📚</div>
@@ -446,6 +449,9 @@
   </main>
 
 </div><!-- /shell -->
+
+<!-- 사이드바 오버레이 (모바일) -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
 <!-- 모니터 패널 -->
 <div class="monitor-panel" id="monitorPanel"></div>
@@ -677,7 +683,8 @@ function openView(name) {
   setActiveItem(name);
   showIframe(`./include/view.html?file=${encodeURIComponent(name)}`);
   currentMode = 'view';
-  document.getElementById('headerFileInfo').textContent = name + '.md';
+  document.getElementById('headerFileInfo').textContent = name.replace(/\.md$/i, '');
+  closeSidebar();
 }
 
 /* ── 에디터 열기 ──────────────────────────────────────────────────── */
@@ -693,11 +700,12 @@ function openEditor(name) {
   currentMode = 'editor';
   if (name) {
     setActiveItem(name);
-    document.getElementById('headerFileInfo').textContent = '편집: ' + name + '.md';
+    document.getElementById('headerFileInfo').textContent = '편집: ' + name.replace(/\.md$/i, '');
   } else {
     setActiveItem(null);
     document.getElementById('headerFileInfo').textContent = '새 문서';
   }
+  closeSidebar();
 }
 
 /* ── 홈 복귀 ──────────────────────────────────────────────────────── */
@@ -796,6 +804,26 @@ function escHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/* ── 사이드바 토글 (모바일) ──────────────────────────────────────────── */
+function toggleSidebar() {
+  const sidebar = document.querySelector('.shell-sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  if (sidebar.classList.contains('open')) {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('show');
+  } else {
+    sidebar.classList.add('open');
+    overlay.classList.add('show');
+  }
+}
+
+function closeSidebar() {
+  const sidebar = document.querySelector('.shell-sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  if (sidebar) sidebar.classList.remove('open');
+  if (overlay) overlay.classList.remove('show');
 }
 </script>
 

@@ -9,6 +9,7 @@ const path    = require('path');
 const multer  = require('multer');
 const os      = require('os');
 const crypto  = require('crypto');
+const { Marp } = require('@marp-team/marp-core');
 const drive   = require('./drive');
 const router  = express.Router();
 
@@ -204,6 +205,82 @@ router.get('/stats', (req, res) => {
       hostname: os.hostname(), timestamp: new Date().toISOString()
     });
   } catch (err) { res.status(500).json({ success: false, error: err.message }); }
+});
+
+/* ── Marp HTML 내보내기 ─────────────────────────────────────────────────── */
+router.get('/export/html/:name', (req, res) => {
+  try {
+    const name = req.params.name;
+    if (!name.endsWith('.md')) return res.status(400).json({ error: 'Only .md files' });
+    const filePath = safePath(name);
+    if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    const marp = new Marp({ html: true });
+    const { html, css } = marp.render(content);
+    const title = name.replace(/\.md$/i, '');
+
+    const fullHtml = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<style>${css}</style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+
+    const outputName = title + '.html';
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(outputName)}`);
+    res.send(fullHtml);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ── Marp PDF 내보내기 (브라우저 인쇄 → PDF) ───────────────────────────── */
+router.get('/export/pdf/:name', (req, res) => {
+  try {
+    const name = req.params.name;
+    if (!name.endsWith('.md')) return res.status(400).json({ error: 'Only .md files' });
+    const filePath = safePath(name);
+    if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    const marp = new Marp({ html: true });
+    const { html, css } = marp.render(content);
+    const title = name.replace(/\.md$/i, '');
+
+    const fullHtml = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+${css}
+@media print {
+  @page { margin: 0; size: A4 landscape; }
+  body { margin: 0; }
+}
+</style>
+</head>
+<body>
+${html}
+<script>
+window.onload = function() { setTimeout(function() { window.print(); }, 400); };
+</script>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(fullHtml);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/upload-image', requireAuth, upload.single('image'), (req, res) => {

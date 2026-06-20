@@ -56,9 +56,10 @@ function renderMarkdown(data) {
 
   // 메타 정보
   if (meta) {
+    const displayName = data.name.replace(/\.md$/i, '');
     meta.innerHTML = `
       <span class="doc-tag-bar"></span>
-      <span>${data.name}.md</span>
+      <span>${displayName}</span>
       <span>·</span>
       <span>수정: ${formatDate(data.modified, true)}</span>
       <span>·</span>
@@ -211,6 +212,24 @@ window.addEventListener('message', (e) => {
   }
 });
 
+/* ── Marp 내보내기 ─────────────────────────────────────────────────────── */
+function exportMarp(format) {
+  if (!currentFile) {
+    showToast('먼저 문서를 선택하세요.', 'error');
+    return;
+  }
+  const url = `/mdboard/api/export/${format}/${encodeURIComponent(currentFile)}`;
+  if (format === 'html') {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = currentFile.replace(/\.md$/i, '.html');
+    a.click();
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
 /* 전역 노출 */
 window.editFile   = editFile;
 window.applyTheme = applyTheme;
+window.exportMarp = exportMarp;

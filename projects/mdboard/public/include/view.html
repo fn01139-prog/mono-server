@@ -38,6 +38,14 @@
       <button class="view-action-btn" onclick="editFile()">
         <span class="ico">✏️</span><span class="btn-label"> 편집</span>
       </button>
+      <!-- Marp HTML 다운로드 -->
+      <button class="view-action-btn" onclick="exportMarp('html')" title="Marp HTML로 다운로드">
+        <span class="ico">📄</span><span class="btn-label"> HTML</span>
+      </button>
+      <!-- Marp PDF 다운로드 -->
+      <button class="view-action-btn" onclick="exportMarp('pdf')" title="Marp PDF로 저장 (인쇄 대화상자)">
+        <span class="ico">🖨️</span><span class="btn-label"> PDF</span>
+      </button>
       <!-- 파워포인트 다운로드 -->
       <button class="view-action-btn ppt-btn" data-md-file="" id="downPowerPoint">
 	<span class="ico">💾</span><span class="btn-label"> PowerPoint</span>
