@@ -574,6 +574,7 @@ function applyAdminMode(on) {
   document.getElementById('admin-badge').style.display = on ? '' : 'none';
   document.getElementById('login-btn').textContent = on ? '🔓 로그아웃' : '🔑 관리자';
   document.querySelector('.admin-save-tab').style.display = on ? '' : 'none';
+  checkEmptyState();
   if (on) {
     loadServerFPList();
   }
@@ -814,7 +815,7 @@ function loadState(data) {
 }
 
 function checkEmptyState() {
-  const empty = walls.length===0 && furns.length===0 && labels.length===0;
+  const empty = !isAdmin && walls.length===0 && furns.length===0 && labels.length===0;
   const el = document.getElementById('empty-state');
   el.style.display = empty ? 'flex' : 'none';
 }
