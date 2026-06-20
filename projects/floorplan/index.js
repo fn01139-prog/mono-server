@@ -37,19 +37,18 @@ router.get('/health', (req, res) => {
 });
 
 /* ── 인증 확인 ────────────────────────────────────────────────────────── */
-router.get('/api/auth/check', (req, res) => {
+router.get('/auth/check', (req, res) => {
   res.json({ ok: true, required: getAdminTokens().length > 0 });
 });
 
-router.post('/api/auth/verify', (req, res) => {
+router.post('/auth/verify', (req, res) => {
   const { token } = req.body || {};
   if (!token) return res.json({ ok: true, isAdmin: false });
   res.json({ ok: true, isAdmin: verifyToken(token) });
 });
 
 /* ── 평면도 CRUD ──────────────────────────────────────────────────────── */
-// GET /floorplan/api/floorplans
-router.get('/api/floorplans', async (req, res) => {
+router.get('/floorplans', async (req, res) => {
   try {
     const list = await storage.listFloorplans();
     res.json({ ok: true, data: list });
@@ -58,8 +57,7 @@ router.get('/api/floorplans', async (req, res) => {
   }
 });
 
-// GET /floorplan/api/floorplans/:id
-router.get('/api/floorplans/:id', async (req, res) => {
+router.get('/floorplans/:id', async (req, res) => {
   try {
     const data = await storage.getFloorplan(req.params.id);
     res.json({ ok: true, data });
@@ -68,8 +66,7 @@ router.get('/api/floorplans/:id', async (req, res) => {
   }
 });
 
-// POST /floorplan/api/floorplans  (관리자 전용)
-router.post('/api/floorplans', requireAdmin, async (req, res) => {
+router.post('/floorplans', requireAdmin, async (req, res) => {
   try {
     const { name, data } = req.body;
     if (!name || !data) return res.status(400).json({ ok: false, error: 'name, data 필수' });
@@ -83,8 +80,7 @@ router.post('/api/floorplans', requireAdmin, async (req, res) => {
   }
 });
 
-// PUT /floorplan/api/floorplans/:id  (관리자 전용)
-router.put('/api/floorplans/:id', requireAdmin, async (req, res) => {
+router.put('/floorplans/:id', requireAdmin, async (req, res) => {
   try {
     const { name, data } = req.body;
     const saveName = name || req.params.id;
@@ -98,8 +94,7 @@ router.put('/api/floorplans/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /floorplan/api/floorplans/:id  (관리자 전용)
-router.delete('/api/floorplans/:id', requireAdmin, async (req, res) => {
+router.delete('/floorplans/:id', requireAdmin, async (req, res) => {
   try {
     await storage.deleteFloorplan(req.params.id);
     res.json({ ok: true });
@@ -109,8 +104,7 @@ router.delete('/api/floorplans/:id', requireAdmin, async (req, res) => {
 });
 
 /* ── 카테고리 ─────────────────────────────────────────────────────────── */
-// GET /floorplan/api/categories
-router.get('/api/categories', async (req, res) => {
+router.get('/categories', async (req, res) => {
   try {
     const data = await storage.getCategories();
     res.json({ ok: true, data });
@@ -119,8 +113,7 @@ router.get('/api/categories', async (req, res) => {
   }
 });
 
-// PUT /floorplan/api/categories  (관리자 전용)
-router.put('/api/categories', requireAdmin, async (req, res) => {
+router.put('/categories', requireAdmin, async (req, res) => {
   try {
     const { data } = req.body;
     if (!Array.isArray(data)) return res.status(400).json({ ok: false, error: 'data는 배열' });
@@ -131,8 +124,7 @@ router.put('/api/categories', requireAdmin, async (req, res) => {
   }
 });
 
-// POST /floorplan/api/categories  (관리자 전용)
-router.post('/api/categories', requireAdmin, async (req, res) => {
+router.post('/categories', requireAdmin, async (req, res) => {
   try {
     const cats = await storage.getCategories();
     const { id, name } = req.body;
@@ -146,8 +138,7 @@ router.post('/api/categories', requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /floorplan/api/categories/:catId  (관리자 전용)
-router.delete('/api/categories/:catId', requireAdmin, async (req, res) => {
+router.delete('/categories/:catId', requireAdmin, async (req, res) => {
   try {
     let cats = await storage.getCategories();
     cats = cats.filter(c => c.id !== req.params.catId);
@@ -158,8 +149,7 @@ router.delete('/api/categories/:catId', requireAdmin, async (req, res) => {
   }
 });
 
-// POST /floorplan/api/categories/:catId/items  (관리자 전용)
-router.post('/api/categories/:catId/items', requireAdmin, async (req, res) => {
+router.post('/categories/:catId/items', requireAdmin, async (req, res) => {
   try {
     const cats = await storage.getCategories();
     const cat  = cats.find(c => c.id === req.params.catId);
@@ -175,8 +165,7 @@ router.post('/api/categories/:catId/items', requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /floorplan/api/categories/:catId/items/:itemId  (관리자 전용)
-router.delete('/api/categories/:catId/items/:itemId', requireAdmin, async (req, res) => {
+router.delete('/categories/:catId/items/:itemId', requireAdmin, async (req, res) => {
   try {
     const cats = await storage.getCategories();
     const cat  = cats.find(c => c.id === req.params.catId);
