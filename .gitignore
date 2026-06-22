@@ -5,6 +5,6 @@ logs/
 .DS_Store
 Thumbs.db
 pages.json
-mdboard/*/contents/
+projects/mdboard/public/contents/
 monoserver-496512-285e6fcb8f49.json
 .idea/vcs.xml
