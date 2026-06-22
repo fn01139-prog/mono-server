@@ -55,6 +55,27 @@ const upload = multer({
   }
 });
 
+const htmlStorage = multer.diskStorage({
+  destination: CONTENTS_DIR,
+  filename: (req, file, cb) => {
+    const ext  = path.extname(file.originalname).toLowerCase();
+    const base = path.basename(file.originalname, ext)
+                     .replace(/[^a-zA-Z0-9가-힣_\-]/g, '_').substring(0, 80);
+    let finalName = `${base}${ext}`;
+    if (fs.existsSync(path.join(CONTENTS_DIR, finalName)))
+      finalName = `${base}_${Date.now()}${ext}`;
+    cb(null, finalName);
+  }
+});
+const htmlUpload = multer({
+  storage: htmlStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, ext === '.html' || ext === '.htm');
+  }
+});
+
 /* ── 경로 보안 헬퍼 ───────────────────────────────────────────────────── */
 // relPath: 'file.md' 또는 'folder/file.md' (최대 2단계)
 function safePath(relPath) {
@@ -65,6 +86,16 @@ function safePath(relPath) {
   const resolved = path.resolve(CONTENTS_DIR, ...parts);
   const base = CONTENTS_DIR.endsWith(path.sep) ? CONTENTS_DIR : CONTENTS_DIR + path.sep;
   return resolved.startsWith(base) ? resolved : null;
+}
+
+// HTML 파일명 검증 (루트 레벨만 허용)
+function safeHtmlPath(filename) {
+  if (!filename || typeof filename !== 'string') return null;
+  const base = path.basename(filename);
+  if (!/\.html?$/i.test(base)) return null;
+  const resolved = path.resolve(CONTENTS_DIR, base);
+  const contentsBase = CONTENTS_DIR.endsWith(path.sep) ? CONTENTS_DIR : CONTENTS_DIR + path.sep;
+  return resolved.startsWith(contentsBase) ? resolved : null;
 }
 
 // 폴더명 검증 (슬래시, '..' 등 불허)
@@ -91,6 +122,27 @@ function getFileInfo(filename, folder = null) {
   const wordCount = content.split(/\s+/).filter(Boolean).length;
   const filePath_ = folder ? `${folder}/${filename}` : filename;
   return { name: filename, path: filePath_, folder: folder || null, title, preview, size: stat.size, wordCount, created: stat.birthtime, modified: stat.mtime };
+}
+
+function getHtmlFileInfo(filename) {
+  const filePath = path.join(CONTENTS_DIR, filename);
+  const stat = fs.statSync(filePath);
+  let title = filename.replace(/\.html?$/i, '');
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const m = content.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (m) title = m[1].trim();
+  } catch {}
+  return { name: filename, path: filename, folder: null, title, preview: '', size: stat.size, wordCount: 0, created: stat.birthtime, modified: stat.mtime, type: 'html' };
+}
+
+function getAllHtmlFileInfos() {
+  try {
+    return fs.readdirSync(CONTENTS_DIR, { withFileTypes: true })
+      .filter(e => e.isFile() && /\.html?$/i.test(e.name))
+      .map(e => getHtmlFileInfo(e.name))
+      .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+  } catch { return []; }
 }
 
 // 모든 .md 파일 수집 (서브폴더 포함)
@@ -158,7 +210,8 @@ router.get('/files', (req, res) => {
     });
 
     const allFiles = [...rootFiles, ...folders.flatMap(f => f.files)];
-    res.json({ success: true, files: allFiles, rootFiles, folders });
+    const htmlFiles = getAllHtmlFileInfos();
+    res.json({ success: true, files: allFiles, rootFiles, folders, htmlFiles });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -336,8 +389,9 @@ router.get('/stats', (req, res) => {
     const changeList  = [{ title: 'mono-server 통합', content: 'Railway 배포용 통합 완료', modified: new Date().toISOString().split('T')[0] }];
     const mem = process.memoryUsage(), cpus = os.cpus();
 
+    const htmlInfos = getAllHtmlFileInfos();
     res.json({
-      success: true, totalFiles: allInfos.length, totalImages: imgFiles.length,
+      success: true, totalFiles: allInfos.length, totalImages: imgFiles.length, totalHtmlFiles: htmlInfos.length,
       totalSize, lastModified, recentFiles, changeList,
       memory: { total: totalMem, used: totalMem - freeMem, free: freeMem,
                 usedPercent: Math.round(((totalMem - freeMem) / totalMem) * 100),
@@ -372,6 +426,34 @@ router.get('/images', (req, res) => {
       })
       .sort((a, b) => new Date(b.modified) - new Date(a.modified));
     res.json({ success: true, images });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ── HTML 파일 업로드 ─────────────────────────────────────────────────── */
+router.post('/upload-html', requireAuth, (req, res) => {
+  htmlUpload.single('html')(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE')
+        return res.status(400).json({ error: '파일 크기가 너무 큽니다. (최대 5MB)' });
+      return res.status(400).json({ error: err.message });
+    } else if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'HTML 파일이 없습니다.' });
+    res.json({ success: true, filename: req.file.filename, size: req.file.size });
+  });
+});
+
+/* ── HTML 파일 삭제 ───────────────────────────────────────────────────── */
+router.delete('/html-file/:filename', requireAuth, (req, res) => {
+  try {
+    const filePath = safeHtmlPath(req.params.filename);
+    if (!filePath)                return res.status(403).json({ error: 'Forbidden' });
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+    fs.unlinkSync(filePath);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

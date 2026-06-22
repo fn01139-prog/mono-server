@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mdBoard - HTML Viewer</title>
+  <link rel="stylesheet" href="/mdboard/css/view.css">
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+    .html-view-root { display: flex; flex-direction: column; height: 100%; background: #fff; }
+    .html-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      background: #fff;
+    }
+    .html-toolbar-note {
+      font-size: 11px;
+      color: var(--v-text-muted, #a09080);
+      padding: 0 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 240px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="html-view-root theme-ivory">
+
+  <div class="view-toolbar" id="viewToolbar">
+    <div class="view-toolbar-left">
+      <div class="view-breadcrumb" id="viewBreadcrumb">
+        <span>🌐</span>
+        <span id="fileTitle">HTML 파일</span>
+      </div>
+      <span class="html-toolbar-note" id="toolbarNote"></span>
+    </div>
+    <div class="view-toolbar-right">
+      <button class="view-action-btn" onclick="openInNewTab()" title="새 탭에서 열기">
+        <span class="ico">↗</span><span class="btn-label"> 새 탭</span>
+      </button>
+      <button class="view-action-btn" id="deleteBtn" style="display:none" onclick="deleteFile()">
+        <span class="ico">🗑️</span><span class="btn-label"> 삭제</span>
+      </button>
+    </div>
+  </div>
+
+  <iframe
+    id="htmlFrame"
+    class="html-frame"
+    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+    title="HTML 뷰어"
+  ></iframe>
+
+</div>
+
+<script src="/mdboard/js/common.js"></script>
+<script>
+const params   = new URLSearchParams(location.search);
+const filename = params.get('file') || '';
+
+document.getElementById('fileTitle').textContent = filename.replace(/\.html?$/i, '') || 'HTML 파일';
+document.title = 'mdBoard - ' + (filename || 'HTML');
+
+if (filename) {
+  document.getElementById('htmlFrame').src =
+    '/mdboard/contents/' + filename.split('/').map(encodeURIComponent).join('/');
+  document.getElementById('toolbarNote').textContent = filename;
+}
+
+window.addEventListener('message', (e) => {
+  const msg = e.data || {};
+  if (msg.type === 'auth-changed') {
+    document.getElementById('deleteBtn').style.display = msg.authed ? '' : 'none';
+  }
+});
+
+function openInNewTab() {
+  if (filename)
+    window.open('/mdboard/contents/' + filename.split('/').map(encodeURIComponent).join('/'), '_blank');
+}
+
+async function deleteFile() {
+  if (!filename) return;
+  if (!confirm('"' + filename + '" HTML 파일을 삭제하시겠습니까?')) return;
+  try {
+    await API.delete('/mdboard/api/html-file/' + encodeURIComponent(filename));
+    window.parent.postMessage({ type: 'html-deleted', name: filename }, '*');
+  } catch (e) {
+    showToast('삭제 실패: ' + e.message, 'error');
+  }
+}
+</script>
+
+</body>
+</html>

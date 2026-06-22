@@ -66,7 +66,7 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 
 | Prefix | Description | Notes |
 |--------|-------------|-------|
-| `/mdboard` | Markdown document platform | 폴더 분류; 파일 CRUD + 이미지 업로드(multer); Marp HTML/PDF 내보내기; Google Drive 백업 |
+| `/mdboard` | Markdown document platform | 폴더 분류; 파일 CRUD + 이미지 업로드(multer); HTML 파일 업로드/뷰어; Marp HTML/PDF 내보내기; Google Drive 백업 |
 | `/portfolio` | Personal portfolio page builder | SPA mode; **PostgreSQL** (`portfolio_pages`) |
 | `/aptloan` | 아파트 대출 계산기 | SPA mode; 입주비용·중도금이자·대출 상환 시뮬레이터 |
 | `/floorplan` | 평면도 그리기 | SPA mode; **PostgreSQL** (`floorplan_templates`, `floorplan_categories`); 관리자 토큰 인증 |
@@ -101,7 +101,7 @@ customRoutes: [
 - 모든 쓰기 API 요청에 `x-auth-token` 헤더 포함
 
 **보호 대상 엔드포인트**
-- mdboard: `POST /save`, `DELETE /file/*`, `POST /upload-image`
+- mdboard: `POST /save`, `DELETE /file/*`, `POST /upload-image`, `POST /upload-html`, `DELETE /html-file/*`
 - portfolio: `POST /pages`, `PUT /pages/:id`, `DELETE /pages/:id`
 
 #### 패턴 B — 원시 토큰 (floorplan)
@@ -131,6 +131,17 @@ customRoutes: [
 - `POST /folders` — 폴더 생성
 - `DELETE /folders/:name` — 폴더 삭제 (비어있을 때만)
 - `POST /move` — 파일 폴더 이동 `{ file, fromFolder, toFolder }`
+
+**HTML 파일 기능**
+
+HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사이드바 별도 섹션에 표시된다.
+
+- `GET /files` 응답에 `htmlFiles` 배열 포함 (`.html`/`.htm` 파일 목록)
+- `GET /stats` 응답에 `totalHtmlFiles` 포함
+- `POST /upload-html` — HTML 파일 업로드 (최대 5MB, `requireAuth`)
+- `DELETE /html-file/:filename` — HTML 파일 삭제 (`requireAuth`)
+- 뷰어: `public/include/view-html.html` — 샌드박스 iframe으로 렌더링, 새 탭 열기/삭제 지원
+- 경로 보안: `safeHtmlPath()` — 루트 레벨만 허용, 서브디렉토리 탈출 불가
 
 ### Environment Variables
 

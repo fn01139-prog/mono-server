@@ -312,6 +312,27 @@
     }
     .move-folder-opt:hover { background: rgba(74,143,212,.1); border-color: rgba(74,143,212,.2); }
     .move-folder-opt.selected { background: rgba(74,143,212,.15); border-color: var(--shell-accent); color: #fff; }
+
+    /* ── HTML 파일 섹션 ────────────────────────────────── */
+    .sidebar-html-section { margin-top: 12px; }
+
+    .sidebar-html-upload {
+      display: none; margin: 4px 10px; padding: 5px 10px;
+      border: 1px dashed rgba(74,143,212,.3); border-radius: 4px;
+      color: var(--shell-text-muted); font-size: 11px;
+      cursor: pointer; text-align: center; transition: all .15s;
+    }
+    .sidebar-html-upload.visible { display: block; }
+    .sidebar-html-upload:hover { border-color: var(--shell-accent); color: #7ab8e8; }
+
+    .file-delete-btn {
+      display: none; background: none; border: none;
+      color: var(--shell-text-muted); cursor: pointer;
+      padding: 2px 4px; border-radius: 3px; font-size: 11px;
+      flex-shrink: 0;
+    }
+    .sidebar-item:hover .file-delete-btn { display: block; }
+    .file-delete-btn:hover { color: var(--shell-danger); background: rgba(224,85,85,.12); }
   </style>
 
 </head>
@@ -440,6 +461,11 @@
           <div class="stat-label">문서</div>
         </div>
         <div class="stat-card">
+          <div class="stat-icon">🌐</div>
+          <div class="stat-value" id="statHtmlFiles">-</div>
+          <div class="stat-label">HTML 파일</div>
+        </div>
+        <div class="stat-card">
           <div class="stat-icon">🖼️</div>
           <div class="stat-value" id="statImages">-</div>
           <div class="stat-label">이미지</div>
@@ -539,6 +565,8 @@
 
 </div><!-- /shell -->
 
+<input type="file" id="htmlFileInput" accept=".html,.htm" style="display:none" onchange="handleHtmlUpload(this)">
+
 <!-- 사이드바 오버레이 (모바일) -->
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
@@ -553,7 +581,9 @@
 let allFiles        = [];
 let foldersData     = [];
 let rootFiles_      = [];
+let htmlFiles       = [];
 let activeItem      = null;
+let activeHtmlItem  = null;
 let currentMode     = 'home';
 let authRequired    = false;
 let expandedFolders = new Set(['__root__']);
@@ -643,6 +673,7 @@ async function loadFileList() {
     allFiles    = data.files    || [];
     rootFiles_  = data.rootFiles || [];
     foldersData = data.folders  || [];
+    htmlFiles   = data.htmlFiles || [];
     renderSidebar();
   } catch (e) { console.error('파일 목록 로드 실패', e); }
 }
@@ -652,8 +683,9 @@ async function loadStats() {
   try {
     const data = await API.get('/mdboard/api/stats');
     if (!data.success) return;
-    document.getElementById('statFiles').textContent  = data.totalFiles  ?? '-';
-    document.getElementById('statImages').textContent = data.totalImages ?? '-';
+    document.getElementById('statFiles').textContent     = data.totalFiles     ?? '-';
+    document.getElementById('statHtmlFiles').textContent = data.totalHtmlFiles ?? '-';
+    document.getElementById('statImages').textContent    = data.totalImages    ?? '-';
     document.getElementById('statSize').textContent   = formatSize(data.totalSize || 0);
     document.getElementById('statLastMod').textContent =
       data.lastModified ? formatDate(data.lastModified) : '-';
@@ -701,15 +733,25 @@ function renderSidebar(searchQuery) {
       (f.title || f.name).toLowerCase().includes(ql) ||
       (f.preview || '').toLowerCase().includes(ql)
     );
-    if (!filtered.length) {
+    const filteredHtml = htmlFiles.filter(f =>
+      (f.title || f.name).toLowerCase().includes(ql)
+    );
+    if (!filtered.length && !filteredHtml.length) {
       list.innerHTML = '<div class="sidebar-empty"><div style="font-size:20px;margin-bottom:6px">🔍</div>검색 결과가 없습니다.</div>';
       return;
     }
-    list.innerHTML = filtered.map(f => renderFileItem(f)).join('');
+    let html = filtered.map(f => renderFileItem(f)).join('');
+    if (filteredHtml.length) {
+      html += '<div class="sidebar-html-section">';
+      html += '<div class="sidebar-section-title">HTML 파일</div>';
+      html += filteredHtml.map(f => renderHtmlFileItem(f)).join('');
+      html += '</div>';
+    }
+    list.innerHTML = html;
     return;
   }
 
-  if (allFiles.length === 0) {
+  if (allFiles.length === 0 && htmlFiles.length === 0) {
     list.innerHTML = '<div class="sidebar-empty"><div style="font-size:20px;margin-bottom:6px">📝</div>작성된 문서가 없습니다.<br>새 문서를 작성해보세요!</div>';
     return;
   }
@@ -719,6 +761,18 @@ function renderSidebar(searchQuery) {
     html += renderFolderSection('__root__', '기본', rootFiles_, false);
   foldersData.forEach(f => { html += renderFolderSection(f.name, f.name, f.files, true); });
   html += '<div class="sidebar-add-folder ' + (canEdit ? 'visible' : '') + '" id="sidebarAddFolder" onclick="showNewFolderDialog()">＋ 새 폴더</div>';
+
+  // HTML 파일 섹션
+  html += '<div class="sidebar-html-section">';
+  html += '<div class="sidebar-section-title">HTML 파일</div>';
+  html += '<div class="sidebar-html-upload ' + (canEdit ? 'visible' : '') + '" onclick="triggerHtmlUpload()">＋ HTML 업로드</div>';
+  if (htmlFiles.length > 0) {
+    html += htmlFiles.map(f => renderHtmlFileItem(f)).join('');
+  } else {
+    html += '<div style="padding:5px 10px 5px 14px; font-size:11px; color:#4a6275; font-style:italic;">HTML 파일 없음</div>';
+  }
+  html += '</div>';
+
   list.innerHTML = html;
 }
 
@@ -760,6 +814,23 @@ function renderFileItem(f) {
       '<div class="sidebar-item-meta">' + formatDate(f.modified) + ' · ' + formatSize(f.size) + '</div>' +
     '</div>' +
     moveBtn +
+  '</div>';
+}
+
+function renderHtmlFileItem(f) {
+  const filename    = f.name;
+  const displayName = f.title || filename.replace(/\.html?$/i, '');
+  const canEdit     = !authRequired || Auth.isAuthenticated();
+  const deleteBtn   = canEdit
+    ? '<button class="file-delete-btn" onclick="event.stopPropagation();deleteHtmlFile(\'' + escHtml(filename) + '\')" title="삭제">🗑</button>'
+    : '';
+  return '<div class="sidebar-item" id="shi-' + escHtml(filename) + '" onclick="openHtmlView(\'' + escHtml(filename) + '\')" title="' + escHtml(displayName) + '">' +
+    '<span class="sidebar-item-icon">🌐</span>' +
+    '<div class="sidebar-item-body">' +
+      '<div class="sidebar-item-title">' + escHtml(displayName) + '</div>' +
+      '<div class="sidebar-item-meta">' + formatDate(f.modified) + ' · ' + formatSize(f.size) + '</div>' +
+    '</div>' +
+    deleteBtn +
   '</div>';
 }
 
@@ -900,6 +971,11 @@ function showIframe(url) {
 
 /* ── 활성 아이템 ──────────────────────────────────────────────────── */
 function setActiveItem(filePath) {
+  if (activeHtmlItem) {
+    const prev = document.getElementById('shi-' + activeHtmlItem);
+    if (prev) prev.classList.remove('active');
+    activeHtmlItem = null;
+  }
   if (activeItem) {
     const prev = document.getElementById('si-' + activeItem);
     if (prev) prev.classList.remove('active');
@@ -908,6 +984,67 @@ function setActiveItem(filePath) {
   if (filePath) {
     const el = document.getElementById('si-' + filePath);
     if (el) el.classList.add('active');
+  }
+}
+
+function setActiveHtmlItem(filename) {
+  if (activeItem) {
+    const prev = document.getElementById('si-' + activeItem);
+    if (prev) prev.classList.remove('active');
+    activeItem = null;
+  }
+  if (activeHtmlItem) {
+    const prev = document.getElementById('shi-' + activeHtmlItem);
+    if (prev) prev.classList.remove('active');
+  }
+  activeHtmlItem = filename;
+  if (filename) {
+    const el = document.getElementById('shi-' + filename);
+    if (el) el.classList.add('active');
+  }
+}
+
+/* ── HTML 뷰어 열기 ───────────────────────────────────────────────── */
+function openHtmlView(filename) {
+  setActiveHtmlItem(filename);
+  showIframe('./include/view-html.html?file=' + encodeURIComponent(filename));
+  currentMode = 'html-view';
+  document.getElementById('headerFileInfo').textContent = filename.replace(/\.html?$/i, '');
+  closeSidebar();
+}
+
+/* ── HTML 파일 삭제 ───────────────────────────────────────────────── */
+function deleteHtmlFile(filename) {
+  if (authRequired && !Auth.isAuthenticated()) { showToast('인증 후 이용 가능합니다.', 'error'); return; }
+  if (!confirm('"' + filename + '" HTML 파일을 삭제하시겠습니까?')) return;
+  API.delete('/mdboard/api/html-file/' + encodeURIComponent(filename))
+    .then(data => {
+      if (!data.success) throw new Error(data.error);
+      showToast('삭제 완료', 'success');
+      if (activeHtmlItem === filename) loadHome();
+      loadFileList();
+    }).catch(e => showToast(e.message, 'error'));
+}
+
+/* ── HTML 파일 업로드 ─────────────────────────────────────────────── */
+function triggerHtmlUpload() {
+  if (authRequired && !Auth.isAuthenticated()) { showToast('인증 후 이용 가능합니다.', 'error'); return; }
+  document.getElementById('htmlFileInput').click();
+}
+
+async function handleHtmlUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+  try {
+    showToast('업로드 중...', 'info');
+    const data = await API.uploadHtml(file);
+    if (!data.success) throw new Error(data.error);
+    showToast(data.filename + ' 업로드 완료', 'success');
+    await loadFileList();
+    openHtmlView(data.filename);
+  } catch (e) {
+    showToast('업로드 실패: ' + e.message, 'error');
   }
 }
 
@@ -937,6 +1074,9 @@ function onFrameMessage(e) {
 
     case 'file-loaded':
       if (filePath) setActiveItem(filePath); break;
+
+    case 'html-deleted':
+      loadFileList(); loadHome(); break;
   }
 }
 

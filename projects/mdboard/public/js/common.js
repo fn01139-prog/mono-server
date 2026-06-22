@@ -54,6 +54,18 @@ const API = {
     return res.json();
   },
 
+  async uploadHtml(file) {
+    const fd = new FormData();
+    fd.append('html', file);
+    const res = await fetch('/mdboard/api/upload-html', {
+      method: 'POST',
+      headers: { 'x-auth-token': Auth.getToken() },
+      body: fd
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
   async authCheck() {
     const res = await fetch('/mdboard/api/auth/check');
     return res.json();
