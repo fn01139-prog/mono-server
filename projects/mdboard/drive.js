@@ -122,9 +122,10 @@ async function pullAll() {
           { fileId: file.id, alt: 'media' },
           { responseType: 'text' }
         );
-        const content = typeof dl.data === 'string' ? dl.data : JSON.stringify(dl.data);
-        if (!fs.existsSync(CONTENTS_DIR)) fs.mkdirSync(CONTENTS_DIR, { recursive: true });
-        fs.writeFileSync(path.join(CONTENTS_DIR, file.name), content, 'utf8');
+        const content  = typeof dl.data === 'string' ? dl.data : JSON.stringify(dl.data);
+        const localPath = path.join(CONTENTS_DIR, file.name);
+        fs.mkdirSync(path.dirname(localPath), { recursive: true });
+        fs.writeFileSync(localPath, content, 'utf8');
         fileIdCache[file.name] = file.id;
         console.log(`[mdboard]   ✓ ${file.name}`);
       } catch (e) {
