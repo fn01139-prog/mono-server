@@ -40,8 +40,9 @@ const IMG_DIR      = path.join(CONTENTS_DIR, 'img');
 const storage = multer.diskStorage({
   destination: IMG_DIR,
   filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname).toLowerCase();
-    const base = path.basename(file.originalname, ext)
+    const original = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const ext  = path.extname(original).toLowerCase();
+    const base = path.basename(original, ext)
                      .replace(/[^a-zA-Z0-9가-힣_\-]/g, '_').substring(0, 60);
     cb(null, `${base}_${Date.now()}${ext}`);
   }
@@ -58,8 +59,9 @@ const upload = multer({
 const htmlStorage = multer.diskStorage({
   destination: CONTENTS_DIR,
   filename: (req, file, cb) => {
-    const ext  = path.extname(file.originalname).toLowerCase();
-    const base = path.basename(file.originalname, ext)
+    const original = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const ext  = path.extname(original).toLowerCase();
+    const base = path.basename(original, ext)
                      .replace(/[^a-zA-Z0-9가-힣_\-]/g, '_').substring(0, 80);
     let finalName = `${base}${ext}`;
     if (fs.existsSync(path.join(CONTENTS_DIR, finalName)))
