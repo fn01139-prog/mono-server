@@ -442,6 +442,8 @@ router.post('/upload-html', requireAuth, (req, res) => {
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) return res.status(400).json({ error: 'HTML 파일이 없습니다.' });
+    const htmlContent = fs.readFileSync(req.file.path, 'utf8');
+    drive.pushFile(req.file.filename, htmlContent).catch(() => {});
     res.json({ success: true, filename: req.file.filename, size: req.file.size });
   });
 });
@@ -453,6 +455,7 @@ router.delete('/html-file/:filename', requireAuth, (req, res) => {
     if (!filePath)                return res.status(403).json({ error: 'Forbidden' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
     fs.unlinkSync(filePath);
+    drive.deleteFile(req.params.filename).catch(() => {});
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

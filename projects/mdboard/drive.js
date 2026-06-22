@@ -111,7 +111,7 @@ async function pullAll() {
       fields: 'files(id, name)',
       spaces: 'drive',
     });
-    const files = (res.data.files || []).filter(f => f.name.endsWith('.md'));
+    const files = (res.data.files || []).filter(f => /\.(md|html?)$/i.test(f.name));
     if (files.length === 0) {
       console.log('[mdboard] 📥 Drive에 복원할 파일 없음 (신규 시작)');
       return;
