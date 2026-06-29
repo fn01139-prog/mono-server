@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>마인드맵</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo-mark">⌗</span>
+      <input id="boardTitle" class="board-title-input" placeholder="마인드맵 제목을 입력하세요" />
+    </div>
+    <div class="topbar-right">
+      <select id="boardSelect" class="board-select" title="다른 마인드맵 선택"></select>
+      <button id="btnNewBoard" class="btn btn-ghost" type="button" data-tip="Ctrl+1">+ 새 보드</button>
+      <button id="btnNewObject" class="btn btn-primary" type="button" data-tip="Ctrl+2">+ 새 항목</button>
+      <button id="btnRelationMode" class="btn btn-ghost" type="button" data-active="false" data-tip="Ctrl+3">
+        <span class="dot dot-relation"></span> 관계 연결
+      </button>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <aside class="panel panel-left">
+      <div class="panel-heading">항목 목록</div>
+      <ul id="objectList" class="object-list"></ul>
+    </aside>
+
+    <section class="canvas-wrap" id="canvasWrap">
+      <div class="canvas-inner" id="canvasInner">
+        <svg id="relationLayer" class="relation-layer"></svg>
+        <div id="nodeLayer" class="node-layer"></div>
+      </div>
+      <div id="canvasHint" class="canvas-hint">+ 새 항목을 눌러 마인드맵을 시작하세요</div>
+      <div id="relationBanner" class="relation-banner hidden">연결할 두 항목을 순서대로 클릭하세요 (첫 번째 = 부모)</div>
+    </section>
+
+    <aside class="panel panel-right" id="detailPanel">
+      <div class="panel-heading">상세 설정</div>
+
+      <div id="detailEmpty" class="detail-empty">항목을 선택하면<br>여기서 편집할 수 있어요</div>
+
+      <form id="detailForm" class="detail-form hidden">
+        <label class="field">
+          <span class="field-label" data-tip="Ctrl+4">명칭</span>
+          <input id="fName" type="text" autocomplete="off" />
+        </label>
+
+        <label class="field">
+          <span class="field-label">내용</span>
+          <textarea id="fContent" rows="3"></textarea>
+        </label>
+
+        <div class="field-row">
+          <label class="field field-col">
+            <span class="field-label">색상</span>
+            <input id="fColor" type="color" />
+          </label>
+          <label class="field field-col">
+            <span class="field-label">모양</span>
+            <select id="fShape">
+              <option value="rounded-rect">사각형</option>
+              <option value="ellipse">타원</option>
+              <option value="circle">원</option>
+              <option value="diamond">다이아몬드</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field field-col">
+            <span class="field-label">가로</span>
+            <input id="fWidth" type="number" min="60" max="400" step="10" />
+          </label>
+          <label class="field field-col">
+            <span class="field-label">세로</span>
+            <input id="fHeight" type="number" min="40" max="300" step="10" />
+          </label>
+        </div>
+
+        <div class="panel-sub-heading">연결된 관계</div>
+        <ul id="relationList" class="relation-list"></ul>
+
+        <div class="panel-sub-heading">메모</div>
+        <ul id="memoList" class="memo-list"></ul>
+        <div class="memo-add-row">
+          <input id="memoInput" type="text" placeholder="메모 추가 후 Enter" />
+          <button id="btnAddMemo" type="button" class="btn btn-small" data-tip="Ctrl+5">추가</button>
+        </div>
+
+        <button id="btnDeleteObject" type="button" class="btn btn-danger btn-block" data-tip="Ctrl+6">이 항목 삭제</button>
+      </form>
+    </aside>
+
+  </main>
+
+  <div id="toast"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
