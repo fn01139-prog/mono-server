@@ -45,7 +45,18 @@ async function api(method, url, body) {
 
 async function init() {
   bindGlobalEvents();
-  await loadBoards();
+  setActionButtonsEnabled(false); // 보드를 아직 못 불러온 상태에서 "새 항목"/"관계 연결" 클릭 방지
+  try {
+    await loadBoards();
+    setActionButtonsEnabled(true);
+  } catch (err) {
+    toast('초기 데이터를 불러오지 못했습니다: ' + err.message);
+  }
+}
+
+function setActionButtonsEnabled(enabled) {
+  el('btnNewObject').disabled = !enabled;
+  el('btnRelationMode').disabled = !enabled;
 }
 
 async function loadBoards() {
@@ -302,6 +313,11 @@ function startDrag(e, objId) {
    ============================================================ */
 
 async function createObject() {
+  if (!state.boardId) {
+    toast('보드를 아직 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+    return;
+  }
+
   const count = state.objects.length;
   const pos_x = 60 + (count % 8) * 40;
   const pos_y = 60 + Math.floor(count / 8) * 100;
