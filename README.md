@@ -91,3 +91,58 @@ GitHub Pages에서 API 호출 시:
 const API = 'https://your-app.up.railway.app';
 fetch(`${API}/mdboard/api/docs`)
 ```
+
+---
+
+## 📝 mdboard-push — Claude에서 md 파일 직접 등록
+
+Claude Code(CLI)에서 정리한 마크다운을 mdboard에 바로 올릴 수 있습니다.
+
+### 설정
+
+`.env`에 추가:
+```
+MDBOARD_API_KEY=your_api_key_here
+MDBOARD_URL=https://your-app.up.railway.app   # 기본값: http://localhost:3000
+```
+
+Railway에도 동일하게 환경변수 등록 필요.
+
+### 사용법
+
+```bash
+# 기본 (루트에 저장)
+node scripts/mdboard-push.js ./report.md
+
+# 폴더 지정
+node scripts/mdboard-push.js ./report.md "월간리포트"
+
+# 덮어쓰기
+node scripts/mdboard-push.js ./report.md "월간리포트" --overwrite
+```
+
+### REST API 직접 호출
+
+```http
+POST /mdboard/api/publish
+x-api-key: your_api_key_here
+Content-Type: application/json
+
+{
+  "title": "파일명.md",
+  "content": "# 제목\n\n내용...",
+  "folder": "폴더명",      ← 선택
+  "overwrite": false        ← 선택, 기본값 false
+}
+```
+
+### Claude Code vs Claude Desktop 비교
+
+| 환경 | 사용 가능 여부 | 조건 |
+|------|--------------|------|
+| **Claude Code (CLI)** | ✅ 바로 사용 가능 | `.env`에 `MDBOARD_API_KEY` 설정 |
+| **Claude Desktop** | ❌ 추가 설정 필요 | MCP 서버 구성 없이는 스크립트 실행 불가 |
+
+> Claude Code는 `.claude/skills/mdboard-publish.md` 스킬을 자동으로 인식하므로,  
+> 대화 중 "mdboard에 등록해줘"라고 하면 파일명·폴더 제안 → 등록까지 자동 처리됩니다.  
+> Claude Desktop에서 사용하려면 별도로 MCP 파일시스템 서버를 구성해야 합니다.
