@@ -18,10 +18,13 @@
     <div class="topbar-right">
       <select id="boardSelect" class="board-select" title="다른 마인드맵 선택"></select>
       <button id="btnNewBoard" class="btn btn-ghost" type="button" data-tip="Ctrl+1">+ 새 보드</button>
-      <button id="btnNewObject" class="btn btn-primary" type="button" data-tip="Ctrl+2">+ 새 항목</button>
-      <button id="btnRelationMode" class="btn btn-ghost" type="button" data-active="false" data-tip="Ctrl+3">
+      <button id="btnNewObject" class="btn btn-primary" type="button" data-tip="Ctrl+2" disabled>+ 새 항목</button>
+      <button id="btnRelationMode" class="btn btn-ghost" type="button" data-active="false" data-tip="Ctrl+3" disabled>
         <span class="dot dot-relation"></span> 관계 연결
       </button>
+      <div class="export-divider"></div>
+      <button id="btnExportHtml" class="btn btn-ghost btn-small" type="button" title="현재 마인드맵을 HTML 파일로 저장">⬇ HTML</button>
+      <button id="btnExportPdf" class="btn btn-ghost btn-small" type="button" title="현재 마인드맵을 PDF로 저장 (인쇄 대화상자)">⬇ PDF</button>
     </div>
   </header>
 

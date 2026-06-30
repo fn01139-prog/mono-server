@@ -125,3 +125,11 @@ DELETE /api/memos/:memoId
 
 프론트엔드(`public/js/app.js`)는 상대경로(`api/...`)로만 호출하므로
 어느 경로에 마운트돼도(`/mindmap` 등) BASE_PATH 이중 적용 문제 없이 동작합니다.
+
+## 7. 알려진 버그 수정 기록
+
+- **`POST /api/boards/null/objects` 404 (수정됨)**: 페이지가 보드 목록을 다 불러오기 전에
+  "새 항목"을 누르면(또는 `Ctrl+2`) `state.boardId`가 아직 `null`이라 URL에 `null`이
+  그대로 들어가는 문제가 있었습니다. 이제 보드를 다 불러오기 전까지는 "새 항목" /
+  "관계 연결" 버튼이 비활성화되고, `createObject()` 내부에도 `state.boardId`가
+  없으면 토스트 메시지만 띄우고 멈추는 가드를 추가했습니다.
