@@ -29,14 +29,14 @@ router.use(express.static(path.join(__dirname, 'public')));
    BOARD  (화면 상단 "주제(제목)")
    ============================================================ */
 
-router.get('/api/boards', asyncHandler(async (req, res) => {
+router.get('/boards', asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
     'SELECT id, title, created_at, updated_at FROM mindmap_board ORDER BY updated_at DESC'
   );
   ok(res, rows);
 }));
 
-router.post('/api/boards', asyncHandler(async (req, res) => {
+router.post('/boards', asyncHandler(async (req, res) => {
   const { title } = req.body;
   if (!title) return fail(res, 'title은 필수입니다.');
   const { rows } = await pool.query(
@@ -46,7 +46,7 @@ router.post('/api/boards', asyncHandler(async (req, res) => {
   ok(res, rows[0]);
 }));
 
-router.put('/api/boards/:boardId', asyncHandler(async (req, res) => {
+router.put('/boards/:boardId', asyncHandler(async (req, res) => {
   const { title } = req.body;
   const { rows } = await pool.query(
     'UPDATE mindmap_board SET title = COALESCE($1, title), updated_at = NOW() WHERE id = $2 RETURNING *',
@@ -56,7 +56,7 @@ router.put('/api/boards/:boardId', asyncHandler(async (req, res) => {
   ok(res, rows[0]);
 }));
 
-router.delete('/api/boards/:boardId', asyncHandler(async (req, res) => {
+router.delete('/boards/:boardId', asyncHandler(async (req, res) => {
   await pool.query('DELETE FROM mindmap_board WHERE id = $1', [req.params.boardId]);
   ok(res, { deleted: true });
 }));
@@ -66,7 +66,7 @@ router.delete('/api/boards/:boardId', asyncHandler(async (req, res) => {
    ============================================================ */
 
 // 보드에 속한 모든 객체를 헤더+디테일 합쳐서 한번에 조회 (캔버스 렌더링용)
-router.get('/api/boards/:boardId/objects', asyncHandler(async (req, res) => {
+router.get('/boards/:boardId/objects', asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
     `SELECT h.id, h.name, h.content, h.created_at, h.updated_at,
             d.pos_x, d.pos_y, d.color, d.width, d.height, d.shape
@@ -79,7 +79,7 @@ router.get('/api/boards/:boardId/objects', asyncHandler(async (req, res) => {
   ok(res, rows);
 }));
 
-router.post('/api/boards/:boardId/objects', asyncHandler(async (req, res) => {
+router.post('/boards/:boardId/objects', asyncHandler(async (req, res) => {
   const {
     name, content,
     pos_x = 40, pos_y = 40,
@@ -110,7 +110,7 @@ router.post('/api/boards/:boardId/objects', asyncHandler(async (req, res) => {
 }));
 
 // 명칭 / 내용 수정
-router.put('/api/objects/:objectId', asyncHandler(async (req, res) => {
+router.put('/objects/:objectId', asyncHandler(async (req, res) => {
   const { name, content } = req.body;
   const { rows } = await pool.query(
     `UPDATE object_header SET name = COALESCE($1, name), content = COALESCE($2, content), updated_at = NOW()
@@ -122,7 +122,7 @@ router.put('/api/objects/:objectId', asyncHandler(async (req, res) => {
 }));
 
 // 위치 / 색상 / 크기 / 모양 수정 (드래그 이동 시에도 이 엔드포인트를 사용)
-router.put('/api/objects/:objectId/detail', asyncHandler(async (req, res) => {
+router.put('/objects/:objectId/detail', asyncHandler(async (req, res) => {
   const { pos_x, pos_y, color, width, height, shape } = req.body;
   const { rows } = await pool.query(
     `UPDATE object_detail SET
@@ -140,7 +140,7 @@ router.put('/api/objects/:objectId/detail', asyncHandler(async (req, res) => {
   ok(res, rows[0]);
 }));
 
-router.delete('/api/objects/:objectId', asyncHandler(async (req, res) => {
+router.delete('/objects/:objectId', asyncHandler(async (req, res) => {
   await pool.query('DELETE FROM object_header WHERE id = $1', [req.params.objectId]);
   ok(res, { deleted: true });
 }));
@@ -149,7 +149,7 @@ router.delete('/api/objects/:objectId', asyncHandler(async (req, res) => {
    RELATION  (부모-자식 연결)
    ============================================================ */
 
-router.get('/api/boards/:boardId/relations', asyncHandler(async (req, res) => {
+router.get('/boards/:boardId/relations', asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
     'SELECT id, parent_id, child_id, label FROM relation WHERE board_id = $1',
     [req.params.boardId]
@@ -157,7 +157,7 @@ router.get('/api/boards/:boardId/relations', asyncHandler(async (req, res) => {
   ok(res, rows);
 }));
 
-router.post('/api/boards/:boardId/relations', asyncHandler(async (req, res) => {
+router.post('/boards/:boardId/relations', asyncHandler(async (req, res) => {
   const { parent_id, child_id, label } = req.body;
   if (!parent_id || !child_id) return fail(res, 'parent_id, child_id는 필수입니다.');
   if (String(parent_id) === String(child_id)) return fail(res, '자기 자신과는 연결할 수 없습니다.');
@@ -173,7 +173,7 @@ router.post('/api/boards/:boardId/relations', asyncHandler(async (req, res) => {
   }
 }));
 
-router.delete('/api/relations/:relationId', asyncHandler(async (req, res) => {
+router.delete('/relations/:relationId', asyncHandler(async (req, res) => {
   await pool.query('DELETE FROM relation WHERE id = $1', [req.params.relationId]);
   ok(res, { deleted: true });
 }));
@@ -182,7 +182,7 @@ router.delete('/api/relations/:relationId', asyncHandler(async (req, res) => {
    MEMO  (확장 테이블 사용 예시)
    ============================================================ */
 
-router.get('/api/objects/:objectId/memos', asyncHandler(async (req, res) => {
+router.get('/objects/:objectId/memos', asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
     'SELECT id, memo_type, memo_text, created_at FROM object_memo WHERE object_id = $1 ORDER BY created_at',
     [req.params.objectId]
@@ -190,7 +190,7 @@ router.get('/api/objects/:objectId/memos', asyncHandler(async (req, res) => {
   ok(res, rows);
 }));
 
-router.post('/api/objects/:objectId/memos', asyncHandler(async (req, res) => {
+router.post('/objects/:objectId/memos', asyncHandler(async (req, res) => {
   const { memo_type = 'note', memo_text } = req.body;
   if (!memo_text) return fail(res, 'memo_text는 필수입니다.');
   const { rows } = await pool.query(
@@ -200,7 +200,7 @@ router.post('/api/objects/:objectId/memos', asyncHandler(async (req, res) => {
   ok(res, rows[0]);
 }));
 
-router.delete('/api/memos/:memoId', asyncHandler(async (req, res) => {
+router.delete('/memos/:memoId', asyncHandler(async (req, res) => {
   await pool.query('DELETE FROM object_memo WHERE id = $1', [req.params.memoId]);
   ok(res, { deleted: true });
 }));
