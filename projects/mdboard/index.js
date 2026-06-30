@@ -22,7 +22,12 @@ function verifyToken(token) {
   if (!pwd || !token) return false;
   return token === makeToken(pwd);
 }
+function verifyApiKey(key) {
+  const apiKey = process.env.MDBOARD_API_KEY || '';
+  return apiKey && key === apiKey;
+}
 function requireAuth(req, res, next) {
+  if (verifyApiKey(req.headers['x-api-key'])) return next();
   if (!getPassword()) return next();
   const token = req.headers['x-auth-token'];
   if (!verifyToken(token)) return res.status(401).json({ success: false, error: '인증이 필요합니다.' });
@@ -459,6 +464,46 @@ router.delete('/html-file/:filename', requireAuth, (req, res) => {
     fs.unlinkSync(filePath);
     drive.deleteFile(req.params.filename).catch(() => {});
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* ── Claude 퍼블리시 (API 키 전용) ─────────────────────────────────────── */
+// POST /publish  { title, content, folder?, overwrite? }
+// x-api-key 헤더로만 접근 가능 (비밀번호 인증 불허)
+router.post('/publish', (req, res) => {
+  const apiKey = process.env.MDBOARD_API_KEY || '';
+  if (!apiKey || req.headers['x-api-key'] !== apiKey)
+    return res.status(401).json({ success: false, error: 'API 키가 필요합니다.' });
+
+  try {
+    let { title, content, folder, overwrite } = req.body;
+    if (!title || content === undefined)
+      return res.status(400).json({ error: 'title과 content가 필요합니다.' });
+
+    title  = title.trim().replace(/[<>:"/\\|?*]/g, '_');
+    if (!title.endsWith('.md')) title += '.md';
+    folder = folder ? folder.trim().replace(/[<>:"/\\|?*]/g, '_') : null;
+
+    if (folder) {
+      const fp = safeFolderPath(folder);
+      if (!fp) return res.status(403).json({ error: '유효하지 않은 폴더명입니다.' });
+      if (!fs.existsSync(fp)) fs.mkdirSync(fp, { recursive: true });
+    }
+
+    const relPath = folder ? `${folder}/${title}` : title;
+    const absPath = safePath(relPath);
+    if (!absPath) return res.status(403).json({ error: 'Forbidden' });
+
+    if (fs.existsSync(absPath) && !overwrite)
+      return res.status(409).json({ success: false, error: '이미 존재하는 파일입니다. overwrite: true 로 덮어쓸 수 있습니다.', path: relPath });
+
+    fs.writeFileSync(absPath, content, 'utf8');
+    drive.pushFile(relPath, content).catch(() => {});
+
+    res.json({ success: true, title, folder: folder || null, path: relPath,
+               url: `/mdboard#${encodeURIComponent(relPath)}` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
