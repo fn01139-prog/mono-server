@@ -6,8 +6,8 @@
   --border-soft: #2b313c;
   --text: #e7e9ee;
   --text-muted: #9399a6;
-  --accent: #f2a93b;      /* 기본 노드 색 / 강조 */
-  --accent-2: #4fd1c5;    /* 관계선 / 선택 표시 */
+  --accent: #f2a93b;
+  --accent-2: #4fd1c5;
   --danger: #e8636b;
   --radius: 10px;
   --font-display: 'Sora', 'Pretendard', sans-serif;
@@ -107,6 +107,16 @@ button, input, textarea, select {
 
 .export-divider { width: 1px; height: 24px; background: var(--border); margin: 0 2px; flex-shrink: 0; }
 
+/* 줌 레이블 */
+.zoom-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  min-width: 38px;
+  text-align: center;
+  letter-spacing: .02em;
+}
+
 /* ---------- Layout ---------- */
 
 .layout {
@@ -179,16 +189,23 @@ button, input, textarea, select {
 .canvas-wrap {
   flex: 1;
   position: relative;
-  overflow: auto;
+  overflow: hidden;           /* transform 기반 팬/줌 — scroll 제거 */
   background-color: #181a20;
   background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
   background-size: 22px 22px;
+  cursor: default;
 }
 
+.canvas-wrap.panning { cursor: grabbing !important; }
+.canvas-wrap.pan-ready { cursor: grab !important; }
+
 .canvas-inner {
-  position: relative;
-  width: 2400px;
-  height: 1400px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4000px;
+  height: 3000px;
+  transform-origin: 0 0;  /* 줌 기준점 */
 }
 
 .relation-layer, .node-layer {
@@ -210,19 +227,43 @@ button, input, textarea, select {
 }
 .canvas-hint.hidden { display: none; }
 
-.relation-banner {
-  position: sticky;
+.relation-banner,
+.multi-select-banner {
+  position: absolute;
   top: 10px;
-  left: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   width: fit-content;
-  margin: 10px;
   background: rgba(79, 209, 197, 0.15);
   border: 1px solid var(--accent-2);
   color: var(--accent-2);
   font-size: 12px;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 20px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 20;
 }
+.multi-select-banner {
+  background: rgba(242, 169, 59, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+  top: auto;
+  bottom: 14px;
+}
+.relation-banner.hidden,
+.multi-select-banner.hidden { display: none; }
+
+/* ---------- Marquee (rubber-band) ---------- */
+
+.marquee {
+  position: absolute;
+  border: 1.5px dashed var(--accent-2);
+  background: rgba(79, 209, 197, 0.07);
+  pointer-events: none;
+  z-index: 15;
+}
+.marquee.hidden { display: none; }
 
 /* ---------- Nodes ---------- */
 
@@ -242,6 +283,7 @@ button, input, textarea, select {
   user-select: none;
   line-height: 1.25;
   overflow: hidden;
+  transition: outline-offset .08s;
 }
 .node:active { cursor: grabbing; }
 
@@ -254,9 +296,33 @@ button, input, textarea, select {
   outline: 3px solid var(--accent-2);
   outline-offset: 2px;
 }
+.node.multi-selected {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
 .node.relation-pending {
   outline: 3px dashed var(--accent-2);
   outline-offset: 3px;
+}
+
+/* ---------- Inline edit ---------- */
+
+.inline-edit {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 2px solid rgba(0,0,0,.28);
+  box-shadow: 0 3px 8px rgba(0,0,0,.4), 0 0 0 3px var(--accent-2);
+  cursor: text;
+  z-index: 50;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  color: #1b1e25;
+  padding: 6px 10px;
+  outline: none;
 }
 
 /* ---------- Detail panel ---------- */

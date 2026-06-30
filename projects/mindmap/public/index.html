@@ -23,8 +23,13 @@
         <span class="dot dot-relation"></span> 관계 연결
       </button>
       <div class="export-divider"></div>
-      <button id="btnExportHtml" class="btn btn-ghost btn-small" type="button" title="현재 마인드맵을 HTML 파일로 저장">⬇ HTML</button>
-      <button id="btnExportPdf" class="btn btn-ghost btn-small" type="button" title="현재 마인드맵을 PDF로 저장 (인쇄 대화상자)">⬇ PDF</button>
+      <button id="btnExportHtml" class="btn btn-ghost btn-small" type="button" title="HTML 파일로 저장">⬇ HTML</button>
+      <button id="btnExportPdf" class="btn btn-ghost btn-small" type="button" title="PDF로 저장 (인쇄 대화상자)">⬇ PDF</button>
+      <div class="export-divider"></div>
+      <button id="btnZoomOut" class="btn btn-ghost btn-small" type="button" title="축소 (휠 아래)">−</button>
+      <span id="zoomLabel" class="zoom-label">100%</span>
+      <button id="btnZoomIn"  class="btn btn-ghost btn-small" type="button" title="확대 (휠 위)">+</button>
+      <button id="btnZoomReset" class="btn btn-ghost btn-small" type="button" title="기본 배율 (더블클릭)">↺</button>
     </div>
   </header>
 
@@ -40,8 +45,10 @@
         <svg id="relationLayer" class="relation-layer"></svg>
         <div id="nodeLayer" class="node-layer"></div>
       </div>
+      <div id="marquee" class="marquee hidden"></div>
       <div id="canvasHint" class="canvas-hint">+ 새 항목을 눌러 마인드맵을 시작하세요</div>
-      <div id="relationBanner" class="relation-banner hidden">연결할 두 항목을 순서대로 클릭하세요 (첫 번째 = 부모)</div>
+      <div id="relationBanner" class="relation-banner hidden">연결할 두 항목을 순서대로 클릭하세요 (첫 번째 = 부모) · Esc로 취소</div>
+      <div id="multiSelectBanner" class="multi-select-banner hidden"></div>
     </section>
 
     <aside class="panel panel-right" id="detailPanel">

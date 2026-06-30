@@ -1,15 +1,130 @@
 // projects/mindmap/public/js/app.js
 
+/* ============================================================
+   상태
+   ============================================================ */
+
 const state = {
   boards: [],
   boardId: null,
-  objects: [],     // {id, name, content, pos_x, pos_y, color, width, height, shape}
-  relations: [],   // {id, parent_id, child_id, label}
-  selectedId: null,
+  objects: [],      // {id, name, content, pos_x, pos_y, color, width, height, shape}
+  relations: [],    // {id, parent_id, child_id, label}
+
+  selectedId: null,           // 상세 패널에 표시할 단일 선택 ID
+  selectedIds: new Set(),     // 다중 선택 ID 집합
+
   relationMode: false,
   relationFirst: null,
-  drag: null,
+
+  drag: null,                 // 드래그 진행 중 정보
+  viewport: { scale: 1, panX: 0, panY: 0 },
+  spaceHeld: false,
+  isPanning: false,
+  inlineEdit: null,           // {objId, input, nodeEl}
 };
+
+/* ============================================================
+   Undo / Redo
+   ============================================================ */
+
+const undoStack = [];   // 되돌리기 스택
+const redoStack = [];   // 다시실행 스택
+const MAX_HISTORY = 50;
+
+// action 형식
+// { type: 'move',         before: [{id, pos_x, pos_y}], after: [...] }
+// { type: 'relation_add', relation: {id, board_id, parent_id, child_id, label} }
+// { type: 'relation_del', relation: {...} }
+// { type: 'inline_name',  id, before: string, after: string }
+
+function pushUndo(action) {
+  undoStack.push(action);
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack.length = 0;
+}
+
+async function undo() {
+  if (!undoStack.length) { toast('더 이상 되돌릴 수 없습니다'); return; }
+  const action = undoStack.pop();
+  redoStack.push(action);
+  await applyAction(action, 'undo');
+}
+
+async function redo() {
+  if (!redoStack.length) { toast('다시 실행할 내용이 없습니다'); return; }
+  const action = redoStack.pop();
+  undoStack.push(action);
+  await applyAction(action, 'redo');
+}
+
+async function applyAction(action, dir) {
+  if (action.type === 'move') {
+    const positions = dir === 'undo' ? action.before : action.after;
+    positions.forEach(({ id, pos_x, pos_y }) => {
+      const o = state.objects.find(obj => obj.id === id);
+      if (o) {
+        o.pos_x = pos_x;
+        o.pos_y = pos_y;
+        markDetailDirty(id, { pos_x, pos_y });
+      }
+    });
+    renderCanvas();
+    return;
+  }
+
+  if (action.type === 'relation_add') {
+    if (dir === 'undo') {
+      await api('DELETE', `api/relations/${action.relation.id}`);
+      state.relations = state.relations.filter(r => r.id !== action.relation.id);
+    } else {
+      const created = await api('POST', `api/boards/${state.boardId}/relations`, {
+        parent_id: action.relation.parent_id,
+        child_id: action.relation.child_id,
+        label: action.relation.label,
+      });
+      state.relations.push(created);
+      action.relation.id = created.id;  // redo 시 id 갱신
+    }
+    renderCanvas();
+    if (state.selectedId) renderRelationList(state.selectedId);
+    return;
+  }
+
+  if (action.type === 'relation_del') {
+    if (dir === 'undo') {
+      const created = await api('POST', `api/boards/${state.boardId}/relations`, {
+        parent_id: action.relation.parent_id,
+        child_id: action.relation.child_id,
+        label: action.relation.label,
+      });
+      state.relations.push(created);
+      action.relation.id = created.id;
+    } else {
+      await api('DELETE', `api/relations/${action.relation.id}`);
+      state.relations = state.relations.filter(r => r.id !== action.relation.id);
+    }
+    renderCanvas();
+    if (state.selectedId) renderRelationList(state.selectedId);
+    return;
+  }
+
+  if (action.type === 'inline_name') {
+    const name = dir === 'undo' ? action.before : action.after;
+    const o = state.objects.find(obj => obj.id === action.id);
+    if (o) {
+      o.name = name;
+      markHeaderDirty(action.id, { name: o.name, content: o.content });
+      renderObjectList();
+      renderCanvas();
+      if (state.selectedId === action.id) el('fName').value = o.name;
+    }
+    return;
+  }
+}
+
+/* ============================================================
+   유틸
+   ============================================================ */
 
 const el = (id) => document.getElementById(id);
 
@@ -19,7 +134,7 @@ function toast(msg) {
   t.textContent = msg;
   t.style.opacity = '1';
   clearTimeout(t._timer);
-  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 1800);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2000);
 }
 
 async function api(method, url, body) {
@@ -36,12 +151,6 @@ async function api(method, url, body) {
   return json.data;
 }
 
-/* ============================================================
-   숫자 파싱 헬퍼
-   PostgreSQL NUMERIC 타입은 node-postgres가 문자열로 반환하므로
-   명시적으로 Number()로 변환해야 연산 오류가 없습니다.
-   ============================================================ */
-
 function parseObjectNumerics(o) {
   return {
     ...o,
@@ -52,19 +161,20 @@ function parseObjectNumerics(o) {
   };
 }
 
+function isInputFocused() {
+  const tag = document.activeElement && document.activeElement.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
 /* ============================================================
    지연 저장 (Deferred DB flush)
-   변경 사항을 Map에 누적했다가 FLUSH_INTERVAL마다 일괄 저장합니다.
-   - markHeaderDirty / markDetailDirty  : 변경 사항 누적
-   - scheduleFlush                      : 타이머 설정 (이미 있으면 무시)
-   - flushPending                       : 실제 API 호출
    ============================================================ */
 
-const FLUSH_INTERVAL = 25000; // 25초
+const FLUSH_INTERVAL = 25000;
 
 const pendingUpdates = {
-  headers: new Map(),  // objectId → {name, content}
-  details: new Map(),  // objectId → {pos_x, pos_y, color, width, height, shape}
+  headers: new Map(),
+  details: new Map(),
 };
 
 let flushTimer = null;
@@ -102,14 +212,78 @@ async function flushPending() {
 
   await Promise.all([
     ...headerEntries.map(([id, data]) =>
-      api('PUT', `api/objects/${id}`, data)
-        .catch((err) => toast('자동 저장 실패: ' + err.message))
+      api('PUT', `api/objects/${id}`, data).catch((err) => toast('자동 저장 실패: ' + err.message))
     ),
     ...detailEntries.map(([id, data]) =>
-      api('PUT', `api/objects/${id}/detail`, data)
-        .catch((err) => toast('자동 저장 실패: ' + err.message))
+      api('PUT', `api/objects/${id}/detail`, data).catch((err) => toast('자동 저장 실패: ' + err.message))
     ),
   ]);
+}
+
+/* ============================================================
+   뷰포트 (팬 / 줌)
+   ============================================================ */
+
+function applyViewport() {
+  const { scale, panX, panY } = state.viewport;
+  el('canvasInner').style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
+}
+
+function updateZoomLabel() {
+  const lbl = el('zoomLabel');
+  if (lbl) lbl.textContent = Math.round(state.viewport.scale * 100) + '%';
+}
+
+// 스크린 좌표 → 캔버스 논리 좌표
+function toCanvas(clientX, clientY) {
+  const rect = el('canvasWrap').getBoundingClientRect();
+  return {
+    x: (clientX - rect.left  - state.viewport.panX) / state.viewport.scale,
+    y: (clientY - rect.top   - state.viewport.panY) / state.viewport.scale,
+  };
+}
+
+function zoomAt(clientX, clientY, factor) {
+  const rect = el('canvasWrap').getBoundingClientRect();
+  const scx = clientX - rect.left;
+  const scy = clientY - rect.top;
+  const oldScale = state.viewport.scale;
+  const newScale = Math.min(4, Math.max(0.1, oldScale * factor));
+  const ratio = newScale / oldScale;
+  state.viewport.panX = scx - (scx - state.viewport.panX) * ratio;
+  state.viewport.panY = scy - (scy - state.viewport.panY) * ratio;
+  state.viewport.scale = newScale;
+  applyViewport();
+  updateZoomLabel();
+}
+
+function resetZoom() {
+  state.viewport = { scale: 1, panX: 0, panY: 0 };
+  applyViewport();
+  updateZoomLabel();
+}
+
+function startPan(e) {
+  e.preventDefault();
+  state.isPanning = true;
+  const startX = e.clientX - state.viewport.panX;
+  const startY = e.clientY - state.viewport.panY;
+  el('canvasWrap').classList.add('panning');
+
+  function onMove(ev) {
+    state.viewport.panX = ev.clientX - startX;
+    state.viewport.panY = ev.clientY - startY;
+    applyViewport();
+  }
+  function onUp() {
+    state.isPanning = false;
+    el('canvasWrap').classList.remove('panning');
+    if (state.spaceHeld) el('canvasWrap').classList.add('pan-ready');
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 
 /* ============================================================
@@ -119,6 +293,8 @@ async function flushPending() {
 async function init() {
   bindGlobalEvents();
   setActionButtonsEnabled(false);
+  applyViewport();
+  updateZoomLabel();
   try {
     await loadBoards();
     setActionButtonsEnabled(true);
@@ -143,8 +319,8 @@ async function loadBoards() {
   renderBoardSelect();
 
   const remembered = localStorage.getItem('mindmap:lastBoardId');
-  const remeberedExists = state.boards.find((b) => String(b.id) === remembered);
-  await selectBoard(remeberedExists ? remembered : state.boards[0].id);
+  const rememberedExists = state.boards.find((b) => String(b.id) === remembered);
+  await selectBoard(rememberedExists ? remembered : state.boards[0].id);
 }
 
 function renderBoardSelect() {
@@ -159,16 +335,19 @@ function renderBoardSelect() {
 }
 
 async function selectBoard(boardId) {
-  // 보드 전환 전에 미저장 변경 사항 먼저 flush
   await flushPending();
 
   state.boardId = String(boardId);
   state.selectedId = null;
+  state.selectedIds = new Set();
   localStorage.setItem('mindmap:lastBoardId', state.boardId);
 
   el('boardSelect').value = state.boardId;
   const board = state.boards.find((b) => String(b.id) === state.boardId);
   el('boardTitle').value = board ? board.title : '';
+
+  undoStack.length = 0;
+  redoStack.length = 0;
 
   await Promise.all([loadObjects(), loadRelations()]);
   renderObjectList();
@@ -178,7 +357,6 @@ async function selectBoard(boardId) {
 
 async function loadObjects() {
   const raw = await api('GET', `api/boards/${state.boardId}/objects`);
-  // NUMERIC → JS number 변환 (node-postgres는 NUMERIC을 문자열로 반환)
   state.objects = raw.map(parseObjectNumerics);
 }
 
@@ -187,7 +365,7 @@ async function loadRelations() {
 }
 
 /* ============================================================
-   보드(주제/제목)
+   보드 관리
    ============================================================ */
 
 async function createBoard() {
@@ -225,8 +403,9 @@ function renderObjectList() {
   }
 
   state.objects.forEach((obj) => {
+    const isSelected = state.selectedIds.has(obj.id) || obj.id === state.selectedId;
     const li = document.createElement('li');
-    li.className = 'object-item' + (obj.id === state.selectedId ? ' selected' : '');
+    li.className = 'object-item' + (isSelected ? ' selected' : '');
     li.dataset.id = obj.id;
 
     const swatch = document.createElement('span');
@@ -245,38 +424,102 @@ function renderObjectList() {
     remove.addEventListener('click', (e) => { e.stopPropagation(); deleteObject(obj.id); });
 
     li.append(swatch, name, remove);
-    li.addEventListener('click', () => handleNodeClick(obj.id));
+    li.addEventListener('click', () => selectObject(obj.id));
     ul.appendChild(li);
   });
 }
 
 /* ============================================================
-   캔버스 (중앙)
+   다중 선택
+   ============================================================ */
+
+function clearSelection() {
+  state.selectedIds = new Set();
+  state.selectedId = null;
+  updateMultiSelectBanner();
+  renderObjectList();
+  renderCanvas();
+  renderDetailPanel();
+}
+
+function selectOnly(objId) {
+  state.selectedIds = new Set([objId]);
+  state.selectedId = objId;
+  updateMultiSelectBanner();
+}
+
+function toggleInSelection(objId) {
+  if (state.selectedIds.has(objId)) {
+    state.selectedIds.delete(objId);
+    state.selectedId = state.selectedIds.size > 0 ? [...state.selectedIds].at(-1) : null;
+  } else {
+    state.selectedIds.add(objId);
+    state.selectedId = objId;
+  }
+  updateMultiSelectBanner();
+}
+
+function updateMultiSelectBanner() {
+  const banner = el('multiSelectBanner');
+  const count = state.selectedIds.size;
+  if (count > 1) {
+    banner.textContent = `${count}개 항목 선택됨 · Delete로 삭제`;
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+/* ============================================================
+   캔버스 렌더링
    ============================================================ */
 
 function renderCanvas() {
   el('canvasHint').classList.toggle('hidden', state.objects.length > 0);
 
   const layer = el('nodeLayer');
+  // 인라인 편집 중인 input 요소는 유지
+  const editInput = state.inlineEdit ? state.inlineEdit.input : null;
   layer.innerHTML = '';
+  if (editInput) layer.appendChild(editInput);
 
   state.objects.forEach((obj) => {
+    const isDetailSelected = obj.id === state.selectedId;
+    const isMultiSelected  = state.selectedIds.has(obj.id);
+
     const node = document.createElement('div');
-    node.className = 'node' + (obj.id === state.selectedId ? ' selected' : '');
-    if (state.relationMode && state.relationFirst === obj.id) node.classList.add('relation-pending');
+    let cls = 'node';
+    if (state.relationMode && state.relationFirst === obj.id) cls += ' relation-pending';
+    else if (isMultiSelected && state.selectedIds.size > 1) cls += ' multi-selected';
+    else if (isDetailSelected) cls += ' selected';
+    node.className = cls;
+
     node.dataset.id = obj.id;
     node.dataset.shape = obj.shape || 'rounded-rect';
-    node.style.left = `${obj.pos_x}px`;
-    node.style.top = `${obj.pos_y}px`;
-    node.style.width = `${obj.width}px`;
+    node.style.left   = `${obj.pos_x}px`;
+    node.style.top    = `${obj.pos_y}px`;
+    node.style.width  = `${obj.width}px`;
     node.style.height = `${obj.height}px`;
     node.style.background = obj.color || '#F2A93B';
+
+    // 인라인 편집 중인 노드는 숨김 (nodeEl 참조도 갱신)
+    if (state.inlineEdit && state.inlineEdit.objId === obj.id) {
+      node.style.visibility = 'hidden';
+      state.inlineEdit.nodeEl = node;
+    }
+
     node.textContent = obj.name;
 
-    node.addEventListener('mousedown', (e) => startDrag(e, obj.id));
-    node.addEventListener('click', (e) => {
-      if (state.drag && state.drag.moved) return;
-      handleNodeClick(obj.id);
+    node.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (state.inlineEdit) return;  // 편집 중엔 드래그 무시
+      startDrag(e, obj.id);
+    });
+
+    node.addEventListener('dblclick', (e) => {
+      if (state.relationMode) return;
+      e.stopPropagation();
+      startInlineEdit(obj.id);
     });
 
     layer.appendChild(node);
@@ -286,26 +529,22 @@ function renderCanvas() {
 }
 
 function nodeCenter(obj) {
-  return {
-    x: obj.pos_x + obj.width / 2,
-    y: obj.pos_y + obj.height / 2,
-  };
+  return { x: obj.pos_x + obj.width / 2, y: obj.pos_y + obj.height / 2 };
 }
 
 function drawRelations() {
   const svg = el('relationLayer');
   const byId = Object.fromEntries(state.objects.map((o) => [String(o.id), o]));
 
-  const defs = `
-    <defs>
-      <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
-        <path d="M0,0 L6,3 L0,6 Z" fill="var(--accent-2)"></path>
-      </marker>
-    </defs>`;
+  const defs = `<defs>
+    <marker id="arrowHead" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="var(--accent-2)"></path>
+    </marker>
+  </defs>`;
 
   const paths = state.relations.map((rel) => {
     const parent = byId[String(rel.parent_id)];
-    const child = byId[String(rel.child_id)];
+    const child  = byId[String(rel.child_id)];
     if (!parent || !child) return '';
 
     const p1 = nodeCenter(parent);
@@ -314,11 +553,9 @@ function drawRelations() {
     const midY = (p1.y + p2.y) / 2;
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
-    const curveOffset = Math.max(-40, Math.min(40, dy * 0.25 - dx * 0.05));
-    const cx = midX + curveOffset;
-    const cy = midY - curveOffset;
+    const co = Math.max(-40, Math.min(40, dy * 0.25 - dx * 0.05));
 
-    return `<path d="M ${p1.x} ${p1.y} Q ${cx} ${cy} ${p2.x} ${p2.y}"
+    return `<path d="M ${p1.x} ${p1.y} Q ${midX + co} ${midY - co} ${p2.x} ${p2.y}"
                   stroke="var(--accent-2)" stroke-width="2" fill="none"
                   opacity="0.85" marker-end="url(#arrowHead)" data-relation-id="${rel.id}"></path>`;
   }).join('');
@@ -326,67 +563,242 @@ function drawRelations() {
   svg.innerHTML = defs + paths;
 }
 
-function handleNodeClick(objId) {
-  if (state.relationMode) {
-    handleRelationClick(objId);
-    return;
-  }
-  selectObject(objId);
-}
-
-/* ----- 드래그 이동 ----- */
+/* ============================================================
+   드래그 이동 (단일 / 다중)
+   ============================================================ */
 
 function startDrag(e, objId) {
   if (state.relationMode) return;
   e.preventDefault();
-  const obj = state.objects.find((o) => o.id === objId);
-  if (!obj) return;
+  e.stopPropagation();
 
-  // 스크롤 가능한 캔버스 안에서 정확한 좌표를 얻기 위해
-  // 뷰포트 좌표 대신 canvasWrap-상대 좌표를 사용합니다.
-  const canvasWrap = el('canvasWrap');
-  const wrapRect = canvasWrap.getBoundingClientRect();
+  const shiftHeld = e.shiftKey;
 
-  const toCanvasX = (clientX) => clientX - wrapRect.left + canvasWrap.scrollLeft;
-  const toCanvasY = (clientY) => clientY - wrapRect.top + canvasWrap.scrollTop;
+  // Shift 클릭이면 선택 토글 후 드래그 없이 종료
+  if (shiftHeld) {
+    toggleInSelection(objId);
+    renderObjectList();
+    renderCanvas();
+    renderDetailPanel();
+    return;
+  }
 
-  const startCanvasMouseX = toCanvasX(e.clientX);
-  const startCanvasMouseY = toCanvasY(e.clientY);
+  // 선택 집합 결정: 클릭한 노드가 이미 선택 집합에 없으면 단독 선택
+  if (!state.selectedIds.has(objId)) {
+    selectOnly(objId);
+    renderObjectList();
+    renderCanvas();
+    renderDetailPanel();
+  }
 
-  state.drag = {
-    id: objId,
-    startX: obj.pos_x,
-    startY: obj.pos_y,
+  const startCanvas = toCanvas(e.clientX, e.clientY);
+  const startPositions = [...state.selectedIds].map((id) => {
+    const o = state.objects.find((obj) => obj.id === id);
+    return { id, pos_x: o.pos_x, pos_y: o.pos_y };
+  });
+
+  const dragState = {
+    startCanvasX: startCanvas.x,
+    startCanvasY: startCanvas.y,
+    startPositions,
     moved: false,
   };
+  state.drag = dragState;
 
   function onMove(ev) {
-    const dx = toCanvasX(ev.clientX) - startCanvasMouseX;
-    const dy = toCanvasY(ev.clientY) - startCanvasMouseY;
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) state.drag.moved = true;
+    const cur = toCanvas(ev.clientX, ev.clientY);
+    const dx = cur.x - dragState.startCanvasX;
+    const dy = cur.y - dragState.startCanvasY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragState.moved = true;
 
-    obj.pos_x = Math.max(0, state.drag.startX + dx);
-    obj.pos_y = Math.max(0, state.drag.startY + dy);
-
-    const nodeEl = el('nodeLayer').querySelector(`[data-id="${objId}"]`);
-    if (nodeEl) {
-      nodeEl.style.left = `${obj.pos_x}px`;
-      nodeEl.style.top = `${obj.pos_y}px`;
-    }
+    dragState.startPositions.forEach(({ id, pos_x, pos_y }) => {
+      const o = state.objects.find((obj) => obj.id === id);
+      if (!o) return;
+      o.pos_x = Math.max(0, pos_x + dx);
+      o.pos_y = Math.max(0, pos_y + dy);
+      const nodeEl = el('nodeLayer').querySelector(`[data-id="${id}"]`);
+      if (nodeEl) {
+        nodeEl.style.left = `${o.pos_x}px`;
+        nodeEl.style.top  = `${o.pos_y}px`;
+      }
+    });
     drawRelations();
   }
 
   function onUp() {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
-    if (state.drag && state.drag.moved) {
-      markDetailDirty(objId, { pos_x: obj.pos_x, pos_y: obj.pos_y });
+
+    if (dragState.moved) {
+      const afterPositions = dragState.startPositions.map(({ id }) => {
+        const o = state.objects.find((obj) => obj.id === id);
+        return { id, pos_x: o.pos_x, pos_y: o.pos_y };
+      });
+      pushUndo({ type: 'move', before: dragState.startPositions, after: afterPositions });
+      dragState.startPositions.forEach(({ id }) => {
+        const o = state.objects.find((obj) => obj.id === id);
+        if (o) markDetailDirty(id, { pos_x: o.pos_x, pos_y: o.pos_y });
+      });
+    } else if (!shiftHeld) {
+      // 이동 없이 클릭 → 단독 선택 (이미 처리됨)
     }
+
     state.drag = null;
   }
 
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
+}
+
+/* ============================================================
+   마키 선택 (Rubber-band)
+   ============================================================ */
+
+function startMarquee(e) {
+  const wrapRect = el('canvasWrap').getBoundingClientRect();
+  const startX = e.clientX - wrapRect.left;
+  const startY = e.clientY - wrapRect.top;
+
+  const marqueeEl = el('marquee');
+  marqueeEl.classList.remove('hidden');
+  marqueeEl.style.cssText = `left:${startX}px;top:${startY}px;width:0;height:0;`;
+
+  let moved = false;
+
+  function onMove(ev) {
+    const cx = ev.clientX - wrapRect.left;
+    const cy = ev.clientY - wrapRect.top;
+    const x  = Math.min(cx, startX);
+    const y  = Math.min(cy, startY);
+    const w  = Math.abs(cx - startX);
+    const h  = Math.abs(cy - startY);
+    if (w > 3 || h > 3) moved = true;
+    marqueeEl.style.left   = `${x}px`;
+    marqueeEl.style.top    = `${y}px`;
+    marqueeEl.style.width  = `${w}px`;
+    marqueeEl.style.height = `${h}px`;
+  }
+
+  function onUp(ev) {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    marqueeEl.classList.add('hidden');
+
+    if (!moved) return;
+
+    const cx = ev.clientX - wrapRect.left;
+    const cy = ev.clientY - wrapRect.top;
+    const mx = Math.min(cx, startX);
+    const my = Math.min(cy, startY);
+    const mw = Math.abs(cx - startX);
+    const mh = Math.abs(cy - startY);
+    if (mw < 4 || mh < 4) return;
+
+    // 마키 좌표를 캔버스 논리 좌표로 변환
+    const { panX, panY, scale } = state.viewport;
+    const minCX = (mx - panX) / scale;
+    const minCY = (my - panY) / scale;
+    const maxCX = minCX + mw / scale;
+    const maxCY = minCY + mh / scale;
+
+    const hit = state.objects.filter((o) =>
+      o.pos_x < maxCX && o.pos_x + o.width  > minCX &&
+      o.pos_y < maxCY && o.pos_y + o.height > minCY
+    );
+
+    if (hit.length === 0) return;
+
+    if (e.shiftKey) {
+      hit.forEach((o) => state.selectedIds.add(o.id));
+    } else {
+      state.selectedIds = new Set(hit.map((o) => o.id));
+    }
+    state.selectedId = [...state.selectedIds].at(-1);
+    updateMultiSelectBanner();
+    renderObjectList();
+    renderCanvas();
+    renderDetailPanel();
+  }
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+/* ============================================================
+   인라인 편집 (더블클릭)
+   ============================================================ */
+
+function startInlineEdit(objId) {
+  const obj = state.objects.find((o) => o.id === objId);
+  if (!obj) return;
+  cancelInlineEdit();
+
+  selectOnly(objId);
+
+  const shapeRadius = {
+    'rounded-rect': '14px',
+    'ellipse': '50%',
+    'circle': '50%',
+    'diamond': '6px',
+  }[obj.shape || 'rounded-rect'] || '14px';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'inline-edit';
+  input.value = obj.name;
+  input.style.left         = `${obj.pos_x}px`;
+  input.style.top          = `${obj.pos_y}px`;
+  input.style.width        = `${obj.width}px`;
+  input.style.height       = `${obj.height}px`;
+  input.style.background   = obj.color || '#F2A93B';
+  input.style.borderRadius = shapeRadius;
+
+  el('nodeLayer').appendChild(input);
+
+  const nodeEl = el('nodeLayer').querySelector(`[data-id="${objId}"]`);
+  if (nodeEl) nodeEl.style.visibility = 'hidden';
+
+  state.inlineEdit = { objId, input, nodeEl };
+
+  input.focus();
+  input.select();
+
+  const prevName = obj.name;
+
+  const commit = () => {
+    if (!state.inlineEdit || state.inlineEdit.input !== input) return;
+    const newName = input.value.trim() || prevName;
+    cleanup();
+    if (newName !== prevName) {
+      pushUndo({ type: 'inline_name', id: objId, before: prevName, after: newName });
+      obj.name = newName;
+      markHeaderDirty(objId, { name: obj.name, content: obj.content });
+    }
+    renderObjectList();
+    renderCanvas();
+    if (state.selectedId === objId) el('fName').value = obj.name;
+  };
+
+  const cleanup = () => {
+    if (!state.inlineEdit || state.inlineEdit.input !== input) return;
+    if (state.inlineEdit.nodeEl) state.inlineEdit.nodeEl.style.visibility = '';
+    input.remove();
+    state.inlineEdit = null;
+  };
+
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();  // Ctrl+Z 등 전역 단축키 차단
+    if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { cleanup(); renderCanvas(); }
+  });
+  input.addEventListener('blur', commit);
+}
+
+function cancelInlineEdit() {
+  if (!state.inlineEdit) return;
+  if (state.inlineEdit.nodeEl) state.inlineEdit.nodeEl.style.visibility = '';
+  state.inlineEdit.input.remove();
+  state.inlineEdit = null;
 }
 
 /* ============================================================
@@ -404,14 +816,13 @@ async function createObject() {
   const pos_y = 60 + Math.floor(count / 8) * 100;
 
   const created = await api('POST', `api/boards/${state.boardId}/objects`, {
-    name: '새 항목',
-    content: '',
-    pos_x, pos_y,
+    name: '새 항목', content: '', pos_x, pos_y,
   });
   state.objects.push(parseObjectNumerics(created));
+  selectOnly(created.id);
   renderObjectList();
   renderCanvas();
-  await selectObject(created.id);
+  await renderDetailPanel();
   el('fName').focus();
   el('fName').select();
 }
@@ -419,14 +830,40 @@ async function createObject() {
 async function deleteObject(objId) {
   if (!window.confirm('이 항목을 삭제할까요? 연결된 관계와 메모도 함께 삭제됩니다.')) return;
 
-  // 삭제 대상의 미저장 변경 사항 제거
   pendingUpdates.headers.delete(objId);
   pendingUpdates.details.delete(objId);
 
   await api('DELETE', `api/objects/${objId}`);
   state.objects = state.objects.filter((o) => o.id !== objId);
   state.relations = state.relations.filter((r) => r.parent_id !== objId && r.child_id !== objId);
-  if (state.selectedId === objId) state.selectedId = null;
+  state.selectedIds.delete(objId);
+  if (state.selectedId === objId) state.selectedId = [...state.selectedIds].at(-1) ?? null;
+  updateMultiSelectBanner();
+  renderObjectList();
+  renderCanvas();
+  renderDetailPanel();
+}
+
+async function deleteSelectedObjects() {
+  const ids = [...state.selectedIds];
+  if (!ids.length) return;
+  const msg = ids.length === 1
+    ? '이 항목을 삭제할까요? 연결된 관계와 메모도 함께 삭제됩니다.'
+    : `선택한 ${ids.length}개 항목을 모두 삭제할까요?`;
+  if (!window.confirm(msg)) return;
+
+  for (const id of ids) {
+    pendingUpdates.headers.delete(id);
+    pendingUpdates.details.delete(id);
+    await api('DELETE', `api/objects/${id}`);
+  }
+
+  const idSet = new Set(ids);
+  state.objects   = state.objects.filter((o) => !idSet.has(o.id));
+  state.relations = state.relations.filter((r) => !idSet.has(r.parent_id) && !idSet.has(r.child_id));
+  state.selectedIds = new Set();
+  state.selectedId  = null;
+  updateMultiSelectBanner();
   renderObjectList();
   renderCanvas();
   renderDetailPanel();
@@ -437,7 +874,7 @@ async function deleteObject(objId) {
    ============================================================ */
 
 async function selectObject(objId) {
-  state.selectedId = objId;
+  selectOnly(objId);
   renderObjectList();
   renderCanvas();
   await renderDetailPanel();
@@ -449,12 +886,12 @@ async function renderDetailPanel() {
   el('detailForm').classList.toggle('hidden', !obj);
   if (!obj) return;
 
-  el('fName').value = obj.name || '';
+  el('fName').value    = obj.name || '';
   el('fContent').value = obj.content || '';
-  el('fColor').value = obj.color || '#F2A93B';
-  el('fShape').value = obj.shape || 'rounded-rect';
-  el('fWidth').value = obj.width;
-  el('fHeight').value = obj.height;
+  el('fColor').value   = obj.color || '#F2A93B';
+  el('fShape').value   = obj.shape || 'rounded-rect';
+  el('fWidth').value   = obj.width;
+  el('fHeight').value  = obj.height;
 
   renderRelationList(obj.id);
   await renderMemoList(obj.id);
@@ -476,8 +913,8 @@ function renderRelationList(objId) {
 
   related.forEach((rel) => {
     const isParent = rel.parent_id === objId;
-    const otherId = isParent ? rel.child_id : rel.parent_id;
-    const other = byId[otherId];
+    const otherId  = isParent ? rel.child_id : rel.parent_id;
+    const other    = byId[otherId];
 
     const li = document.createElement('li');
     const label = document.createElement('span');
@@ -494,15 +931,15 @@ function renderRelationList(objId) {
   });
 }
 
-/* ----- 상세 폼 입력 -> 지연 저장 ----- */
+/* ----- 상세 폼 → 지연 저장 ----- */
 
 function bindDetailFormEvents() {
-  el('fName').addEventListener('change', () => saveHeader());
-  el('fContent').addEventListener('change', () => saveHeader());
-  el('fColor').addEventListener('input', () => saveDetail());
-  el('fShape').addEventListener('change', () => saveDetail());
-  el('fWidth').addEventListener('change', () => saveDetail());
-  el('fHeight').addEventListener('change', () => saveDetail());
+  el('fName').addEventListener('change', saveHeader);
+  el('fContent').addEventListener('change', saveHeader);
+  el('fColor').addEventListener('input', saveDetail);
+  el('fShape').addEventListener('change', saveDetail);
+  el('fWidth').addEventListener('change', saveDetail);
+  el('fHeight').addEventListener('change', saveDetail);
   el('btnDeleteObject').addEventListener('click', () => {
     if (state.selectedId) deleteObject(state.selectedId);
   });
@@ -511,7 +948,7 @@ function bindDetailFormEvents() {
 function saveHeader() {
   const obj = state.objects.find((o) => o.id === state.selectedId);
   if (!obj) return;
-  obj.name = el('fName').value || '새 항목';
+  obj.name    = el('fName').value || '새 항목';
   obj.content = el('fContent').value;
   markHeaderDirty(obj.id, { name: obj.name, content: obj.content });
   renderObjectList();
@@ -521,9 +958,9 @@ function saveHeader() {
 function saveDetail() {
   const obj = state.objects.find((o) => o.id === state.selectedId);
   if (!obj) return;
-  obj.color = el('fColor').value;
-  obj.shape = el('fShape').value;
-  obj.width = Number(el('fWidth').value) || 140;
+  obj.color  = el('fColor').value;
+  obj.shape  = el('fShape').value;
+  obj.width  = Number(el('fWidth').value)  || 140;
   obj.height = Number(el('fHeight').value) || 60;
   markDetailDirty(obj.id, { color: obj.color, shape: obj.shape, width: obj.width, height: obj.height });
   renderObjectList();
@@ -535,7 +972,7 @@ function saveDetail() {
    ============================================================ */
 
 function toggleRelationMode() {
-  state.relationMode = !state.relationMode;
+  state.relationMode  = !state.relationMode;
   state.relationFirst = null;
   el('btnRelationMode').dataset.active = String(state.relationMode);
   el('relationBanner').classList.toggle('hidden', !state.relationMode);
@@ -555,12 +992,13 @@ async function handleRelationClick(objId) {
   }
 
   const parent_id = state.relationFirst;
-  const child_id = objId;
+  const child_id  = objId;
   state.relationFirst = null;
 
   try {
     const created = await api('POST', `api/boards/${state.boardId}/relations`, { parent_id, child_id });
     state.relations.push(created);
+    pushUndo({ type: 'relation_add', relation: { ...created } });
   } catch (err) {
     toast(err.message);
   }
@@ -571,14 +1009,16 @@ async function handleRelationClick(objId) {
 }
 
 async function deleteRelation(relationId) {
+  const rel = state.relations.find((r) => r.id === relationId);
   await api('DELETE', `api/relations/${relationId}`);
+  if (rel) pushUndo({ type: 'relation_del', relation: { ...rel } });
   state.relations = state.relations.filter((r) => r.id !== relationId);
   renderCanvas();
   if (state.selectedId) renderRelationList(state.selectedId);
 }
 
 /* ============================================================
-   메모 (확장 테이블 예시)
+   메모
    ============================================================ */
 
 async function renderMemoList(objId) {
@@ -596,7 +1036,7 @@ async function renderMemoList(objId) {
   }
 
   memos.forEach((m) => {
-    const li = document.createElement('li');
+    const li   = document.createElement('li');
     const text = document.createElement('span');
     text.className = 'memo-text';
     text.textContent = m.memo_text;
@@ -613,13 +1053,121 @@ async function renderMemoList(objId) {
 }
 
 async function addMemo() {
-  const obj = state.objects.find((o) => o.id === state.selectedId);
+  const obj   = state.objects.find((o) => o.id === state.selectedId);
   const input = el('memoInput');
-  const text = input.value.trim();
+  const text  = input.value.trim();
   if (!obj || !text) return;
   await api('POST', `api/objects/${obj.id}/memos`, { memo_text: text });
   input.value = '';
   await renderMemoList(obj.id);
+}
+
+/* ============================================================
+   내보내기 (HTML / PDF)
+   ============================================================ */
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function buildExportContent() {
+  if (!state.objects.length) return null;
+
+  const PADDING = 48;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  state.objects.forEach((obj) => {
+    minX = Math.min(minX, obj.pos_x);
+    minY = Math.min(minY, obj.pos_y);
+    maxX = Math.max(maxX, obj.pos_x + obj.width);
+    maxY = Math.max(maxY, obj.pos_y + obj.height);
+  });
+  if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 200; maxY = 100; }
+
+  const ox = minX - PADDING;
+  const oy = minY - PADDING;
+  const W  = maxX - minX + PADDING * 2;
+  const H  = maxY - minY + PADDING * 2;
+
+  const byId = Object.fromEntries(state.objects.map((o) => [String(o.id), o]));
+
+  const svgPaths = state.relations.map((rel) => {
+    const p = byId[String(rel.parent_id)];
+    const c = byId[String(rel.child_id)];
+    if (!p || !c) return '';
+    const p1 = { x: p.pos_x + p.width / 2 - ox, y: p.pos_y + p.height / 2 - oy };
+    const p2 = { x: c.pos_x + c.width / 2 - ox, y: c.pos_y + c.height / 2 - oy };
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    const co   = Math.max(-40, Math.min(40, (p2.y - p1.y) * 0.25 - (p2.x - p1.x) * 0.05));
+    return `<path d="M ${p1.x} ${p1.y} Q ${midX + co} ${midY - co} ${p2.x} ${p2.y}" stroke="#4fd1c5" stroke-width="2" fill="none" opacity="0.85" marker-end="url(#ah)"/>`;
+  }).join('');
+
+  const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:${W}px;height:${H}px;pointer-events:none"><defs><marker id="ah" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#4fd1c5"/></marker></defs>${svgPaths}</svg>`;
+
+  const nodesStr = state.objects.map((obj) => {
+    const x = obj.pos_x - ox;
+    const y = obj.pos_y - oy;
+    let r = '14px', clip = '';
+    if (obj.shape === 'ellipse' || obj.shape === 'circle') { r = '50%'; }
+    else if (obj.shape === 'diamond') { r = '6px'; clip = 'clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);'; }
+    return `<div style="position:absolute;left:${x}px;top:${y}px;width:${obj.width}px;height:${obj.height}px;background:${obj.color};border-radius:${r};${clip}display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 10px;font-size:13px;font-weight:600;color:#1b1e25;border:2px solid rgba(0,0,0,.28);box-shadow:0 3px 8px rgba(0,0,0,.4);overflow:hidden;line-height:1.25;box-sizing:border-box;">${escapeHtml(obj.name)}</div>`;
+  }).join('');
+
+  return { W, H, svgStr, nodesStr };
+}
+
+function exportHtml() {
+  if (!state.objects.length) { toast('내보낼 항목이 없습니다'); return; }
+  const board = state.boards.find((b) => String(b.id) === state.boardId);
+  const title = board ? board.title : '마인드맵';
+  const { W, H, svgStr, nodesStr } = buildExportContent();
+
+  const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>${escapeHtml(title)}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#1b1e25;font-family:sans-serif;padding:24px}
+h1{font-size:18px;font-weight:700;color:#f2a93b;margin-bottom:16px}
+.wrap{position:relative;width:${W}px;height:${H}px;background:#181a20;
+background-image:radial-gradient(rgba(255,255,255,.06) 1px,transparent 1px);background-size:22px 22px}</style>
+</head><body><h1>${escapeHtml(title)}</h1><div class="wrap">${svgStr}${nodesStr}</div></body></html>`;
+
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  a.download = `${title}.html`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function exportPdf() {
+  if (!state.objects.length) { toast('내보낼 항목이 없습니다'); return; }
+  const board = state.boards.find((b) => String(b.id) === state.boardId);
+  const title = board ? board.title : '마인드맵';
+  const { W, H, svgStr, nodesStr } = buildExportContent();
+
+  const MAX_W = 1060;
+  const scale = W > MAX_W ? MAX_W / W : 1;
+  const printW = Math.round(W * scale);
+  const printH = Math.round(H * scale);
+
+  const html = `<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>${escapeHtml(title)}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#fff;font-family:sans-serif}
+h1{font-size:16px;font-weight:700;color:#333;padding:16px 20px 12px}
+.wrap{position:relative;width:${W}px;height:${H}px;background:#1b1e25;
+background-image:radial-gradient(rgba(255,255,255,.06) 1px,transparent 1px);background-size:22px 22px;
+transform:scale(${scale});transform-origin:top left}
+@media print{@page{size:${printW + 40}px ${printH + 72}px;margin:0}
+body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+</head><body><h1>${escapeHtml(title)}</h1>
+<div class="wrap">${svgStr}${nodesStr}</div>
+<script>window.onload=function(){setTimeout(function(){window.print();},400)};<\/script>
+</body></html>`;
+
+  const win = window.open('', '_blank', `width=${printW + 60},height=${printH + 120}`);
+  if (!win) { toast('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해주세요.'); return; }
+  win.document.write(html);
+  win.document.close();
 }
 
 /* ============================================================
@@ -639,175 +1187,69 @@ function focusMemoField() {
 
 function bindShortcutEvents() {
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && state.relationMode && state.relationFirst !== null) {
-      state.relationFirst = null;
-      renderCanvas();
+    // Space → 팬 모드
+    if (e.code === 'Space' && !isInputFocused()) {
+      if (!state.spaceHeld) {
+        state.spaceHeld = true;
+        el('canvasWrap').classList.add('pan-ready');
+      }
+      e.preventDefault();
+      return;
+    }
+
+    // Escape: 관계 모드 취소 / 다중선택 해제 / 인라인 편집 취소
+    if (e.key === 'Escape') {
+      if (state.inlineEdit) { cancelInlineEdit(); renderCanvas(); return; }
+      if (state.relationMode && state.relationFirst !== null) {
+        state.relationFirst = null;
+        renderCanvas();
+        return;
+      }
+      if (state.selectedIds.size > 0) { clearSelection(); return; }
+    }
+
+    // Delete / Backspace → 선택 항목 삭제
+    if ((e.key === 'Delete' || e.key === 'Backspace') && !isInputFocused()) {
+      if (state.selectedIds.size > 0) {
+        e.preventDefault();
+        deleteSelectedObjects();
+      }
       return;
     }
 
     if (!(e.ctrlKey || e.metaKey)) return;
 
     switch (e.key) {
-      case '1': e.preventDefault(); createBoard(); break;
-      case '2': e.preventDefault(); createObject(); break;
-      case '3': e.preventDefault(); toggleRelationMode(); break;
+      case 'z':
+      case 'Z':
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        break;
+      case 'y':
+      case 'Y':
+        e.preventDefault();
+        redo();
+        break;
+      case '0':
+        e.preventDefault();
+        resetZoom();
+        break;
+      case '1': e.preventDefault(); if (!isInputFocused()) createBoard(); break;
+      case '2': e.preventDefault(); if (!isInputFocused()) createObject(); break;
+      case '3': e.preventDefault(); if (!isInputFocused()) toggleRelationMode(); break;
       case '4': e.preventDefault(); focusNameField(); break;
       case '5': e.preventDefault(); focusMemoField(); break;
       case '6': e.preventDefault(); if (state.selectedId) deleteObject(state.selectedId); break;
       default: break;
     }
   });
-}
 
-/* ============================================================
-   내보내기 (HTML / PDF)
-   ============================================================ */
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function buildExportContent() {
-  if (!state.objects.length) return null;
-
-  const PADDING = 48;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  state.objects.forEach((obj) => {
-    minX = Math.min(minX, obj.pos_x);
-    minY = Math.min(minY, obj.pos_y);
-    maxX = Math.max(maxX, obj.pos_x + obj.width);
-    maxY = Math.max(maxY, obj.pos_y + obj.height);
-  });
-
-  // 모든 노드가 (0,0)에 있을 때 방어
-  if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 200; maxY = 100; }
-
-  const ox = minX - PADDING;
-  const oy = minY - PADDING;
-  const W = maxX - minX + PADDING * 2;
-  const H = maxY - minY + PADDING * 2;
-
-  const byId = Object.fromEntries(state.objects.map((o) => [String(o.id), o]));
-
-  const svgPaths = state.relations.map((rel) => {
-    const p = byId[String(rel.parent_id)];
-    const c = byId[String(rel.child_id)];
-    if (!p || !c) return '';
-    const p1 = { x: p.pos_x + p.width / 2 - ox, y: p.pos_y + p.height / 2 - oy };
-    const p2 = { x: c.pos_x + c.width / 2 - ox, y: c.pos_y + c.height / 2 - oy };
-    const midX = (p1.x + p2.x) / 2;
-    const midY = (p1.y + p2.y) / 2;
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const co = Math.max(-40, Math.min(40, dy * 0.25 - dx * 0.05));
-    return `<path d="M ${p1.x} ${p1.y} Q ${midX + co} ${midY - co} ${p2.x} ${p2.y}" stroke="#4fd1c5" stroke-width="2" fill="none" opacity="0.85" marker-end="url(#ah)"/>`;
-  }).join('');
-
-  const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:${W}px;height:${H}px;pointer-events:none"><defs><marker id="ah" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#4fd1c5"/></marker></defs>${svgPaths}</svg>`;
-
-  const nodesStr = state.objects.map((obj) => {
-    const x = obj.pos_x - ox;
-    const y = obj.pos_y - oy;
-    let r = '14px';
-    let clip = '';
-    if (obj.shape === 'ellipse' || obj.shape === 'circle') {
-      r = '50%';
-    } else if (obj.shape === 'diamond') {
-      r = '6px';
-      clip = 'clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);';
+  document.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') {
+      state.spaceHeld = false;
+      el('canvasWrap').classList.remove('pan-ready');
     }
-    return `<div style="position:absolute;left:${x}px;top:${y}px;width:${obj.width}px;height:${obj.height}px;background:${obj.color};border-radius:${r};${clip}display:flex;align-items:center;justify-content:center;text-align:center;padding:6px 10px;font-size:13px;font-weight:600;color:#1b1e25;border:2px solid rgba(0,0,0,.28);box-shadow:0 3px 8px rgba(0,0,0,.4);overflow:hidden;line-height:1.25;box-sizing:border-box;">${escapeHtml(obj.name)}</div>`;
-  }).join('');
-
-  return { W, H, svgStr, nodesStr };
-}
-
-function exportHtml() {
-  if (!state.objects.length) { toast('내보낼 항목이 없습니다'); return; }
-  const board = state.boards.find((b) => String(b.id) === state.boardId);
-  const title = board ? board.title : '마인드맵';
-  const { W, H, svgStr, nodesStr } = buildExportContent();
-
-  const html = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>${escapeHtml(title)}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#1b1e25;font-family:sans-serif;padding:24px}
-h1{font-size:18px;font-weight:700;color:#f2a93b;margin-bottom:16px}
-.wrap{position:relative;width:${W}px;height:${H}px;background:#181a20;background-image:radial-gradient(rgba(255,255,255,.06) 1px,transparent 1px);background-size:22px 22px}
-</style>
-</head>
-<body>
-<h1>${escapeHtml(title)}</h1>
-<div class="wrap">
-${svgStr}
-${nodesStr}
-</div>
-</body>
-</html>`;
-
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${title}.html`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-function exportPdf() {
-  if (!state.objects.length) { toast('내보낼 항목이 없습니다'); return; }
-  const board = state.boards.find((b) => String(b.id) === state.boardId);
-  const title = board ? board.title : '마인드맵';
-  const { W, H, svgStr, nodesStr } = buildExportContent();
-
-  // 너무 넓으면 축소하여 인쇄 용지에 맞춤
-  const MAX_W = 1060;
-  const scale = W > MAX_W ? MAX_W / W : 1;
-  const printW = Math.round(W * scale);
-  const printH = Math.round(H * scale);
-
-  const html = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<title>${escapeHtml(title)}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#fff;font-family:sans-serif}
-h1{font-size:16px;font-weight:700;color:#333;padding:16px 20px 12px}
-.wrap{position:relative;width:${W}px;height:${H}px;background:#1b1e25;
-  background-image:radial-gradient(rgba(255,255,255,.06) 1px,transparent 1px);
-  background-size:22px 22px;
-  transform:scale(${scale});transform-origin:top left}
-@media print{
-  @page{size:${printW + 40}px ${printH + 72}px;margin:0}
-  body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-}
-</style>
-</head>
-<body>
-<h1>${escapeHtml(title)}</h1>
-<div class="wrap">
-${svgStr}
-${nodesStr}
-</div>
-<script>
-window.onload = function() { setTimeout(function() { window.print(); }, 400); };
-<\/script>
-</body>
-</html>`;
-
-  const win = window.open('', '_blank', `width=${printW + 60},height=${printH + 120}`);
-  if (!win) { toast('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해주세요.'); return; }
-  win.document.write(html);
-  win.document.close();
+  });
 }
 
 /* ============================================================
@@ -815,25 +1257,65 @@ window.onload = function() { setTimeout(function() { window.print(); }, 400); };
    ============================================================ */
 
 function bindGlobalEvents() {
+  // 보드
   el('boardSelect').addEventListener('change', (e) => selectBoard(e.target.value));
   el('btnNewBoard').addEventListener('click', createBoard);
   el('boardTitle').addEventListener('change', (e) => updateBoardTitle(e.target.value));
 
+  // 객체 / 관계
   el('btnNewObject').addEventListener('click', createObject);
   el('btnRelationMode').addEventListener('click', toggleRelationMode);
+
+  // 내보내기
   el('btnExportHtml').addEventListener('click', exportHtml);
   el('btnExportPdf').addEventListener('click', exportPdf);
 
+  // 줌 버튼
+  el('btnZoomIn').addEventListener('click',    () => {
+    const rect = el('canvasWrap').getBoundingClientRect();
+    zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.2);
+  });
+  el('btnZoomOut').addEventListener('click',   () => {
+    const rect = el('canvasWrap').getBoundingClientRect();
+    zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1 / 1.2);
+  });
+  el('btnZoomReset').addEventListener('click', resetZoom);
+
+  // 캔버스 휠 줌
+  el('canvasWrap').addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    zoomAt(e.clientX, e.clientY, factor);
+  }, { passive: false });
+
+  // 캔버스 마우스다운 (팬 / 마키)
+  el('canvasWrap').addEventListener('mousedown', (e) => {
+    const isNode = e.target.closest && e.target.closest('.node');
+
+    // 중간 버튼 or Space+좌클릭 → 팬
+    if (e.button === 1 || (e.button === 0 && state.spaceHeld)) {
+      e.preventDefault();
+      startPan(e);
+      return;
+    }
+
+    // 배경 좌클릭 → 선택 해제 + 마키
+    if (e.button === 0 && !isNode) {
+      if (state.inlineEdit) return;  // 인라인 편집 중엔 무시 (blur가 처리)
+      if (!e.shiftKey) clearSelection();
+      startMarquee(e);
+    }
+  });
+
+  // 메모
   el('btnAddMemo').addEventListener('click', addMemo);
   el('memoInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addMemo();
   });
 
-  // 탭을 숨기거나 닫을 때 미저장 변경 사항 flush
+  // 탭 숨김 시 flush
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && hasPending()) {
-      flushPending();
-    }
+    if (document.visibilityState === 'hidden' && hasPending()) flushPending();
   });
 
   bindDetailFormEvents();
