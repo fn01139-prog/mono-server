@@ -1,18 +1,14 @@
 /**
- * projects/_template/index.js
- * 새 프로젝트 API 라우터 템플릿
+ * projects/aptloan/index.js
+ * 아파트 입주비용 · 대출 계산기 — 순수 프론트엔드 SPA, API 없음
  * /<prefix>/api/* 로 자동 마운트됩니다.
  */
 const express = require('express');
 const router  = express.Router();
-const { asyncHandler, ok, fail } = require('../../shared/utils');
+const { asyncHandler, ok } = require('../../shared/utils');
 
-// 헬스체크 (필수 유지)
 router.get('/health', asyncHandler(async (req, res) => {
-  ok(res, { status: 'ok', project: 'template', time: new Date() });
+  ok(res, { status: 'ok', project: 'aptloan', time: new Date() });
 }));
-
-// 여기에 라우터 추가
-// router.get('/items', asyncHandler(async (req, res) => { ... }));
 
 module.exports = router;

@@ -128,6 +128,14 @@ input[type=number]:focus, input[type=date]:focus {
   border-color:var(--blue); box-shadow:0 0 0 3px rgba(88,166,255,.12);
 }
 input[type=number] { text-align:right; }
+select {
+  width:100%; padding:7px 10px;
+  background:var(--bg3); border:1px solid var(--border);
+  border-radius:var(--radius); color:var(--text);
+  font-family:var(--sans); font-size:13px;
+  transition:.15s; outline:none; cursor:pointer;
+}
+select:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(88,166,255,.12); }
 
 /* ─── Summary Bar ───────────────────────────────────────── */
 .summary-bar {
@@ -250,8 +258,48 @@ tr.sub td.label { font-family:var(--sans); }
 
 @media(max-width:600px){
   .container { padding:12px; }
-  .jd-row { grid-template-columns:36px 90px 60px 1fr 1fr 30px; }
-  .jd-row .calc-val.days { display:none; }
+  .jd-row.header { display:none; }
+  .jd-row {
+    grid-template-columns: 28px 1fr 1fr 28px;
+    grid-template-rows: auto auto;
+    gap: 4px 6px;
+  }
+  .jd-seq   { grid-column:1; grid-row:1; font-size:11px; text-align:center; }
+  .jd-year  { grid-column:2; grid-row:1; }
+  .jd-month { grid-column:3; grid-row:1; }
+  .jd-del   { grid-column:4; grid-row:1 / span 2; align-self:center; }
+  .jd-amt   { grid-column:1 / span 2; grid-row:2; }
+  .jd-int   { grid-column:3; grid-row:2; text-align:right; font-size:11px; align-self:center; }
+  .jd-days  { display:none; }
+}
+
+/* ─── Print ─────────────────────────────────────────────── */
+@media print {
+  * { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  .app-header .print-btn,
+  .tabs,
+  .summary-bar,
+  .panel { display:none !important; }
+  #panel-3 {
+    display:block !important;
+    animation:none !important;
+  }
+  .app-header { position:static; backdrop-filter:none; }
+  body { background:#fff; color:#000; font-size:12px; }
+  .card {
+    border:1px solid #ccc; background:#fff;
+    break-inside:avoid; margin-bottom:12px;
+  }
+  .card-title { color:#444; border-bottom-color:#ccc; }
+  .chart-wrap { height:200px; }
+  td, th { color:#000; }
+  .num-blue   { color:#1a6bbf; }
+  .num-green  { color:#1a7a30; }
+  .num-amber  { color:#a06010; }
+  .num-red    { color:#c0392b; }
+  .num-purple { color:#7b3fc0; }
+  tr.sub td   { background:#f0f0f0; }
+  .info-box   { background:#e8f0fe; border-color:#aac; color:#1a4a8a; }
 }
 </style>
 </head>
@@ -262,6 +310,7 @@ tr.sub td.label { font-family:var(--sans); }
   <span>🏠</span>
   <h1>아파트 입주비용 &middot; 대출 계산기</h1>
   <span class="badge">v1.0</span>
+  <button class="btn btn-ghost print-btn" onclick="window.print()" style="margin-left:auto;font-size:12px;">🖨️ 결과 인쇄</button>
 </header>
 
 <!-- ─── Main ────────────────────────────────────────────── -->
@@ -294,21 +343,21 @@ tr.sub td.label { font-family:var(--sans); }
         <div class="field">
           <label>분양가</label>
           <div class="field-row">
-            <input type="number" id="i-bunyak" value="46510" min="0" oninput="recalc()">
+            <input type="number" id="i-bunyak" value="" min="0" placeholder="예) 50000" oninput="recalc()">
             <span class="unit">만원</span>
           </div>
         </div>
         <div class="field">
           <label>확장비</label>
           <div class="field-row">
-            <input type="number" id="i-hwak" value="2002" min="0" oninput="recalc()">
+            <input type="number" id="i-hwak" value="" min="0" placeholder="예) 1500" oninput="recalc()">
             <span class="unit">만원</span>
           </div>
         </div>
         <div class="field">
           <label>옵션비</label>
           <div class="field-row">
-            <input type="number" id="i-option" value="1590" min="0" oninput="recalc()">
+            <input type="number" id="i-option" value="" min="0" placeholder="예) 800" oninput="recalc()">
             <span class="unit">만원</span>
           </div>
         </div>
@@ -321,21 +370,21 @@ tr.sub td.label { font-family:var(--sans); }
         <div class="field">
           <label>기납부 — 분양금</label>
           <div class="field-row">
-            <input type="number" id="i-pb" value="2325" min="0" oninput="recalc()">
+            <input type="number" id="i-pb" value="" min="0" placeholder="0" oninput="recalc()">
             <span class="unit">만원</span>
           </div>
         </div>
         <div class="field">
           <label>기납부 — 확장비</label>
           <div class="field-row">
-            <input type="number" id="i-ph" value="200" min="0" oninput="recalc()">
+            <input type="number" id="i-ph" value="" min="0" placeholder="0" oninput="recalc()">
             <span class="unit">만원</span>
           </div>
         </div>
         <div class="field">
           <label>기납부 — 옵션비</label>
           <div class="field-row">
-            <input type="number" id="i-po" value="159" min="0" oninput="recalc()">
+            <input type="number" id="i-po" value="" min="0" placeholder="0" oninput="recalc()">
             <span class="unit">만원</span>
           </div>
         </div>
@@ -347,7 +396,7 @@ tr.sub td.label { font-family:var(--sans); }
       <div class="form-grid form-grid-2">
         <div class="field">
           <label>입주 예정일</label>
-          <input type="date" id="i-move" value="2026-11-01" oninput="recalc()">
+          <input type="date" id="i-move" value="" oninput="recalc()">
         </div>
         <div class="field">
           <label>중도금 납부일</label>
@@ -382,11 +431,18 @@ tr.sub td.label { font-family:var(--sans); }
       <div class="card-title"><span class="icon">💰</span>중도금 이율</div>
       <div class="form-grid">
         <div class="field">
-          <label>연 이율 (단리)</label>
+          <label>연 이율</label>
           <div class="field-row">
             <input type="number" id="i-jdrate" value="4" min="0" max="20" step="0.1" oninput="recalc()">
             <span class="unit">%</span>
           </div>
+        </div>
+        <div class="field">
+          <label>이자 계산 방식</label>
+          <select id="i-jdmethod" onchange="recalc()">
+            <option value="simple">단리 (원금 × 이율 × 일수 ÷ 365)</option>
+            <option value="compound">연복리 (원금 × ((1+이율)^(일수÷365) − 1))</option>
+          </select>
         </div>
       </div>
     </div>
@@ -414,7 +470,7 @@ tr.sub td.label { font-family:var(--sans); }
         <span class="calc-val r num-amber" id="jd-total-int" style="grid-column:6;"></span>
         <span></span>
       </div>
-      <p class="note">※ 단리 계산: 이자 = 원금 × 이율 × 경과일 ÷ 365</p>
+      <p class="note" id="jd-formula-note"></p>
     </div>
 
   </div>
@@ -430,7 +486,7 @@ tr.sub td.label { font-family:var(--sans); }
         <div class="field">
           <label>보유 현금</label>
           <div class="field-row">
-            <input type="number" id="i-cash" value="20000" min="0" oninput="recalc()">
+            <input type="number" id="i-cash" value="" min="0" placeholder="예) 10000" oninput="recalc()">
             <span class="unit">만원</span>
           </div>
         </div>
@@ -573,12 +629,10 @@ tr.sub td.label { font-family:var(--sans); }
 <!-- ─── JavaScript ───────────────────────────────────────── -->
 <script>
 // ── 중도금 데이터 ────────────────────────────────────────────
-let jdData = [
-  {y:2024,m:9,amt:4651},{y:2025,m:1,amt:4651},{y:2025,m:5,amt:4651},
-  {y:2025,m:9,amt:4651},{y:2026,m:1,amt:4651},{y:2026,m:5,amt:4651},
-];
+let jdData = [];
 
-let loanChart = null;
+let loanChart    = null;
+let lastLoanNeed = 0;
 
 // ── 유틸 ─────────────────────────────────────────────────────
 const fmt  = v => Math.round(v).toLocaleString();
@@ -586,6 +640,13 @@ const fmt1 = v => v.toFixed(1).replace(/\B(?=(\d{3})+(?!\d))/g,',');
 const fmtW = v => fmt(v) + '만원';
 const fmtW1= v => fmt1(v) + '만원';
 const n    = id => parseFloat(document.getElementById(id).value) || 0;
+
+function calcJdInterest(amt, rate, diffDays, method) {
+  if (diffDays <= 0) return 0;
+  return method === 'compound'
+    ? amt * (Math.pow(1 + rate, diffDays / 365) - 1)
+    : amt * rate * diffDays / 365;
+}
 
 function pmt(P, r_ann, yr) {
   const r = r_ann / 100 / 12, n = yr * 12;
@@ -616,45 +677,59 @@ function renderJdRows() {
   const moveDate  = new Date(document.getElementById('i-move').value);
   const day       = parseInt(n('i-day')) || 1;
   const rate      = n('i-jdrate') / 100;
+  const method    = document.getElementById('i-jdmethod').value;
+
+  const noteEl = document.getElementById('jd-formula-note');
+  if (noteEl) noteEl.textContent = method === 'compound'
+    ? '※ 연복리 계산: 이자 = 원금 × ((1 + 이율)^(경과일÷365) − 1)'
+    : '※ 단리 계산: 이자 = 원금 × 이율 × 경과일 ÷ 365';
+
+  if (jdData.length === 0) {
+    container.innerHTML = `<p style="color:var(--text3);font-size:12px;padding:12px 0;text-align:center;">+ 회차 추가 버튼으로 중도금 납부 일정을 입력하세요.</p>`;
+    document.getElementById('jd-total-amt').textContent = '—';
+    document.getElementById('jd-total-int').textContent = '—';
+    return;
+  }
 
   container.innerHTML = '';
   jdData.forEach((r,i) => {
     const payDate = new Date(r.y, r.m-1, day);
     const diff    = Math.max(0, Math.round((moveDate - payDate) / 86400000));
-    const inter   = diff > 0 ? r.amt * rate * diff / 365 : 0;
+    const inter   = calcJdInterest(r.amt, rate, diff, method);
     const over    = moveDate < payDate;
 
     // 상태 배지
     const today = new Date();
     let badge = '';
     if (payDate > today) badge = '<span class="badge-future">예정</span>';
-    else if (Math.abs(payDate - today) < 45*86400000) badge = '<span class="badge-now">이번달</span>';
+    else if (payDate.getFullYear() === today.getFullYear() &&
+             payDate.getMonth()    === today.getMonth())    badge = '<span class="badge-now">이번달</span>';
     else badge = '<span class="badge-done">완료</span>';
 
     const div = document.createElement('div');
     div.className = 'jd-row';
     div.id = `jr-${i}`;
     div.innerHTML = `
-      <span style="font-size:12px;color:var(--text2);text-align:center">${i+1}회</span>
-      <input type="number" value="${r.y}" min="2020" max="2040" style="padding:4px 6px;font-size:12px;"
+      <span class="jd-seq" style="font-size:12px;color:var(--text2);text-align:center">${i+1}회</span>
+      <input class="jd-year" type="number" value="${r.y}" min="2020" max="2040" style="padding:4px 6px;font-size:12px;"
              onchange="jdData[${i}].y=+this.value;recalc()">
-      <input type="number" value="${r.m}" min="1" max="12" style="padding:4px 6px;font-size:12px;"
+      <input class="jd-month" type="number" value="${r.m}" min="1" max="12" style="padding:4px 6px;font-size:12px;"
              onchange="jdData[${i}].m=+this.value;recalc()">
-      <input type="number" value="${r.amt}" min="0" style="padding:4px 6px;font-size:12px;"
+      <input class="jd-amt" type="number" value="${r.amt}" min="0" style="padding:4px 6px;font-size:12px;"
              onchange="jdData[${i}].amt=+this.value;recalc()">
-      <span class="calc-val r days">${over?'—':fmt(diff)+'일'}</span>
-      <span class="calc-val r ${over?'':'num-amber'}">${over?'—':fmtW1(inter)}</span>
-      <button class="btn btn-danger" onclick="delJdRow(${i})">✕</button>
+      <span class="calc-val r jd-days">${over?'—':fmt(diff)+'일'}</span>
+      <span class="calc-val r jd-int ${over?'':'num-amber'}">${over?'—':fmtW1(inter)}</span>
+      <button class="btn btn-danger jd-del" onclick="delJdRow(${i})">✕</button>
     `;
     container.appendChild(div);
   });
 
   // 합계
   const totalAmt = jdData.reduce((s,r)=>s+r.amt,0);
-  const totalInt = jdData.reduce((s,r,i) => {
-    const pd = new Date(r.y,r.m-1,day);
+  const totalInt = jdData.reduce((s,r) => {
+    const pd   = new Date(r.y,r.m-1,day);
     const diff = Math.max(0, Math.round((moveDate-pd)/86400000));
-    return s + (diff>0 ? r.amt*rate*diff/365 : 0);
+    return s + calcJdInterest(r.amt, rate, diff, method);
   },0);
 
   document.getElementById('jd-total-amt').textContent = fmtW(totalAmt);
@@ -681,20 +756,22 @@ function recalc() {
   const cash = n('i-cash'), lrate = n('i-lrate'), lyear = n('i-lyear');
   const moveDate = new Date(document.getElementById('i-move').value);
   const day = parseInt(n('i-day')) || 1;
-  const jdRate = n('i-jdrate') / 100;
+  const jdRate   = n('i-jdrate') / 100;
+  const jdMethod = document.getElementById('i-jdmethod').value;
 
   const totalCost = bunyak + hwak + opt;
   const totalPaid = pb + ph + po;
   const jdTotal   = jdData.reduce((s,r)=>s+r.amt, 0);
   const jdInt     = jdData.reduce((s,r) => {
-    const pd = new Date(r.y, r.m-1, day);
+    const pd   = new Date(r.y, r.m-1, day);
     const diff = Math.max(0, Math.round((moveDate-pd)/86400000));
-    return s + (diff>0 ? r.amt*jdRate*diff/365 : 0);
+    return s + calcJdInterest(r.amt, jdRate, diff, jdMethod);
   }, 0);
 
-  const residual = totalCost - totalPaid - jdTotal;
-  const grand    = residual + jdTotal + jdInt;
-  const loanNeed = Math.max(0, grand - cash);
+  const residual   = totalCost - totalPaid - jdTotal;
+  const grand      = residual + jdTotal + jdInt;
+  const loanNeed   = Math.max(0, grand - cash);
+  lastLoanNeed     = loanNeed;
 
   // ── Tab 1 업데이트
   set('r-total',    fmtW(totalCost));
@@ -725,6 +802,8 @@ function recalc() {
 
   // ── Tab 4 업데이트
   renderResult(residual, jdTotal, jdInt, grand, loanNeed, lrate, lyear, totalPaid);
+
+  saveState();
 }
 
 function set(id, val) {
@@ -825,7 +904,7 @@ function renderResult(residual, jdTotal, jdInt, grand, loanNeed, lrate, lyear, p
     ['대출 금리',       lrate + '%'],
     ['대출 기간',       lyear + '년'],
     ['월납부 (원리금균등 ' + lyear + '년)',fmtW1(pmt(loanNeed, lrate, lyear))],
-    ['30년 총이자 (원리금균등)', fmtW1(totalInterest(loanNeed, lrate, 30))],
+    [`${lyear}년 총이자 (원리금균등)`, fmtW1(totalInterest(loanNeed, lrate, lyear))],
   ];
   tbody3.innerHTML = sumRows.map(([k,v],i) => {
     const isBold = k.startsWith('─');
@@ -840,14 +919,15 @@ function optV()   { return fmtW1(n('i-option')); }
 
 // ── 차트 렌더링 ──────────────────────────────────────────────
 function renderChart() {
-  const P = Math.max(0, n('i-grand-raw') || calcLoanNeed());
+  const P = lastLoanNeed;
   const r = n('i-lrate');
-  if (!P || P <= 0) return;
 
   const years  = [10, 15, 20, 25, 30];
   const eql    = years.map(y => +pmt(P, r, y).toFixed(1));
   const pri    = years.map(y => +(P/(y*12) + P*(r/100/12)).toFixed(1));
   const bul    = Array(years.length).fill(+(P*(r/100/12)).toFixed(1));
+
+  if (!P || P <= 0) return;
 
   const ctx = document.getElementById('loan-chart');
   if (loanChart) loanChart.destroy();
@@ -883,24 +963,39 @@ function renderChart() {
   });
 }
 
-function calcLoanNeed() {
-  const bunyak=n('i-bunyak'),hwak=n('i-hwak'),opt=n('i-option');
-  const pb=n('i-pb'),ph=n('i-ph'),po=n('i-po');
-  const moveDate=new Date(document.getElementById('i-move').value);
-  const day=parseInt(n('i-day'))||1;
-  const jdRate=n('i-jdrate')/100;
-  const jdTotal=jdData.reduce((s,r)=>s+r.amt,0);
-  const jdInt=jdData.reduce((s,r)=>{
-    const pd=new Date(r.y,r.m-1,day);
-    const diff=Math.max(0,Math.round((moveDate-pd)/86400000));
-    return s+(diff>0?r.amt*jdRate*diff/365:0);
-  },0);
-  const residual=(bunyak+hwak+opt)-(pb+ph+po)-jdTotal;
-  const grand=residual+jdTotal+jdInt;
-  return Math.max(0,grand-n('i-cash'));
+// ── localStorage 저장/복원 ────────────────────────────────────
+const LS_KEY    = 'aptloan_v1';
+const INPUT_IDS = [
+  'i-bunyak','i-hwak','i-option',
+  'i-pb','i-ph','i-po',
+  'i-move','i-day','i-jdrate','i-jdmethod',
+  'i-cash','i-lrate','i-lyear',
+];
+
+function saveState() {
+  const vals = {};
+  INPUT_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) vals[id] = el.value;
+  });
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ vals, jdData })); } catch(e) {}
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const { vals, jdData: saved } = JSON.parse(raw);
+    if (vals) INPUT_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && vals[id] !== undefined) el.value = vals[id];
+    });
+    if (Array.isArray(saved) && saved.length) jdData = saved;
+  } catch(e) {}
 }
 
 // ── 초기 실행 ─────────────────────────────────────────────────
+loadState();
 recalc();
 </script>
 </body>
