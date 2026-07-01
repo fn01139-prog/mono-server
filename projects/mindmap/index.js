@@ -173,6 +173,16 @@ router.post('/boards/:boardId/relations', asyncHandler(async (req, res) => {
   }
 }));
 
+router.put('/relations/:relationId', asyncHandler(async (req, res) => {
+  const { label } = req.body;
+  const { rows } = await pool.query(
+    'UPDATE relation SET label = $1 WHERE id = $2 RETURNING *',
+    [label != null ? String(label) : null, req.params.relationId]
+  );
+  if (!rows.length) return fail(res, '관계를 찾을 수 없습니다.', 404);
+  ok(res, rows[0]);
+}));
+
 router.delete('/relations/:relationId', asyncHandler(async (req, res) => {
   await pool.query('DELETE FROM relation WHERE id = $1', [req.params.relationId]);
   ok(res, { deleted: true });

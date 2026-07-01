@@ -21,6 +21,7 @@ const state = {
   spaceHeld: false,
   isPanning: false,
   inlineEdit: null,           // {objId, input, nodeEl}
+  searchQuery: '',
 };
 
 /* ============================================================
@@ -306,6 +307,7 @@ async function init() {
 function setActionButtonsEnabled(enabled) {
   el('btnNewObject').disabled = !enabled;
   el('btnRelationMode').disabled = !enabled;
+  el('btnAutoLayout').disabled = !enabled;
 }
 
 async function loadBoards() {
@@ -394,15 +396,18 @@ function renderObjectList() {
   const ul = el('objectList');
   ul.innerHTML = '';
 
-  if (state.objects.length === 0) {
+  const q = state.searchQuery.trim().toLowerCase();
+  const filtered = q ? state.objects.filter(o => o.name.toLowerCase().includes(q)) : state.objects;
+
+  if (filtered.length === 0) {
     const li = document.createElement('li');
     li.className = 'empty-hint';
-    li.textContent = '아직 항목이 없습니다';
+    li.textContent = q ? '검색 결과 없음' : '아직 항목이 없습니다';
     ul.appendChild(li);
     return;
   }
 
-  state.objects.forEach((obj) => {
+  filtered.forEach((obj) => {
     const isSelected = state.selectedIds.has(obj.id) || obj.id === state.selectedId;
     const li = document.createElement('li');
     li.className = 'object-item' + (isSelected ? ' selected' : '');
@@ -492,6 +497,16 @@ function renderCanvas() {
     if (state.relationMode && state.relationFirst === obj.id) cls += ' relation-pending';
     else if (isMultiSelected && state.selectedIds.size > 1) cls += ' multi-selected';
     else if (isDetailSelected) cls += ' selected';
+
+    if (state.searchQuery.trim()) {
+      const q = state.searchQuery.trim().toLowerCase();
+      if (obj.name.toLowerCase().includes(q)) {
+        if (!isDetailSelected && !isMultiSelected) cls += ' search-match';
+      } else {
+        if (!isDetailSelected && !isMultiSelected) cls += ' search-dim';
+      }
+    }
+
     node.className = cls;
 
     node.dataset.id = obj.id;
@@ -512,7 +527,12 @@ function renderCanvas() {
 
     node.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
-      if (state.inlineEdit) return;  // 편집 중엔 드래그 무시
+      if (state.inlineEdit) return;
+      if (state.relationMode) {
+        e.stopPropagation();
+        handleRelationClick(obj.id);
+        return;
+      }
       startDrag(e, obj.id);
     });
 
@@ -555,9 +575,19 @@ function drawRelations() {
     const dy = p2.y - p1.y;
     const co = Math.max(-40, Math.min(40, dy * 0.25 - dx * 0.05));
 
+    // 베지어 t=0.5 중점
+    const lx = midX + co / 2;
+    const ly = midY - co / 2;
+    const labelEl = rel.label
+      ? `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle"
+               font-size="11" font-family="Inter,sans-serif" fill="var(--accent-2)"
+               paint-order="stroke" stroke="var(--bg)" stroke-width="4" stroke-linejoin="round">${escapeHtml(rel.label)}</text>`
+      : '';
+
     return `<path d="M ${p1.x} ${p1.y} Q ${midX + co} ${midY - co} ${p2.x} ${p2.y}"
                   stroke="var(--accent-2)" stroke-width="2" fill="none"
-                  opacity="0.85" marker-end="url(#arrowHead)" data-relation-id="${rel.id}"></path>`;
+                  opacity="0.85" marker-end="url(#arrowHead)" data-relation-id="${rel.id}"></path>
+            ${labelEl}`;
   }).join('');
 
   svg.innerHTML = defs + paths;
@@ -917,8 +947,38 @@ function renderRelationList(objId) {
     const other    = byId[otherId];
 
     const li = document.createElement('li');
-    const label = document.createElement('span');
-    label.innerHTML = `<span class="arrow">${isParent ? '↳ 자식' : '↰ 부모'}</span> ${other ? other.name : '(삭제됨)'}`;
+
+    const nameSpan = document.createElement('span');
+    nameSpan.innerHTML = `<span class="arrow">${isParent ? '↳ 자식' : '↰ 부모'}</span> ${other ? other.name : '(삭제됨)'}`;
+    nameSpan.style.flex = '1';
+    nameSpan.style.overflow = 'hidden';
+    nameSpan.style.textOverflow = 'ellipsis';
+    nameSpan.style.whiteSpace = 'nowrap';
+
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.className = 'relation-label-input';
+    labelInput.value = rel.label || '';
+    labelInput.placeholder = '라벨';
+    labelInput.title = '관계선 라벨';
+
+    const commitLabel = async () => {
+      const newLabel = labelInput.value.trim() || null;
+      const curLabel = rel.label || null;
+      if (newLabel === curLabel) return;
+      try {
+        await updateRelationLabel(rel.id, newLabel);
+      } catch (err) {
+        toast('라벨 저장 실패: ' + err.message);
+        labelInput.value = rel.label || '';
+      }
+    };
+    labelInput.addEventListener('blur', commitLabel);
+    labelInput.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); labelInput.blur(); }
+      if (e.key === 'Escape') { labelInput.value = rel.label || ''; labelInput.blur(); }
+    });
 
     const remove = document.createElement('button');
     remove.className = 'remove';
@@ -926,7 +986,7 @@ function renderRelationList(objId) {
     remove.title = '관계 삭제';
     remove.addEventListener('click', () => deleteRelation(rel.id));
 
-    li.append(label, remove);
+    li.append(nameSpan, labelInput, remove);
     ul.appendChild(li);
   });
 }
@@ -1015,6 +1075,148 @@ async function deleteRelation(relationId) {
   state.relations = state.relations.filter((r) => r.id !== relationId);
   renderCanvas();
   if (state.selectedId) renderRelationList(state.selectedId);
+}
+
+async function updateRelationLabel(relId, label) {
+  const updated = await api('PUT', `api/relations/${relId}`, { label });
+  const rel = state.relations.find((r) => r.id === relId);
+  if (rel) rel.label = updated.label;
+  drawRelations();
+}
+
+/* ============================================================
+   검색 / 필터
+   ============================================================ */
+
+function panToObject(obj) {
+  const rect = el('canvasWrap').getBoundingClientRect();
+  state.viewport.panX = rect.width  / 2 - (obj.pos_x + obj.width  / 2) * state.viewport.scale;
+  state.viewport.panY = rect.height / 2 - (obj.pos_y + obj.height / 2) * state.viewport.scale;
+  applyViewport();
+}
+
+function onSearch(query) {
+  state.searchQuery = query;
+  renderObjectList();
+  renderCanvas();
+  if (query.trim()) {
+    const q = query.trim().toLowerCase();
+    const match = state.objects.find((o) => o.name.toLowerCase().includes(q));
+    if (match) panToObject(match);
+  }
+}
+
+/* ============================================================
+   자동 레이아웃
+   ============================================================ */
+
+async function autoLayout() {
+  if (!state.objects.length) return;
+
+  const H_GAP = 60;
+  const V_GAP = 100;
+  const beforePositions = state.objects.map(({ id, pos_x, pos_y }) => ({ id, pos_x, pos_y }));
+
+  // 관계가 전혀 없으면 그리드 배치
+  if (!state.relations.length) {
+    const cols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(state.objects.length))));
+    state.objects.forEach((obj, i) => {
+      obj.pos_x = 40 + (i % cols) * (obj.width + H_GAP);
+      obj.pos_y = 40 + Math.floor(i / cols) * (obj.height + V_GAP);
+      markDetailDirty(obj.id, { pos_x: obj.pos_x, pos_y: obj.pos_y });
+    });
+    const afterPositions = state.objects.map(({ id, pos_x, pos_y }) => ({ id, pos_x, pos_y }));
+    pushUndo({ type: 'move', before: beforePositions, after: afterPositions });
+    renderCanvas();
+    toast('자동 정렬 완료');
+    return;
+  }
+
+  // 인접 리스트 구성
+  const childrenOf = new Map(state.objects.map((o) => [o.id, []]));
+  const inDegree   = new Map(state.objects.map((o) => [o.id, 0]));
+
+  state.relations.forEach((rel) => {
+    if (childrenOf.has(rel.parent_id) && childrenOf.has(rel.child_id)) {
+      childrenOf.get(rel.parent_id).push(rel.child_id);
+      inDegree.set(rel.child_id, (inDegree.get(rel.child_id) || 0) + 1);
+    }
+  });
+
+  const roots   = state.objects.map((o) => o.id).filter((id) => !inDegree.get(id));
+  const placed  = new Set();
+  const positions = new Map();
+
+  // 서브트리 너비 계산 (캐시는 루트 단위로 초기화)
+  const swCache = new Map();
+  function subtreeW(id, seen = new Set()) {
+    if (swCache.has(id)) return swCache.get(id);
+    if (seen.has(id)) return 140;
+    const obj = state.objects.find((o) => o.id === id);
+    const nodeW = obj ? obj.width : 140;
+    const children = (childrenOf.get(id) || []).filter((c) => !placed.has(c));
+    if (!children.length) { swCache.set(id, nodeW); return nodeW; }
+    const newSeen = new Set([...seen, id]);
+    const total = children.reduce((s, c, i) => s + subtreeW(c, newSeen) + (i > 0 ? H_GAP : 0), 0);
+    const result = Math.max(nodeW, total);
+    swCache.set(id, result);
+    return result;
+  }
+
+  function placeSubtree(id, cx, y) {
+    if (placed.has(id)) return;
+    placed.add(id);
+    const obj = state.objects.find((o) => o.id === id);
+    const nodeW = obj ? obj.width  : 140;
+    const nodeH = obj ? obj.height : 60;
+    positions.set(id, { x: cx - nodeW / 2, y });
+    const children = (childrenOf.get(id) || []).filter((c) => !placed.has(c));
+    const totalW = children.reduce((s, c, i) => s + subtreeW(c) + (i > 0 ? H_GAP : 0), 0);
+    let startX = cx - totalW / 2;
+    children.forEach((cid) => {
+      const sw = subtreeW(cid);
+      placeSubtree(cid, startX + sw / 2, y + nodeH + V_GAP);
+      startX += sw + H_GAP;
+    });
+  }
+
+  let offsetX = 40;
+  roots.forEach((rid) => {
+    swCache.clear();
+    const sw = subtreeW(rid);
+    const obj = state.objects.find((o) => o.id === rid);
+    placeSubtree(rid, offsetX + sw / 2, 40);
+    offsetX += sw + H_GAP * 2;
+  });
+
+  // 미배치 노드(순환 등) → 하단 그리드
+  let maxY = 40;
+  positions.forEach((pos, id) => {
+    const obj = state.objects.find((o) => o.id === id);
+    maxY = Math.max(maxY, pos.y + (obj ? obj.height : 60));
+  });
+
+  const unplaced = state.objects.filter((o) => !placed.has(o.id));
+  const cols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(unplaced.length))));
+  unplaced.forEach((obj, i) => {
+    positions.set(obj.id, {
+      x: 40 + (i % cols) * (obj.width + H_GAP),
+      y: maxY + V_GAP + Math.floor(i / cols) * (obj.height + V_GAP),
+    });
+  });
+
+  state.objects.forEach((obj) => {
+    const pos = positions.get(obj.id);
+    if (!pos) return;
+    obj.pos_x = pos.x;
+    obj.pos_y = pos.y;
+    markDetailDirty(obj.id, { pos_x: obj.pos_x, pos_y: obj.pos_y });
+  });
+
+  const afterPositions = state.objects.map(({ id, pos_x, pos_y }) => ({ id, pos_x, pos_y }));
+  pushUndo({ type: 'move', before: beforePositions, after: afterPositions });
+  renderCanvas();
+  toast('자동 정렬 완료');
 }
 
 /* ============================================================
@@ -1171,6 +1373,193 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
 }
 
 /* ============================================================
+   PNG 내보내기
+   ============================================================ */
+
+function pngRoundRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+function pngWrapText(ctx, text, maxWidth) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? current + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [''];
+}
+
+async function exportPng() {
+  if (!state.objects.length) { toast('내보낼 항목이 없습니다'); return; }
+
+  const board = state.boards.find((b) => String(b.id) === state.boardId);
+  const title = board ? board.title : '마인드맵';
+
+  const PADDING = 48;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  state.objects.forEach((obj) => {
+    minX = Math.min(minX, obj.pos_x);
+    minY = Math.min(minY, obj.pos_y);
+    maxX = Math.max(maxX, obj.pos_x + obj.width);
+    maxY = Math.max(maxY, obj.pos_y + obj.height);
+  });
+
+  const ox = minX - PADDING;
+  const oy = minY - PADDING;
+  const W  = maxX - minX + PADDING * 2;
+  const H  = maxY - minY + PADDING * 2;
+  const DPR = 2;
+
+  const canvas = document.createElement('canvas');
+  canvas.width  = W * DPR;
+  canvas.height = H * DPR;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(DPR, DPR);
+
+  // 배경
+  ctx.fillStyle = '#181a20';
+  ctx.fillRect(0, 0, W, H);
+
+  // 점 패턴
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  for (let x = 0; x < W; x += 22) {
+    for (let y = 0; y < H; y += 22) {
+      ctx.beginPath();
+      ctx.arc(x, y, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  const byId = Object.fromEntries(state.objects.map((o) => [String(o.id), o]));
+
+  // 관계선
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.strokeStyle = '#4fd1c5';
+  ctx.lineWidth = 2;
+
+  state.relations.forEach((rel) => {
+    const p = byId[String(rel.parent_id)];
+    const c = byId[String(rel.child_id)];
+    if (!p || !c) return;
+    const p1 = { x: p.pos_x + p.width  / 2 - ox, y: p.pos_y + p.height / 2 - oy };
+    const p2 = { x: c.pos_x + c.width  / 2 - ox, y: c.pos_y + c.height / 2 - oy };
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+    const co = Math.max(-40, Math.min(40, dy * 0.25 - dx * 0.05));
+    const cpx = midX + co, cpy = midY - co;
+
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.quadraticCurveTo(cpx, cpy, p2.x, p2.y);
+    ctx.stroke();
+
+    // 화살촉
+    const t = 0.97;
+    const ax = (1-t)*(1-t)*p1.x + 2*(1-t)*t*cpx + t*t*p2.x;
+    const ay = (1-t)*(1-t)*p1.y + 2*(1-t)*t*cpy + t*t*p2.y;
+    ctx.save();
+    ctx.translate(p2.x, p2.y);
+    ctx.rotate(Math.atan2(p2.y - ay, p2.x - ax));
+    ctx.fillStyle = '#4fd1c5';
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(-8, -4); ctx.lineTo(-8, 4);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // 라벨
+    if (rel.label) {
+      const lx = midX + co / 2, ly = midY - co / 2;
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.font = '11px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(rel.label).width;
+      ctx.fillStyle = '#1b1e25';
+      ctx.fillRect(lx - tw / 2 - 3, ly - 8, tw + 6, 16);
+      ctx.fillStyle = '#4fd1c5';
+      ctx.fillText(rel.label, lx, ly);
+      ctx.restore();
+    }
+  });
+  ctx.restore();
+
+  // 노드
+  state.objects.forEach((obj) => {
+    const x = obj.pos_x - ox, y = obj.pos_y - oy;
+    const w = obj.width,  h = obj.height;
+    const shape = obj.shape || 'rounded-rect';
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur  = 8;
+    ctx.shadowOffsetY = 3;
+    ctx.fillStyle   = obj.color || '#F2A93B';
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.lineWidth   = 2;
+
+    if (shape === 'rounded-rect') {
+      pngRoundRect(ctx, x, y, w, h, 14); ctx.fill();
+      ctx.shadowColor = 'transparent';
+      pngRoundRect(ctx, x, y, w, h, 14); ctx.stroke();
+    } else if (shape === 'ellipse' || shape === 'circle') {
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + h/2, w/2, h/2, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.shadowColor = 'transparent'; ctx.stroke();
+    } else if (shape === 'diamond') {
+      ctx.beginPath();
+      ctx.moveTo(x + w/2, y); ctx.lineTo(x + w, y + h/2);
+      ctx.lineTo(x + w/2, y + h); ctx.lineTo(x, y + h/2);
+      ctx.closePath(); ctx.fill(); ctx.shadowColor = 'transparent'; ctx.stroke();
+    }
+    ctx.restore();
+
+    // 텍스트 (클리핑)
+    ctx.save();
+    if (shape === 'rounded-rect') { pngRoundRect(ctx, x, y, w, h, 14); ctx.clip(); }
+    else if (shape === 'ellipse' || shape === 'circle') {
+      ctx.beginPath();
+      ctx.ellipse(x + w/2, y + h/2, w/2, h/2, 0, 0, Math.PI * 2); ctx.clip();
+    } else if (shape === 'diamond') {
+      ctx.beginPath();
+      ctx.moveTo(x + w/2, y); ctx.lineTo(x + w, y + h/2);
+      ctx.lineTo(x + w/2, y + h); ctx.lineTo(x, y + h/2); ctx.closePath(); ctx.clip();
+    }
+    ctx.fillStyle = '#1b1e25';
+    ctx.font = '600 13px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const lines = pngWrapText(ctx, obj.name, w - 20);
+    const lineH = 16;
+    let textY = y + h / 2 - ((lines.length - 1) * lineH) / 2;
+    lines.forEach((line) => { ctx.fillText(line, x + w / 2, textY, w - 8); textY += lineH; });
+    ctx.restore();
+  });
+
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = `${title}.png`;
+  a.click();
+}
+
+/* ============================================================
    키보드 단축키
    ============================================================ */
 
@@ -1269,6 +1658,13 @@ function bindGlobalEvents() {
   // 내보내기
   el('btnExportHtml').addEventListener('click', exportHtml);
   el('btnExportPdf').addEventListener('click', exportPdf);
+  el('btnExportPng').addEventListener('click', exportPng);
+
+  // 자동 정렬
+  el('btnAutoLayout').addEventListener('click', autoLayout);
+
+  // 검색
+  el('searchInput').addEventListener('input', (e) => onSearch(e.target.value));
 
   // 줌 버튼
   el('btnZoomIn').addEventListener('click',    () => {

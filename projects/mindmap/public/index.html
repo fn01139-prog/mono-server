@@ -22,9 +22,11 @@
       <button id="btnRelationMode" class="btn btn-ghost" type="button" data-active="false" data-tip="Ctrl+3" disabled>
         <span class="dot dot-relation"></span> 관계 연결
       </button>
+      <button id="btnAutoLayout" class="btn btn-ghost" type="button" title="자동 정렬 (트리 레이아웃)" disabled>⊞ 정렬</button>
       <div class="export-divider"></div>
       <button id="btnExportHtml" class="btn btn-ghost btn-small" type="button" title="HTML 파일로 저장">⬇ HTML</button>
       <button id="btnExportPdf" class="btn btn-ghost btn-small" type="button" title="PDF로 저장 (인쇄 대화상자)">⬇ PDF</button>
+      <button id="btnExportPng" class="btn btn-ghost btn-small" type="button" title="PNG 이미지로 저장">⬇ PNG</button>
       <div class="export-divider"></div>
       <button id="btnZoomOut" class="btn btn-ghost btn-small" type="button" title="축소 (휠 아래)">−</button>
       <span id="zoomLabel" class="zoom-label">100%</span>
@@ -37,6 +39,9 @@
 
     <aside class="panel panel-left">
       <div class="panel-heading">항목 목록</div>
+      <div class="search-wrap">
+        <input id="searchInput" type="text" class="search-input" placeholder="노드 검색..." autocomplete="off" />
+      </div>
       <ul id="objectList" class="object-list"></ul>
     </aside>
 

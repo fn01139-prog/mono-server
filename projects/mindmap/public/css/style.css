@@ -414,6 +414,41 @@ button, input, textarea, select {
 }
 .field-label[data-tip] { display: inline-block; cursor: default; }
 
+/* ---------- 검색 ---------- */
+
+.search-wrap { margin-bottom: 8px; }
+.search-input {
+  width: 100%;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 12px;
+  color: var(--text);
+}
+.search-input:focus { outline: none; border-color: var(--accent-2); }
+.search-input::placeholder { color: var(--text-muted); }
+
+.node.search-match {
+  box-shadow: 0 0 0 3px var(--accent), 0 3px 8px rgba(0,0,0,.4) !important;
+}
+.node.search-dim { opacity: 0.25; }
+
+/* ---------- 관계 라벨 입력 ---------- */
+
+.relation-label-input {
+  width: 68px;
+  flex-shrink: 0;
+  background: var(--panel-alt);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-size: 11px;
+  color: var(--text);
+}
+.relation-label-input:focus { outline: none; border-color: var(--accent-2); }
+.relation-label-input::placeholder { color: var(--text-muted); }
+
 /* ---------- 토스트 알림 ---------- */
 
 #toast {
