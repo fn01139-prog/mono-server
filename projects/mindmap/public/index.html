@@ -17,6 +17,8 @@
     </div>
     <div class="topbar-right">
       <select id="boardSelect" class="board-select" title="다른 마인드맵 선택"></select>
+      <button id="btnDuplicateBoard" class="btn btn-ghost btn-small" type="button" title="현재 보드 복제">⊡ 복제</button>
+      <button id="btnDeleteBoard"    class="btn btn-ghost btn-small btn-danger-soft" type="button" title="현재 보드 삭제">🗑</button>
       <button id="btnNewBoard" class="btn btn-ghost" type="button" data-tip="Ctrl+1">+ 새 보드</button>
       <button id="btnNewObject" class="btn btn-primary" type="button" data-tip="Ctrl+2" disabled>+ 새 항목</button>
       <button id="btnRelationMode" class="btn btn-ghost" type="button" data-active="false" data-tip="Ctrl+3" disabled>
@@ -97,6 +99,14 @@
             <span class="field-label">세로</span>
             <input id="fHeight" type="number" min="40" max="300" step="10" />
           </label>
+        </div>
+
+        <div class="field emoji-field">
+          <span class="field-label">이모지</span>
+          <div class="emoji-wrap">
+            <button id="btnEmojiToggle" class="btn btn-small btn-ghost" type="button" title="이모지 추가/변경">+ 이모지</button>
+            <div id="emojiPicker" class="emoji-picker hidden"></div>
+          </div>
         </div>
 
         <div class="panel-sub-heading">연결된 관계</div>

@@ -61,6 +61,65 @@ router.delete('/boards/:boardId', asyncHandler(async (req, res) => {
   ok(res, { deleted: true });
 }));
 
+router.post('/boards/:boardId/duplicate', asyncHandler(async (req, res) => {
+  const { boardId } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [orig] } = await client.query(
+      'SELECT * FROM mindmap_board WHERE id = $1', [boardId]
+    );
+    if (!orig) return fail(res, '보드를 찾을 수 없습니다.', 404);
+
+    const { rows: [newBoard] } = await client.query(
+      'INSERT INTO mindmap_board (title) VALUES ($1) RETURNING *',
+      [`${orig.title} (복사)`]
+    );
+
+    const { rows: objects } = await client.query(
+      `SELECT h.id, h.name, h.content, d.pos_x, d.pos_y, d.color, d.width, d.height, d.shape
+       FROM object_header h LEFT JOIN object_detail d ON d.object_id = h.id
+       WHERE h.board_id = $1 ORDER BY h.id`,
+      [boardId]
+    );
+
+    const idMap = {};
+    for (const obj of objects) {
+      const { rows: [newH] } = await client.query(
+        'INSERT INTO object_header (board_id, name, content) VALUES ($1, $2, $3) RETURNING *',
+        [newBoard.id, obj.name, obj.content]
+      );
+      await client.query(
+        `INSERT INTO object_detail (object_id, pos_x, pos_y, color, width, height, shape)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [newH.id, obj.pos_x, obj.pos_y, obj.color, obj.width, obj.height, obj.shape]
+      );
+      idMap[obj.id] = newH.id;
+    }
+
+    const { rows: relations } = await client.query(
+      'SELECT * FROM relation WHERE board_id = $1', [boardId]
+    );
+    for (const rel of relations) {
+      const np = idMap[rel.parent_id], nc = idMap[rel.child_id];
+      if (np && nc) {
+        await client.query(
+          'INSERT INTO relation (board_id, parent_id, child_id, label) VALUES ($1, $2, $3, $4)',
+          [newBoard.id, np, nc, rel.label]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    ok(res, newBoard);
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+}));
+
 /* ============================================================
    OBJECT  (OBJECT_HEADER + OBJECT_DETAIL)
    ============================================================ */

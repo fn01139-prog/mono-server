@@ -379,6 +379,38 @@ async function createBoard() {
   await selectBoard(created.id);
 }
 
+async function duplicateBoard() {
+  if (!state.boardId) return;
+  try {
+    const newBoard = await api('POST', `api/boards/${state.boardId}/duplicate`);
+    state.boards.unshift(newBoard);
+    renderBoardSelect();
+    await selectBoard(newBoard.id);
+    toast(`"${newBoard.title}" 복제 완료`);
+  } catch (err) {
+    toast('복제 실패: ' + err.message);
+  }
+}
+
+async function deleteBoard() {
+  if (!state.boardId) return;
+  const board = state.boards.find((b) => String(b.id) === state.boardId);
+  if (!confirm(`"${board ? board.title : '이 보드'}"를 삭제할까요? 모든 노드와 관계가 함께 삭제됩니다.`)) return;
+  try {
+    await api('DELETE', `api/boards/${state.boardId}`);
+    state.boards = state.boards.filter((b) => String(b.id) !== state.boardId);
+    if (!state.boards.length) {
+      const created = await api('POST', 'api/boards', { title: '새 마인드맵' });
+      state.boards = [created];
+    }
+    renderBoardSelect();
+    await selectBoard(state.boards[0].id);
+    toast('보드가 삭제되었습니다');
+  } catch (err) {
+    toast('삭제 실패: ' + err.message);
+  }
+}
+
 async function updateBoardTitle(title) {
   if (!state.boardId) return;
   const updated = await api('PUT', `api/boards/${state.boardId}`, { title });
@@ -542,6 +574,18 @@ function renderCanvas() {
       startInlineEdit(obj.id);
     });
 
+    node.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (state.inlineEdit) return;
+      if (state.relationMode) {
+        handleRelationClick(obj.id);
+        return;
+      }
+      startDragTouch(e.touches[0], obj.id);
+    }, { passive: false });
+
     layer.appendChild(node);
   });
 
@@ -678,6 +722,85 @@ function startDrag(e, objId) {
 
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
+}
+
+/* ============================================================
+   터치 드래그 / 팬
+   ============================================================ */
+
+function startDragTouch(touch, objId) {
+  if (!state.selectedIds.has(objId)) {
+    selectOnly(objId);
+    renderObjectList();
+    renderCanvas();
+    renderDetailPanel();
+  }
+
+  const startCanvas = toCanvas(touch.clientX, touch.clientY);
+  const startPositions = [...state.selectedIds].map((id) => {
+    const o = state.objects.find((obj) => obj.id === id);
+    return { id, pos_x: o.pos_x, pos_y: o.pos_y };
+  });
+  const dragState = { startCanvasX: startCanvas.x, startCanvasY: startCanvas.y, startPositions, moved: false };
+  state.drag = dragState;
+
+  function onMove(ev) {
+    if (ev.touches.length !== 1) return;
+    const cur = toCanvas(ev.touches[0].clientX, ev.touches[0].clientY);
+    const dx = cur.x - dragState.startCanvasX;
+    const dy = cur.y - dragState.startCanvasY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragState.moved = true;
+    dragState.startPositions.forEach(({ id, pos_x, pos_y }) => {
+      const o = state.objects.find((obj) => obj.id === id);
+      if (!o) return;
+      o.pos_x = Math.max(0, pos_x + dx);
+      o.pos_y = Math.max(0, pos_y + dy);
+      const nodeEl = el('nodeLayer').querySelector(`[data-id="${id}"]`);
+      if (nodeEl) { nodeEl.style.left = `${o.pos_x}px`; nodeEl.style.top = `${o.pos_y}px`; }
+    });
+    drawRelations();
+  }
+
+  function onEnd() {
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+    if (dragState.moved) {
+      const afterPositions = dragState.startPositions.map(({ id }) => {
+        const o = state.objects.find((obj) => obj.id === id);
+        return { id, pos_x: o.pos_x, pos_y: o.pos_y };
+      });
+      pushUndo({ type: 'move', before: dragState.startPositions, after: afterPositions });
+      dragState.startPositions.forEach(({ id }) => {
+        const o = state.objects.find((obj) => obj.id === id);
+        if (o) markDetailDirty(id, { pos_x: o.pos_x, pos_y: o.pos_y });
+      });
+    }
+    state.drag = null;
+  }
+
+  document.addEventListener('touchmove', onMove, { passive: true });
+  document.addEventListener('touchend', onEnd, { passive: true });
+}
+
+function startPanTouch(e) {
+  const touch = e.touches[0];
+  const startX = touch.clientX - state.viewport.panX;
+  const startY = touch.clientY - state.viewport.panY;
+  el('canvasWrap').classList.add('panning');
+
+  function onMove(ev) {
+    if (ev.touches.length !== 1) return;
+    state.viewport.panX = ev.touches[0].clientX - startX;
+    state.viewport.panY = ev.touches[0].clientY - startY;
+    applyViewport();
+  }
+  function onEnd() {
+    el('canvasWrap').classList.remove('panning');
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onEnd);
+  }
+  document.addEventListener('touchmove', onMove, { passive: true });
+  document.addEventListener('touchend', onEnd, { passive: true });
 }
 
 /* ============================================================
@@ -1220,6 +1343,60 @@ async function autoLayout() {
 }
 
 /* ============================================================
+   이모지 피커
+   ============================================================ */
+
+const EMOJI_LIST = [
+  '📌','🎯','💡','✅','❌','⚠️',
+  '📝','📊','📱','🌐','🔧','🔑',
+  '🚀','⭐','🎉','💰','💪','🎨',
+  '🔍','❓','🏢','👤','🔗','⚡',
+];
+
+function initEmojiPicker() {
+  const picker = el('emojiPicker');
+  EMOJI_LIST.forEach((em) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ep-btn';
+    btn.textContent = em;
+    btn.title = em;
+    btn.addEventListener('click', () => { setEmojiPrefix(em); closePicker(); });
+    picker.appendChild(btn);
+  });
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'ep-remove';
+  removeBtn.textContent = '이모지 제거';
+  removeBtn.addEventListener('click', () => { setEmojiPrefix(null); closePicker(); });
+  picker.appendChild(removeBtn);
+}
+
+function openPicker() {
+  el('emojiPicker').classList.remove('hidden');
+  setTimeout(() => document.addEventListener('click', closePicker, { once: true }), 0);
+}
+
+function closePicker() {
+  el('emojiPicker').classList.add('hidden');
+}
+
+function stripEmojiPrefix(name) {
+  return name.replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}]+\s*/u, '');
+}
+
+function setEmojiPrefix(emoji) {
+  const obj = state.objects.find((o) => o.id === state.selectedId);
+  if (!obj) return;
+  const stripped = stripEmojiPrefix(obj.name);
+  obj.name = emoji ? `${emoji} ${stripped}` : stripped;
+  el('fName').value = obj.name;
+  markHeaderDirty(obj.id, { name: obj.name, content: obj.content });
+  renderObjectList();
+  renderCanvas();
+}
+
+/* ============================================================
    메모
    ============================================================ */
 
@@ -1649,6 +1826,8 @@ function bindGlobalEvents() {
   // 보드
   el('boardSelect').addEventListener('change', (e) => selectBoard(e.target.value));
   el('btnNewBoard').addEventListener('click', createBoard);
+  el('btnDuplicateBoard').addEventListener('click', duplicateBoard);
+  el('btnDeleteBoard').addEventListener('click', deleteBoard);
   el('boardTitle').addEventListener('change', (e) => updateBoardTitle(e.target.value));
 
   // 객체 / 관계
@@ -1712,6 +1891,48 @@ function bindGlobalEvents() {
   // 탭 숨김 시 flush
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && hasPending()) flushPending();
+  });
+
+  // 터치 팬 / 핀치 줌
+  let pinchDist = null;
+  el('canvasWrap').addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchDist = Math.hypot(dx, dy);
+      return;
+    }
+    if (e.touches.length !== 1) return;
+    if (e.target.closest('.node')) return;
+    e.preventDefault();
+    startPanTouch(e);
+  }, { passive: false });
+
+  el('canvasWrap').addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2 && pinchDist !== null) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const newDist = Math.hypot(dx, dy);
+      if (newDist > 0) {
+        const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        zoomAt(mx, my, newDist / pinchDist);
+        pinchDist = newDist;
+      }
+    }
+  }, { passive: false });
+
+  el('canvasWrap').addEventListener('touchend', () => {
+    if (event.touches.length < 2) pinchDist = null;
+  }, { passive: true });
+
+  // 이모지 피커
+  initEmojiPicker();
+  el('btnEmojiToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    el('emojiPicker').classList.contains('hidden') ? openPicker() : closePicker();
   });
 
   bindDetailFormEvents();
