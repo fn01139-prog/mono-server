@@ -224,6 +224,46 @@ const App = (() => {
     }
   }
 
+  // ─── 가져오기 Modal (클로드 정리 내용 → 자동 등록) ───────────────────────────
+  function openImportModal() {
+    const sel = document.getElementById('importTripSelect');
+    sel.innerHTML = '<option value="">＋ 새 여행으로 만들기</option>' +
+      state.trips.map(t => `<option value="${t.id}" ${state.trip?.id === t.id ? 'selected' : ''}>${t.name}</option>`).join('');
+    document.getElementById('importText').value = '';
+    document.getElementById('importModal').classList.remove('hidden');
+    closeTripDropdown();
+  }
+
+  function closeImportModal() {
+    document.getElementById('importModal').classList.add('hidden');
+  }
+
+  async function runImport() {
+    const text   = document.getElementById('importText').value.trim();
+    const tripId = document.getElementById('importTripSelect').value;
+    if (!text) return toast('가져올 내용을 입력해주세요', 'error');
+
+    const btn = document.getElementById('importSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = '가져오는 중...';
+    try {
+      const result = await API.importText(text, tripId);
+      closeImportModal();
+
+      const idx = state.trips.findIndex(t => t.id === result.trip.id);
+      if (idx >= 0) state.trips[idx] = result.trip; else state.trips.unshift(result.trip);
+      renderTripList();
+
+      await selectTrip(state.trips.find(t => t.id === result.trip.id));
+      toast(`✅ 일정 ${result.schedules.length}건, 기록 ${result.records.length}건 등록됨`, 'success');
+    } catch (e) {
+      toast('오류: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '가져오기';
+    }
+  }
+
   // ─── Photo Modal ──────────────────────────────────────────────────────────
   function openPhotoModal(photo) {
     const modal = document.getElementById('photoModal');
@@ -265,6 +305,7 @@ const App = (() => {
     getState, setTab, selectTrip, onSelectTrip,
     toggleTripDropdown, closeTripDropdown,
     openTripModal, closeTripModal, saveTrip, deleteTrip,
+    openImportModal, closeImportModal, runImport,
     openPhotoModal, closePhotoModal,
     renderTripList,
     refreshPhotos: async () => {

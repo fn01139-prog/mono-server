@@ -36,12 +36,12 @@ function photoFromRow(r) {
 router.use(express.static(path.join(__dirname, 'public')));
 
 /* ── Config ─────────────────────────────────────────────────────────────── */
-router.get('/api/config', (req, res) => {
+router.get('/config', (req, res) => {
   res.json({ mapsKey: process.env.GOOGLE_MAPS_KEY || '' });
 });
 
 /* ── 여행 CRUD ───────────────────────────────────────────────────────────── */
-router.get('/api/trips', async (req, res) => {
+router.get('/trips', async (req, res) => {
   try {
     const { rows } = await pool.query(
       'SELECT * FROM travel_trips ORDER BY start_date DESC NULLS LAST'
@@ -50,7 +50,7 @@ router.get('/api/trips', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/api/trips', async (req, res) => {
+router.post('/trips', async (req, res) => {
   try {
     const { startDate, status, ...rest } = req.body;
     const id = uuidv4();
@@ -63,7 +63,7 @@ router.post('/api/trips', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/api/trips/:id', async (req, res) => {
+router.put('/trips/:id', async (req, res) => {
   try {
     const { rows: cur } = await pool.query('SELECT * FROM travel_trips WHERE id = $1', [req.params.id]);
     if (!cur.length) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
@@ -82,7 +82,7 @@ router.put('/api/trips/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/api/trips/:id', async (req, res) => {
+router.delete('/trips/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM travel_trips WHERE id = $1', [req.params.id]);
     await pool.query('DELETE FROM travel_schedules WHERE trip_id = $1', [req.params.id]);
@@ -92,7 +92,7 @@ router.delete('/api/trips/:id', async (req, res) => {
 });
 
 /* ── 일정 CRUD ───────────────────────────────────────────────────────────── */
-router.get('/api/schedules', async (req, res) => {
+router.get('/schedules', async (req, res) => {
   try {
     const { tripId } = req.query;
     const q = tripId
@@ -103,7 +103,7 @@ router.get('/api/schedules', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/api/schedules', async (req, res) => {
+router.post('/schedules', async (req, res) => {
   try {
     const { tripId, date, time, ...rest } = req.body;
     const { rows: existing } = await pool.query(
@@ -120,7 +120,7 @@ router.post('/api/schedules', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/api/schedules/:id', async (req, res) => {
+router.put('/schedules/:id', async (req, res) => {
   try {
     const { rows: cur } = await pool.query('SELECT * FROM travel_schedules WHERE id = $1', [req.params.id]);
     if (!cur.length) return res.status(404).json({ error: '일정을 찾을 수 없습니다' });
@@ -139,14 +139,14 @@ router.put('/api/schedules/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/api/schedules/:id', async (req, res) => {
+router.delete('/schedules/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM travel_schedules WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/api/schedules/reorder', async (req, res) => {
+router.post('/schedules/reorder', async (req, res) => {
   try {
     const { tripId, orderedIds } = req.body;
     for (let i = 0; i < orderedIds.length; i++) {
@@ -160,7 +160,7 @@ router.post('/api/schedules/reorder', async (req, res) => {
 });
 
 /* ── 여행 기록 CRUD ──────────────────────────────────────────────────────── */
-router.get('/api/records', async (req, res) => {
+router.get('/records', async (req, res) => {
   try {
     const { tripId } = req.query;
     const q = tripId
@@ -171,7 +171,7 @@ router.get('/api/records', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/api/records', async (req, res) => {
+router.post('/records', async (req, res) => {
   try {
     const { tripId, date, ...rest } = req.body;
     const id = uuidv4();
@@ -184,7 +184,7 @@ router.post('/api/records', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/api/records/:id', async (req, res) => {
+router.put('/records/:id', async (req, res) => {
   try {
     const { rows: cur } = await pool.query('SELECT * FROM travel_records WHERE id = $1', [req.params.id]);
     if (!cur.length) return res.status(404).json({ error: '기록을 찾을 수 없습니다' });
@@ -199,7 +199,7 @@ router.put('/api/records/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/api/records/:id', async (req, res) => {
+router.delete('/records/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM travel_records WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
@@ -207,7 +207,7 @@ router.delete('/api/records/:id', async (req, res) => {
 });
 
 /* ── 사진 메타데이터 ──────────────────────────────────────────────────────── */
-router.get('/api/photos', async (req, res) => {
+router.get('/photos', async (req, res) => {
   try {
     const { tripId } = req.query;
     const q = tripId
@@ -219,7 +219,7 @@ router.get('/api/photos', async (req, res) => {
 });
 
 /* ── 위치 기반 그루핑 ─────────────────────────────────────────────────────── */
-router.get('/api/photos/by-location', async (req, res) => {
+router.get('/photos/by-location', async (req, res) => {
   try {
     const { tripId } = req.query;
     const q = tripId
@@ -259,7 +259,7 @@ function haversine(lat1, lng1, lat2, lng2) {
 }
 
 /* ── 사진 업로드 (파일은 Drive, 메타데이터는 DB) ───────────────────────────── */
-router.post('/api/photos/upload', upload.array('photos', 30), async (req, res) => {
+router.post('/photos/upload', upload.array('photos', 30), async (req, res) => {
   try {
     const { tripId, metaJson } = req.body;
     const metaList = metaJson ? JSON.parse(metaJson) : [];
@@ -305,8 +305,161 @@ router.post('/api/photos/upload', upload.array('photos', 30), async (req, res) =
   }
 });
 
+/* ── 클로드 정리 내용 가져오기 (텍스트 → 구조화 데이터 자동 등록) ───────────── */
+async function geocodePlace(name) {
+  const mapsKey = process.env.GOOGLE_MAPS_KEY;
+  if (!mapsKey || !name) return null;
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(name)}&language=ko&key=${mapsKey}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    const loc = d.results?.[0]?.geometry?.location;
+    return loc ? { lat: loc.lat, lng: loc.lng, address: d.results[0].formatted_address } : null;
+  } catch (_) { return null; }
+}
+
+router.post('/import', async (req, res) => {
+  try {
+    const { text, tripId } = req.body;
+    if (!text || !text.trim()) return res.status(400).json({ error: 'text는 필수입니다' });
+
+    let existingTrip = null;
+    if (tripId) {
+      const { rows } = await pool.query('SELECT * FROM travel_trips WHERE id = $1', [tripId]);
+      if (!rows.length) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+      existingTrip = tripFromRow(rows[0]);
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const prompt = `당신은 여행 텍스트를 구조화된 데이터로 변환하는 어시스턴트입니다.
+오늘 날짜: ${today}
+
+아래는 사용자가 Claude와의 대화 등에서 정리한 여행 관련 텍스트입니다.
+"""
+${text}
+"""
+
+이 내용을 분석해서 아래 JSON 스키마 형식으로만 응답하세요 (설명, 코드블록 없이 JSON만):
+
+{
+  "trip": {
+    "name": "여행 이름 (없으면 장소/기간으로 적절히 생성)",
+    "startDate": "YYYY-MM-DD 또는 null",
+    "endDate": "YYYY-MM-DD 또는 null",
+    "participants": ["이름"],
+    "note": "여행 전체 메모"
+  },
+  "schedules": [
+    { "date": "YYYY-MM-DD 또는 null", "time": "HH:MM 또는 null", "placeName": "장소명",
+      "category": "관광|식사|카페|숙박|교통|쇼핑|기타", "duration": 숫자(분) 또는 null, "memo": "메모" }
+  ],
+  "records": [
+    { "date": "YYYY-MM-DD 또는 null", "placeName": "장소명", "participants": ["이름"],
+      "memo": "실제 있었던 일/후기", "rating": 0~5 }
+  ]
+}
+
+규칙:
+- 아직 안 간 곳/할 예정/계획 → schedules
+- 이미 다녀온 곳/후기/느낀점/있었던 일 → records
+- 상대적 날짜(내일, 다음주 등)는 오늘 날짜 기준으로 절대 날짜로 변환
+- 정보가 불명확하면 null 또는 빈 배열
+- trip 정보가 텍스트에 전혀 없으면 name만 문맥으로 생성하고 나머지는 null/빈 배열`;
+
+    const aiRes = await anthropic.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    let parsed;
+    try {
+      const raw = aiRes.content[0].text.replace(/```json|```/g, '').trim();
+      parsed = JSON.parse(raw);
+    } catch (_) {
+      return res.status(422).json({ error: 'AI 응답을 해석하지 못했습니다. 내용을 다시 정리해서 시도해주세요.' });
+    }
+
+    const scheduleItems = Array.isArray(parsed.schedules) ? parsed.schedules : [];
+    const recordItems   = Array.isArray(parsed.records)   ? parsed.records   : [];
+
+    if (!tripId && !parsed.trip?.name && scheduleItems.length === 0 && recordItems.length === 0) {
+      return res.status(422).json({ error: '텍스트에서 여행 정보를 찾지 못했습니다' });
+    }
+
+    /* 여행: 기존 여행에 추가하거나 새로 생성 */
+    let trip;
+    if (existingTrip) {
+      trip = existingTrip;
+    } else {
+      const t = parsed.trip || {};
+      const id = uuidv4();
+      const data = {
+        name: t.name || '가져온 여행',
+        endDate: t.endDate || null,
+        participants: Array.isArray(t.participants) ? t.participants : [],
+        note: t.note || '',
+      };
+      const { rows } = await pool.query(
+        `INSERT INTO travel_trips (id, start_date, status, data, created_at)
+         VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
+        [id, t.startDate || null, 'planned', JSON.stringify(data)]
+      );
+      trip = tripFromRow(rows[0]);
+    }
+
+    /* 일정: 장소명 지오코딩(실패해도 무시) 후 등록 */
+    const geocoded = await Promise.all(scheduleItems.map(s => geocodePlace(s.placeName)));
+    const { rows: existing } = await pool.query(
+      'SELECT MAX(sort_order) AS max FROM travel_schedules WHERE trip_id = $1', [trip.id]
+    );
+    let order = existing[0].max || 0;
+
+    const createdSchedules = [];
+    for (let i = 0; i < scheduleItems.length; i++) {
+      const s = scheduleItems[i];
+      const geo = geocoded[i];
+      order += 1;
+      const id = uuidv4();
+      const data = {
+        date: s.date || null, time: s.time || null,
+        category: s.category || '기타', duration: s.duration || null, memo: s.memo || '',
+        place: { name: s.placeName || '', lat: geo?.lat ?? null, lng: geo?.lng ?? null, placeId: '', address: geo?.address || '' },
+      };
+      const { rows } = await pool.query(
+        `INSERT INTO travel_schedules (id, trip_id, sort_order, scheduled_at, data, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+        [id, trip.id, order, data.date && data.time ? `${data.date} ${data.time}` : (data.date || null), JSON.stringify(data)]
+      );
+      createdSchedules.push(scheduleFromRow(rows[0]));
+    }
+
+    /* 기록: 후기/있었던 일 등록 */
+    const createdRecords = [];
+    for (const r of recordItems) {
+      const id = uuidv4();
+      const data = {
+        tripId: trip.id, date: r.date || null, placeName: r.placeName || '',
+        participants: Array.isArray(r.participants) ? r.participants : [],
+        memo: r.memo || '', rating: r.rating || 0, photoIds: [],
+      };
+      const { rows } = await pool.query(
+        `INSERT INTO travel_records (id, trip_id, record_date, data, created_at)
+         VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
+        [id, trip.id, data.date, JSON.stringify(data)]
+      );
+      createdRecords.push(recordFromRow(rows[0]));
+    }
+
+    res.json({ ok: true, trip, schedules: createdSchedules, records: createdRecords });
+  } catch (e) {
+    console.error('[travellog] 가져오기 오류:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /* ── 장소 추천 ───────────────────────────────────────────────────────────── */
-router.get('/api/places/nearby', async (req, res) => {
+router.get('/places/nearby', async (req, res) => {
   try {
     const { lat, lng, type = '맛집', keyword = '' } = req.query;
     if (!lat || !lng) return res.status(400).json({ error: 'lat, lng 필수' });

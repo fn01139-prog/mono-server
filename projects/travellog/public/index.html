@@ -24,7 +24,10 @@
       <div class="trip-dropdown" id="tripDropdown">
         <div class="trip-dropdown-head">
           <span>여행 목록</span>
-          <button class="btn-icon" onclick="App.openTripModal()">＋</button>
+          <div style="display:flex;gap:4px">
+            <button class="btn-icon" onclick="App.openImportModal()" title="클로드에서 정리한 내용 가져오기">📥</button>
+            <button class="btn-icon" onclick="App.openTripModal()">＋</button>
+          </div>
         </div>
         <div id="tripList" class="trip-list"></div>
       </div>
@@ -227,6 +230,28 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="Record.closeModal()">취소</button>
       <button class="btn-primary" onclick="Record.saveRecord()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 클로드 정리 내용 가져오기 -->
+<div class="modal-overlay hidden" id="importModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>가져오기</h3>
+      <button class="modal-close" onclick="App.closeImportModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label>대상 여행</label>
+      <select id="importTripSelect">
+        <option value="">＋ 새 여행으로 만들기</option>
+      </select>
+      <label>정리된 내용 붙여넣기</label>
+      <textarea id="importText" rows="10" placeholder="클로드와의 대화에서 정리한 여행 일정/기록 내용을 붙여넣으세요.&#10;예) 8/1~8/3 제주도, 첫날 협재해수욕장에서 물놀이, 둘째날 흑돼지 맛집 방문 예정..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="App.closeImportModal()">취소</button>
+      <button class="btn-primary" id="importSubmitBtn" onclick="App.runImport()">가져오기</button>
     </div>
   </div>
 </div>
