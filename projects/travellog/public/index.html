@@ -242,12 +242,24 @@
       <button class="modal-close" onclick="App.closeImportModal()">✕</button>
     </div>
     <div class="modal-body">
+      <div style="font-size:11px;color:var(--text-dim);line-height:1.6">
+        Claude에게 여행 계획/기록을 말하고 아래 JSON 형식으로 정리해달라고 요청한 뒤,
+        그 결과를 그대로 붙여넣으세요.
+      </div>
       <label>대상 여행</label>
       <select id="importTripSelect">
         <option value="">＋ 새 여행으로 만들기</option>
       </select>
-      <label>정리된 내용 붙여넣기</label>
-      <textarea id="importText" rows="10" placeholder="클로드와의 대화에서 정리한 여행 일정/기록 내용을 붙여넣으세요.&#10;예) 8/1~8/3 제주도, 첫날 협재해수욕장에서 물놀이, 둘째날 흑돼지 맛집 방문 예정..."></textarea>
+      <label>정리된 JSON 붙여넣기</label>
+      <textarea id="importText" rows="12" placeholder='{
+  "trip": { "name": "제주도 여행", "startDate": "2026-08-01", "endDate": "2026-08-03", "participants": ["나","아내"], "note": "" },
+  "schedules": [
+    { "date": "2026-08-01", "time": "14:00", "placeName": "협재해수욕장", "category": "관광", "duration": 120, "memo": "물놀이" }
+  ],
+  "records": [
+    { "date": "2026-08-01", "placeName": "흑돼지 맛집", "participants": ["나","아내"], "memo": "정말 맛있었다", "rating": 5 }
+  ]
+}'></textarea>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="App.closeImportModal()">취소</button>

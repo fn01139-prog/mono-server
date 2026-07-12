@@ -239,15 +239,22 @@ const App = (() => {
   }
 
   async function runImport() {
-    const text   = document.getElementById('importText').value.trim();
+    const raw    = document.getElementById('importText').value.trim();
     const tripId = document.getElementById('importTripSelect').value;
-    if (!text) return toast('가져올 내용을 입력해주세요', 'error');
+    if (!raw) return toast('가져올 내용을 입력해주세요', 'error');
+
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch (e) {
+      return toast('JSON 형식이 아닙니다. Claude에게 정리해달라고 요청한 결과를 그대로 붙여넣어주세요', 'error');
+    }
 
     const btn = document.getElementById('importSubmitBtn');
     btn.disabled = true;
     btn.textContent = '가져오는 중...';
     try {
-      const result = await API.importText(text, tripId);
+      const result = await API.importData({ ...payload, tripId: tripId || payload.tripId });
       closeImportModal();
 
       const idx = state.trips.findIndex(t => t.id === result.trip.id);

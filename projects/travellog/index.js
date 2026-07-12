@@ -305,7 +305,12 @@ router.post('/photos/upload', upload.array('photos', 30), async (req, res) => {
   }
 });
 
-/* ── 클로드 정리 내용 가져오기 (텍스트 → 구조화 데이터 자동 등록) ───────────── */
+/* ── 클로드 정리 내용 가져오기 ──────────────────────────────────────────────
+ * Claude와의 대화에서 이미 정리된 구조화 데이터를 그대로 등록한다.
+ * body: { tripId?, trip?: {name,startDate,endDate,participants,note},
+ *         schedules?: [{date,time,placeName,category,duration,memo}],
+ *         records?:   [{date,placeName,participants,memo,rating}] }
+ * ──────────────────────────────────────────────────────────────────────── */
 async function geocodePlace(name) {
   const mapsKey = process.env.GOOGLE_MAPS_KEY;
   if (!mapsKey || !name) return null;
@@ -320,8 +325,15 @@ async function geocodePlace(name) {
 
 router.post('/import', async (req, res) => {
   try {
-    const { text, tripId } = req.body;
-    if (!text || !text.trim()) return res.status(400).json({ error: 'text는 필수입니다' });
+    // 이미 정리된(구조화된) 여행 데이터를 그대로 등록한다.
+    // "정리"는 Claude와의 대화에서 끝난 상태로 넘어온다고 가정 — 여기서는 AI를 다시 부르지 않는다.
+    const { tripId, trip: tripInput, schedules: scheduleItemsRaw, records: recordItemsRaw } = req.body;
+    const scheduleItems = Array.isArray(scheduleItemsRaw) ? scheduleItemsRaw : [];
+    const recordItems   = Array.isArray(recordItemsRaw)   ? recordItemsRaw   : [];
+
+    if (!tripId && !tripInput?.name && scheduleItems.length === 0 && recordItems.length === 0) {
+      return res.status(400).json({ error: 'tripId 또는 trip.name, 혹은 schedules/records 중 하나는 필요합니다' });
+    }
 
     let existingTrip = null;
     if (tripId) {
@@ -330,69 +342,12 @@ router.post('/import', async (req, res) => {
       existingTrip = tripFromRow(rows[0]);
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const prompt = `당신은 여행 텍스트를 구조화된 데이터로 변환하는 어시스턴트입니다.
-오늘 날짜: ${today}
-
-아래는 사용자가 Claude와의 대화 등에서 정리한 여행 관련 텍스트입니다.
-"""
-${text}
-"""
-
-이 내용을 분석해서 아래 JSON 스키마 형식으로만 응답하세요 (설명, 코드블록 없이 JSON만):
-
-{
-  "trip": {
-    "name": "여행 이름 (없으면 장소/기간으로 적절히 생성)",
-    "startDate": "YYYY-MM-DD 또는 null",
-    "endDate": "YYYY-MM-DD 또는 null",
-    "participants": ["이름"],
-    "note": "여행 전체 메모"
-  },
-  "schedules": [
-    { "date": "YYYY-MM-DD 또는 null", "time": "HH:MM 또는 null", "placeName": "장소명",
-      "category": "관광|식사|카페|숙박|교통|쇼핑|기타", "duration": 숫자(분) 또는 null, "memo": "메모" }
-  ],
-  "records": [
-    { "date": "YYYY-MM-DD 또는 null", "placeName": "장소명", "participants": ["이름"],
-      "memo": "실제 있었던 일/후기", "rating": 0~5 }
-  ]
-}
-
-규칙:
-- 아직 안 간 곳/할 예정/계획 → schedules
-- 이미 다녀온 곳/후기/느낀점/있었던 일 → records
-- 상대적 날짜(내일, 다음주 등)는 오늘 날짜 기준으로 절대 날짜로 변환
-- 정보가 불명확하면 null 또는 빈 배열
-- trip 정보가 텍스트에 전혀 없으면 name만 문맥으로 생성하고 나머지는 null/빈 배열`;
-
-    const aiRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }],
-    });
-
-    let parsed;
-    try {
-      const raw = aiRes.content[0].text.replace(/```json|```/g, '').trim();
-      parsed = JSON.parse(raw);
-    } catch (_) {
-      return res.status(422).json({ error: 'AI 응답을 해석하지 못했습니다. 내용을 다시 정리해서 시도해주세요.' });
-    }
-
-    const scheduleItems = Array.isArray(parsed.schedules) ? parsed.schedules : [];
-    const recordItems   = Array.isArray(parsed.records)   ? parsed.records   : [];
-
-    if (!tripId && !parsed.trip?.name && scheduleItems.length === 0 && recordItems.length === 0) {
-      return res.status(422).json({ error: '텍스트에서 여행 정보를 찾지 못했습니다' });
-    }
-
     /* 여행: 기존 여행에 추가하거나 새로 생성 */
     let trip;
     if (existingTrip) {
       trip = existingTrip;
     } else {
-      const t = parsed.trip || {};
+      const t = tripInput || {};
       const id = uuidv4();
       const data = {
         name: t.name || '가져온 여행',

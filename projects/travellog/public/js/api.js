@@ -47,8 +47,8 @@ const API = {
   getNearby: (lat, lng, type, keyword = '') =>
     API._fetch('GET', `/places/nearby?lat=${lat}&lng=${lng}&type=${encodeURIComponent(type)}&keyword=${encodeURIComponent(keyword)}`),
 
-  // Import (클로드에서 정리한 텍스트 → 자동 등록)
-  importText: (text, tripId) => API._fetch('POST', '/import', { text, tripId: tripId || undefined }),
+  // Import (클로드가 정리한 구조화 데이터를 그대로 등록)
+  importData: (data) => API._fetch('POST', '/import', data),
 
   // Photo upload (multipart)
   uploadPhotos: async (files, tripId, metaList) => {
