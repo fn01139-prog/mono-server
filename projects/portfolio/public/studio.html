@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+  <script src="/shared-assets/auth-guard.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>페이지 관리자</title>
@@ -56,24 +57,6 @@
   </style>
 </head>
 <body>
-
-<!-- ── 인증 오버레이 ────────────────────────────────────────── -->
-<div class="auth-overlay" id="authOverlay">
-  <div class="auth-box">
-    <div class="auth-box-icon">🔐</div>
-    <h2>관리자 인증</h2>
-    <p>이 페이지에 접근하려면 비밀번호가 필요합니다.</p>
-    <input
-      type="password"
-      id="authInput"
-      placeholder="비밀번호 입력"
-      onkeydown="if(event.key==='Enter') submitAuth()"
-      autofocus
-    >
-    <button onclick="submitAuth()">확인</button>
-    <div class="auth-error" id="authError"></div>
-  </div>
-</div>
 
 <div class="app" data-theme="blue">
 <div class="toast" id="toast"><span id="toastMsg"></span></div>
@@ -283,71 +266,5 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="/portfolio/js/admin.js"></script>
-<script>
-/* ── 인증 로직 ────────────────────────────────────────────── */
-const AUTH_KEY = 'portfolio_token';
-
-function getToken()      { return localStorage.getItem(AUTH_KEY) || ''; }
-function setToken(t)     { localStorage.setItem(AUTH_KEY, t); }
-function clearToken()    { localStorage.removeItem(AUTH_KEY); }
-
-async function initAuth() {
-  try {
-    const res  = await fetch('/portfolio/api/auth/check');
-    const data = await res.json();
-    if (!data.required) {
-      hideOverlay();
-      return;
-    }
-    if (getToken()) {
-      // 기존 토큰을 서버에서 검증
-      const vRes  = await fetch('/portfolio/api/auth/verify', {
-        headers: { 'x-auth-token': getToken() }
-      });
-      const vData = await vRes.json();
-      if (vData.valid) {
-        hideOverlay();
-        return;
-      }
-      // 토큰 무효 → 제거 후 오버레이 유지
-      clearToken();
-    }
-    // 토큰 없거나 무효 → 오버레이 유지 (비밀번호 입력 대기)
-  } catch (e) {
-    hideOverlay(); // 서버 오류 시 fail-open
-  }
-}
-
-function hideOverlay() {
-  document.getElementById('authOverlay').classList.add('hidden');
-}
-
-async function submitAuth() {
-  const pw  = document.getElementById('authInput').value;
-  const err = document.getElementById('authError');
-  if (!pw) return;
-
-  try {
-    const res  = await fetch('/portfolio/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pw }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setToken(data.token);
-      hideOverlay();
-      err.textContent = '';
-    } else {
-      err.textContent = data.error || '비밀번호가 틀렸습니다.';
-      document.getElementById('authInput').select();
-    }
-  } catch (e) {
-    err.textContent = '서버 연결 오류';
-  }
-}
-
-initAuth();
-</script>
 </body>
 </html>

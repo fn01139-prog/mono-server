@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사용자 관리 · Yu's App Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0;
+    padding: 32px 40px 60px;
+  }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  h1 { font-size: 1.5rem; color: #fff; }
+  a.back { color: #4a9eff; text-decoration: none; font-size: 0.85rem; }
+  a.back:hover { text-decoration: underline; }
+
+  .panel {
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
+    padding: 20px; margin-bottom: 24px;
+  }
+  .panel h2 { font-size: 1rem; color: #fff; margin-bottom: 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; }
+  th { color: #888; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .badge-admin { background: rgba(227,179,65,.15); border: 1px solid rgba(227,179,65,.4); color: #e3b341; }
+  .badge-member { background: rgba(88,166,255,.12); border: 1px solid rgba(88,166,255,.3); color: #58a6ff; }
+  .badge-inactive { background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); color: #f85149; }
+
+  .apps-cell { display: flex; flex-wrap: wrap; gap: 4px; max-width: 260px; }
+  .app-chip {
+    font-size: 0.7rem; padding: 2px 7px; border-radius: 99px;
+    background: #222; border: 1px solid #333; color: #aaa;
+  }
+
+  button {
+    background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;
+  }
+  button:hover { border-color: #4a9eff; color: #4a9eff; }
+  button.primary { background: #4a9eff; border-color: #4a9eff; color: #fff; }
+  button.primary:hover { background: #3a8eef; }
+  button.danger:hover { border-color: #f85149; color: #f85149; }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  form.inline { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 0.75rem; color: #888; }
+  .field input {
+    padding: 7px 10px; background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 6px;
+    color: #e0e0e0; font-size: 0.85rem; min-width: 140px;
+  }
+  .field input:focus { outline: none; border-color: #4a9eff; }
+
+  .apps-picker { display: flex; flex-wrap: wrap; gap: 8px; max-width: 480px; }
+  .apps-picker label {
+    display: flex; align-items: center; gap: 5px; font-size: 0.78rem;
+    background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 6px; padding: 5px 9px;
+    cursor: pointer;
+  }
+
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
+    padding: 22px; width: 360px; max-width: 90vw;
+  }
+  .modal h3 { color: #fff; margin-bottom: 14px; font-size: 1rem; }
+  .modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #21262d; border: 1px solid #30363d; color: #e0e0e0;
+    padding: 10px 18px; border-radius: 8px; font-size: 0.85rem; display: none; z-index: 200;
+  }
+  .toast.err { border-color: #f85149; color: #f85149; }
+  .empty { color: #666; font-size: 0.85rem; padding: 16px 0; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>👤 사용자 관리</h1>
+    <a class="back" href="/">← 허브로 돌아가기</a>
+  </div>
+
+  <div class="panel">
+    <h2>➕ 새 사용자 생성</h2>
+    <form class="inline" id="createForm">
+      <div class="field"><label>이름</label><input id="cf-name" required></div>
+      <div class="field"><label>아이디</label><input id="cf-loginId" required autocomplete="off"></div>
+      <div class="field"><label>비밀번호</label><input id="cf-password" type="password" required></div>
+      <div class="field" style="flex:1; min-width:240px;">
+        <label>앱 권한</label>
+        <div class="apps-picker" id="cf-apps"></div>
+      </div>
+      <button type="submit" class="primary">생성</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>전체 사용자 (<span id="userCount">0</span>)</h2>
+    <table>
+      <thead>
+        <tr><th>이름</th><th>아이디</th><th>역할</th><th>앱 권한</th><th>마지막 로그인</th><th>작업</th></tr>
+      </thead>
+      <tbody id="userRows"></tbody>
+    </table>
+    <div class="empty" id="emptyMsg" style="display:none">사용자가 없습니다.</div>
+  </div>
+
+  <!-- 권한 편집 모달 -->
+  <div class="modal-overlay" id="appsModal">
+    <div class="modal">
+      <h3>앱 권한 편집</h3>
+      <div class="apps-picker" id="appsModalList"></div>
+      <div class="modal-btns">
+        <button onclick="closeAppsModal()">취소</button>
+        <button class="primary" onclick="saveApps()">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 비밀번호 초기화 모달 -->
+  <div class="modal-overlay" id="pwModal">
+    <div class="modal">
+      <h3>비밀번호 초기화</h3>
+      <div class="field"><label>새 비밀번호</label><input id="pw-new" type="password"></div>
+      <div class="modal-btns">
+        <button onclick="closePwModal()">취소</button>
+        <button class="primary" onclick="savePassword()">저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let allApps = [];
+    let users = [];
+    let editingUserId = null;
+
+    function toast(msg, isErr) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast' + (isErr ? ' err' : '');
+      t.style.display = 'block';
+      clearTimeout(t._h);
+      t._h = setTimeout(() => { t.style.display = 'none'; }, 2500);
+    }
+
+    async function api(url, opts) {
+      const res = await fetch(url, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      return data;
+    }
+
+    function esc(s) {
+      const el = document.createElement('div');
+      el.textContent = s == null ? '' : String(s);
+      return el.innerHTML;
+    }
+
+    function appsPickerHtml(idPrefix, checkedSet) {
+      const items = allApps.map(a => `<label><input type="checkbox" value="${esc(a.prefix)}" ${checkedSet.has(a.prefix) ? 'checked' : ''}> ${esc(a.icon || '📦')} ${esc(a.name)}</label>`).join('');
+      const wildcard = `<label style="border-color:#e3b341"><input type="checkbox" value="*" ${checkedSet.has('*') ? 'checked' : ''}> 🌐 전체 공개(모든 앱)</label>`;
+      return items + wildcard;
+    }
+
+    async function loadAll() {
+      try {
+        const appsRes = await api('/auth/admin/apps');
+        allApps = appsRes;
+        document.getElementById('cf-apps').innerHTML = appsPickerHtml('cf', new Set());
+
+        users = await api('/auth/admin/users');
+        renderUsers();
+      } catch (e) {
+        toast('로드 실패: ' + e.message, true);
+      }
+    }
+
+    function renderUsers() {
+      document.getElementById('userCount').textContent = users.length;
+      const rows = document.getElementById('userRows');
+      document.getElementById('emptyMsg').style.display = users.length ? 'none' : 'block';
+      rows.innerHTML = users.map(u => {
+        const roleBadge = u.role === 'admin'
+          ? '<span class="badge badge-admin">관리자</span>'
+          : '<span class="badge badge-member">사용자</span>';
+        const inactiveBadge = u.isActive === false ? ' <span class="badge badge-inactive">비활성</span>' : '';
+        const apps = (u.apps || []).length
+          ? u.apps.map(p => `<span class="app-chip">${p === '*' ? '🌐 전체' : esc(p)}</span>`).join('')
+          : '<span style="color:#555;font-size:0.75rem">없음</span>';
+        return `<tr>
+          <td>${esc(u.name)}</td>
+          <td>${esc(u.loginId)}</td>
+          <td>${roleBadge}${inactiveBadge}</td>
+          <td><div class="apps-cell">${apps}</div></td>
+          <td style="color:#888;font-size:0.78rem">${u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('ko-KR') : '-'}</td>
+          <td>
+            <div class="row-actions">
+              <button onclick="openAppsModal('${u.userId}')">권한</button>
+              <button onclick="openPwModal('${u.userId}')">비번초기화</button>
+              <button onclick="toggleActive('${u.userId}', ${u.isActive === false})">${u.isActive === false ? '활성화' : '비활성화'}</button>
+              <button class="danger" onclick="deleteUser('${u.userId}','${esc(u.name)}')">삭제</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.getElementById('createForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('cf-name').value.trim();
+      const loginId = document.getElementById('cf-loginId').value.trim();
+      const password = document.getElementById('cf-password').value;
+      const apps = [...document.querySelectorAll('#cf-apps input:checked')].map(el => el.value);
+      try {
+        await api('/auth/admin/users', { method: 'POST', body: JSON.stringify({ name, loginId, password, apps }) });
+        toast(`${name} 계정이 생성되었습니다.`);
+        e.target.reset();
+        document.getElementById('cf-apps').innerHTML = appsPickerHtml('cf', new Set());
+        await loadAll();
+      } catch (err) {
+        toast('생성 실패: ' + err.message, true);
+      }
+    });
+
+    function openAppsModal(userId) {
+      editingUserId = userId;
+      const u = users.find(x => x.userId === userId);
+      document.getElementById('appsModalList').innerHTML = appsPickerHtml('am', new Set(u.apps || []));
+      document.getElementById('appsModal').classList.add('open');
+    }
+    function closeAppsModal() {
+      document.getElementById('appsModal').classList.remove('open');
+      editingUserId = null;
+    }
+    async function saveApps() {
+      const apps = [...document.querySelectorAll('#appsModalList input:checked')].map(el => el.value);
+      try {
+        await api(`/auth/admin/users/${editingUserId}/apps`, { method: 'PUT', body: JSON.stringify({ apps }) });
+        toast('권한이 저장되었습니다.');
+        closeAppsModal();
+        await loadAll();
+      } catch (e) {
+        toast('저장 실패: ' + e.message, true);
+      }
+    }
+
+    function openPwModal(userId) {
+      editingUserId = userId;
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pwModal').classList.add('open');
+    }
+    function closePwModal() {
+      document.getElementById('pwModal').classList.remove('open');
+      editingUserId = null;
+    }
+    async function savePassword() {
+      const password = document.getElementById('pw-new').value;
+      if (!password) { toast('비밀번호를 입력하세요.', true); return; }
+      try {
+        await api(`/auth/admin/users/${editingUserId}`, { method: 'PUT', body: JSON.stringify({ password }) });
+        toast('비밀번호가 변경되었습니다.');
+        closePwModal();
+      } catch (e) {
+        toast('변경 실패: ' + e.message, true);
+      }
+    }
+
+    async function toggleActive(userId, makeActive) {
+      try {
+        await api(`/auth/admin/users/${userId}`, { method: 'PUT', body: JSON.stringify({ isActive: makeActive }) });
+        toast(makeActive ? '계정이 활성화되었습니다.' : '계정이 비활성화되었습니다.');
+        await loadAll();
+      } catch (e) {
+        toast('변경 실패: ' + e.message, true);
+      }
+    }
+
+    async function deleteUser(userId, name) {
+      if (!confirm(`"${name}" 계정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
+      try {
+        await api(`/auth/admin/users/${userId}`, { method: 'DELETE' });
+        toast(`${name} 계정이 삭제되었습니다.`);
+        await loadAll();
+      } catch (e) {
+        toast('삭제 실패: ' + e.message, true);
+      }
+    }
+
+    loadAll();
+  </script>
+</body>
+</html>

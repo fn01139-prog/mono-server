@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+  <script src="/shared-assets/auth-guard.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>공부하자 - mdBoard</title>
@@ -363,33 +364,10 @@
     <div class="header-right">
       <span id="headerFileInfo" style="font-size:12px; color:#7a8ba0; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
 
-      <!-- 인증 영역 -->
-      <div class="auth-area" id="authArea" style="display:none">
-        <!-- 비인증 상태 -->
-        <div id="authLocked">
-          <button class="btn-auth locked" onclick="showAuthInput()" id="btnAuthLocked">
-            🔐 인증하기
-          </button>
-        </div>
-        <!-- 비밀번호 입력창 -->
-        <div class="auth-input-wrap" id="authInputWrap">
-          <input
-            type="password"
-            class="auth-input"
-            id="authPasswordInput"
-            placeholder="비밀번호 입력"
-            onkeydown="if(event.key==='Enter') submitAuth(); if(event.key==='Escape') hideAuthInput();"
-          >
-          <button class="btn-auth-confirm" onclick="submitAuth()">확인</button>
-          <button class="btn-auth-cancel" onclick="hideAuthInput()">✕</button>
-        </div>
-        <!-- 인증 완료 상태 -->
-        <div id="authUnlocked" style="display:none; display:flex; align-items:center; gap:6px;">
-          <button class="btn-auth unlocked" style="pointer-events:none">
-            🔓 인증됨
-          </button>
-          <button class="btn-auth logout-btn" onclick="logout()" title="인증 해제">로그아웃</button>
-        </div>
+      <!-- 플랫폼 로그인 사용자 표시 -->
+      <div class="auth-area" id="authArea" style="display:flex; align-items:center; gap:6px;">
+        <span id="platformUserChip" style="font-size:12px; color:#7a8ba0;"></span>
+        <button class="btn-auth logout-btn" onclick="logout()" title="로그아웃">로그아웃</button>
       </div>
 
       <button class="btn-monitor" onclick="toggleMonitor()" title="서버 리소스 모니터링">
@@ -598,70 +576,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('message', onFrameMessage);
 });
 
-/* ── 인증 ─────────────────────────────────────────────────────────── */
+/* ── 플랫폼 로그인 (이 페이지에 도달했다는 것은 이미 로그인된 상태) ────── *
+ * 과거의 authRequired/Auth.isAuthenticated() 패턴은 파일별 쓰기 권한 검사가
+ * 서버(perm.canWrite)로 이전되면서 더 이상 필요 없다. authRequired를 항상
+ * false로 고정해, 기존 코드 곳곳의 `!authRequired || Auth.isAuthenticated()`
+ * 형태의 canEdit 계산이 그대로 true가 되도록 한다 — 실제 쓰기 차단은 서버가
+ * 403으로 응답하면 해당 호출부에서 토스트로 안내한다.
+ * ────────────────────────────────────────────────────────────────────── */
 async function initAuth() {
+  authRequired = false;
+  showNewDocBtn(true);
   try {
-    const res = await API.authCheck();
-    authRequired = res.required;
-  } catch (e) { authRequired = false; }
-
-  const authArea = document.getElementById('authArea');
-  if (!authRequired) { authArea.style.display = 'none'; showNewDocBtn(true); return; }
-  authArea.style.display = 'flex';
-  updateAuthUI();
-}
-
-function updateAuthUI() {
-  const locked    = document.getElementById('authLocked');
-  const inputWrap = document.getElementById('authInputWrap');
-  const unlocked  = document.getElementById('authUnlocked');
-  const authed    = Auth.isAuthenticated();
-  locked.style.display   = authed ? 'none' : 'block';
-  inputWrap.classList.remove('visible');
-  unlocked.style.display = authed ? 'flex'  : 'none';
-  showNewDocBtn(authed);
-  const frame = document.getElementById('mainFrame');
-  if (frame && frame.contentWindow)
-    frame.contentWindow.postMessage({ type: 'auth-changed', authed }, '*');
-  renderSidebar();
+    const res = await fetch('/auth/me', { credentials: 'include' });
+    if (res.ok) {
+      const me = await res.json();
+      document.getElementById('platformUserChip').textContent =
+        `${me.name}${me.role === 'admin' ? ' (관리자)' : ''}`;
+    }
+  } catch {}
 }
 
 function showNewDocBtn(show) {
   document.getElementById('sidebarNewBtn').style.display = show ? '' : 'none';
 }
-function showAuthInput() {
-  document.getElementById('authLocked').style.display = 'none';
-  document.getElementById('authInputWrap').classList.add('visible');
-  document.getElementById('authPasswordInput').focus();
-}
-function hideAuthInput() {
-  document.getElementById('authPasswordInput').value = '';
-  document.getElementById('authInputWrap').classList.remove('visible');
-  document.getElementById('authLocked').style.display = 'block';
-}
-async function submitAuth() {
-  const pw = document.getElementById('authPasswordInput').value;
-  if (!pw) return;
-  try {
-    const res = await API.auth(pw);
-    if (res.success) {
-      Auth.setToken(res.token);
-      hideAuthInput();
-      updateAuthUI();
-      showToast('인증되었습니다.', 'success');
-    } else {
-      showToast(res.error || '비밀번호가 틀렸습니다.', 'error');
-      document.getElementById('authPasswordInput').select();
-    }
-  } catch (e) { showToast('인증 요청 실패', 'error'); }
-}
-function logout() {
-  Auth.clear(); updateAuthUI();
-  showToast('인증이 해제되었습니다.', 'info');
-  if (currentMode === 'editor') loadHome();
+async function logout() {
+  await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+  location.href = '/login';
 }
 function onNewDocument() {
-  if (authRequired && !Auth.isAuthenticated()) { showToast('인증 후 이용 가능합니다.', 'error'); return; }
   openEditor(null);
 }
 
@@ -807,13 +749,16 @@ function renderFileItem(f) {
   const moveBtn     = canEdit
     ? '<button class="file-move-btn" onclick="event.stopPropagation();showMoveDialog(\'' + escHtml(filePath) + '\')" title="폴더 이동">↗</button>'
     : '';
+  const shareBtn    = canEdit
+    ? '<button class="file-move-btn" onclick="event.stopPropagation();openShareDialog(\'' + escHtml(filePath) + '\')" title="공유">🔗</button>'
+    : '';
   return '<div class="sidebar-item" id="si-' + escHtml(filePath) + '" onclick="openView(\'' + escHtml(filePath) + '\')" title="' + escHtml(displayName) + '">' +
     '<span class="sidebar-item-icon">📄</span>' +
     '<div class="sidebar-item-body">' +
       '<div class="sidebar-item-title">' + escHtml(displayName) + '</div>' +
       '<div class="sidebar-item-meta">' + formatDate(f.modified) + ' · ' + formatSize(f.size) + '</div>' +
     '</div>' +
-    moveBtn +
+    shareBtn + moveBtn +
   '</div>';
 }
 
@@ -868,6 +813,70 @@ async function confirmCreateFolder() {
     expandedFolders.add(data.name);
     loadFileList();
   } catch (e) { showToast('폴더 생성 실패: ' + e.message, 'error'); }
+}
+
+/* ── 파일 공유 ────────────────────────────────────────────────────── */
+let shareTargetPath = null;
+async function openShareDialog(filePath) {
+  shareTargetPath = filePath;
+  document.getElementById('shareFileName').textContent = filePath;
+  document.getElementById('shareUserList').innerHTML = '불러오는 중...';
+  document.getElementById('shareFileModal').classList.add('open');
+  try {
+    const [collabRes, permRes] = await Promise.all([
+      fetch('/mdboard/api/collaborators').then(r => r.json()),
+      fetch('/mdboard/api/file-permissions?path=' + encodeURIComponent(filePath)).then(r => r.json()),
+    ]);
+    if (!permRes.success) throw new Error(permRes.error || '권한 조회 실패');
+    const grantMap = {};
+    (permRes.grants || []).forEach(g => { grantMap[g.userId] = g.permission; });
+    const list = document.getElementById('shareUserList');
+    const rows = (collabRes.users || [])
+      .filter(u => u.id !== permRes.ownerId)
+      .map(u => {
+        const g = grantMap[u.id] || 'none';
+        return '<label style="display:flex; align-items:center; gap:8px; font-size:13px;">' +
+          '<span style="flex:1;">' + escHtml(u.name) + '</span>' +
+          '<select data-uid="' + escHtml(u.id) + '" style="font-size:12px;">' +
+            '<option value="none"' + (g === 'none' ? ' selected' : '') + '>비공개</option>' +
+            '<option value="read"' + (g === 'read' ? ' selected' : '') + '>읽기</option>' +
+            '<option value="write"' + (g === 'write' ? ' selected' : '') + '>읽기+쓰기</option>' +
+          '</select></label>';
+      }).join('');
+    const allG = grantMap['*'] || 'none';
+    const allRow = '<label style="display:flex; align-items:center; gap:8px; font-size:13px; border-top:1px solid rgba(255,255,255,.1); padding-top:8px; margin-top:4px;">' +
+      '<span style="flex:1;">🌐 전체 공개</span>' +
+      '<select data-uid="*" style="font-size:12px;">' +
+        '<option value="none"' + (allG === 'none' ? ' selected' : '') + '>비공개</option>' +
+        '<option value="read"' + (allG === 'read' ? ' selected' : '') + '>읽기</option>' +
+        '<option value="write"' + (allG === 'write' ? ' selected' : '') + '>읽기+쓰기</option>' +
+      '</select></label>';
+    list.innerHTML = (rows || '<span style="color:#8899aa; font-size:12px;">공유할 수 있는 다른 사용자가 없습니다</span>') + allRow;
+  } catch (e) {
+    document.getElementById('shareUserList').innerHTML = '<span style="color:#ff8080;">' + escHtml(e.message) + '</span>';
+  }
+}
+function closeShareDialog() {
+  document.getElementById('shareFileModal').classList.remove('open');
+  shareTargetPath = null;
+}
+async function confirmShare() {
+  if (!shareTargetPath) return;
+  const selects = document.querySelectorAll('#shareUserList select');
+  const grants = [...selects]
+    .map(el => ({ userId: el.dataset.uid, permission: el.value }))
+    .filter(g => g.permission !== 'none');
+  try {
+    const res = await fetch('/mdboard/api/file-permissions', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: shareTargetPath, grants }),
+    }).then(r => r.json());
+    if (!res.success) throw new Error(res.error);
+    showToast('공유 설정이 저장되었습니다.', 'success');
+    closeShareDialog();
+  } catch (e) {
+    showToast('공유 설정 실패: ' + e.message, 'error');
+  }
 }
 
 /* ── 폴더 삭제 ────────────────────────────────────────────────────── */
@@ -1136,6 +1145,19 @@ function escHtml(str) {
     <div class="modal-btns">
       <button class="modal-btn modal-btn-cancel" onclick="closeMoveDialog()">취소</button>
       <button class="modal-btn modal-btn-primary" onclick="confirmMove()">이동</button>
+    </div>
+  </div>
+</div>
+
+<!-- 파일 공유 모달 -->
+<div class="modal-overlay" id="shareFileModal" onclick="if(event.target===this)closeShareDialog()">
+  <div class="modal">
+    <h3>🔗 파일 공유</h3>
+    <p id="shareFileName" style="margin-bottom:10px; font-size:13px; color:#e0e8f0;"></p>
+    <div id="shareUserList" style="display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto;"></div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-cancel" onclick="closeShareDialog()">취소</button>
+      <button class="modal-btn modal-btn-primary" onclick="confirmShare()">저장</button>
     </div>
   </div>
 </div>

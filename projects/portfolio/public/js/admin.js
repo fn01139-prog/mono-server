@@ -88,14 +88,7 @@ const Admin = (function () {
     setTimeout(() => t.classList.remove('show'), 2200);
   }
 
-  // === API ===
-  function authHeaders(extra = {}) {
-    return {
-      ...extra,
-      'x-auth-token': localStorage.getItem('portfolio_token') || '',
-    };
-  }
-
+  // === API (플랫폼 로그인 쿠키로 인증됨) ===
   async function apiGet(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(res.status);
@@ -105,7 +98,7 @@ const Admin = (function () {
   async function apiPost(url, data) {
     const res = await fetch(url, {
       method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error(res.status);
@@ -115,7 +108,7 @@ const Admin = (function () {
   async function apiPut(url, data) {
     const res = await fetch(url, {
       method: 'PUT',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error(res.status);
@@ -123,10 +116,7 @@ const Admin = (function () {
   }
 
   async function apiDelete(url) {
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers: authHeaders(),
-    });
+    const res = await fetch(url, { method: 'DELETE' });
     if (!res.ok) throw new Error(res.status);
     return res.json();
   }

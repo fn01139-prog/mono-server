@@ -32,6 +32,25 @@ function photoFromRow(r) {
   return { fileId: r.file_id, tripId: r.trip_id, uploadedAt: r.uploaded_at, ...r.data };
 }
 
+const isAdmin = (req) => req.user?.role === 'admin';
+
+/** trip을 조회하고 소유권을 검사. 없거나 권한 없으면 null. */
+async function loadOwnedTrip(req, tripId) {
+  if (!tripId) return null;
+  const { rows } = await pool.query('SELECT * FROM travel_trips WHERE id = $1', [tripId]);
+  const trip = rows[0];
+  if (!trip) return null;
+  if (!isAdmin(req) && trip.owner_id !== req.user.userId) return null;
+  return trip;
+}
+
+/** 본인 소유 trip id 목록 (admin은 null → 필터 없음을 의미) */
+async function ownedTripIds(req) {
+  if (isAdmin(req)) return null;
+  const { rows } = await pool.query('SELECT id FROM travel_trips WHERE owner_id = $1', [req.user.userId]);
+  return rows.map(r => r.id);
+}
+
 /* ── 정적 파일 ─────────────────────────────────────────────────────────── */
 router.use(express.static(path.join(__dirname, 'public')));
 
@@ -43,9 +62,12 @@ router.get('/config', (req, res) => {
 /* ── 여행 CRUD ───────────────────────────────────────────────────────────── */
 router.get('/trips', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      'SELECT * FROM travel_trips ORDER BY start_date DESC NULLS LAST'
-    );
+    const { rows } = isAdmin(req)
+      ? await pool.query('SELECT * FROM travel_trips ORDER BY start_date DESC NULLS LAST')
+      : await pool.query(
+          'SELECT * FROM travel_trips WHERE owner_id = $1 ORDER BY start_date DESC NULLS LAST',
+          [req.user.userId]
+        );
     res.json(rows.map(tripFromRow));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -55,9 +77,9 @@ router.post('/trips', async (req, res) => {
     const { startDate, status, ...rest } = req.body;
     const id = uuidv4();
     const { rows } = await pool.query(
-      `INSERT INTO travel_trips (id, start_date, status, data, created_at)
-       VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
-      [id, startDate || null, status || 'planned', JSON.stringify(rest)]
+      `INSERT INTO travel_trips (id, start_date, status, data, owner_id, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+      [id, startDate || null, status || 'planned', JSON.stringify(rest), req.user.userId]
     );
     res.json(tripFromRow(rows[0]));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -65,11 +87,11 @@ router.post('/trips', async (req, res) => {
 
 router.put('/trips/:id', async (req, res) => {
   try {
-    const { rows: cur } = await pool.query('SELECT * FROM travel_trips WHERE id = $1', [req.params.id]);
-    if (!cur.length) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+    const cur = await loadOwnedTrip(req, req.params.id);
+    if (!cur) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
 
     const { startDate, status, ...rest } = req.body;
-    const merged = { ...cur[0].data, ...rest };
+    const merged = { ...cur.data, ...rest };
     const { rows } = await pool.query(
       `UPDATE travel_trips
        SET start_date = COALESCE($2, start_date),
@@ -84,6 +106,9 @@ router.put('/trips/:id', async (req, res) => {
 
 router.delete('/trips/:id', async (req, res) => {
   try {
+    const cur = await loadOwnedTrip(req, req.params.id);
+    if (!cur) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+
     await pool.query('DELETE FROM travel_trips WHERE id = $1', [req.params.id]);
     await pool.query('DELETE FROM travel_schedules WHERE trip_id = $1', [req.params.id]);
     await pool.query('DELETE FROM travel_records WHERE trip_id = $1', [req.params.id]);
@@ -95,10 +120,18 @@ router.delete('/trips/:id', async (req, res) => {
 router.get('/schedules', async (req, res) => {
   try {
     const { tripId } = req.query;
-    const q = tripId
-      ? pool.query('SELECT * FROM travel_schedules WHERE trip_id = $1 ORDER BY sort_order, scheduled_at', [tripId])
-      : pool.query('SELECT * FROM travel_schedules ORDER BY sort_order, scheduled_at');
-    const { rows } = await q;
+    if (tripId) {
+      const trip = await loadOwnedTrip(req, tripId);
+      if (!trip) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+      const { rows } = await pool.query(
+        'SELECT * FROM travel_schedules WHERE trip_id = $1 ORDER BY sort_order, scheduled_at', [tripId]
+      );
+      return res.json(rows.map(scheduleFromRow));
+    }
+    const ids = await ownedTripIds(req);
+    const { rows } = ids === null
+      ? await pool.query('SELECT * FROM travel_schedules ORDER BY sort_order, scheduled_at')
+      : await pool.query('SELECT * FROM travel_schedules WHERE trip_id = ANY($1) ORDER BY sort_order, scheduled_at', [ids]);
     res.json(rows.map(scheduleFromRow));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -106,6 +139,9 @@ router.get('/schedules', async (req, res) => {
 router.post('/schedules', async (req, res) => {
   try {
     const { tripId, date, time, ...rest } = req.body;
+    const trip = await loadOwnedTrip(req, tripId);
+    if (!trip) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+
     const { rows: existing } = await pool.query(
       'SELECT MAX(sort_order) AS max FROM travel_schedules WHERE trip_id = $1', [tripId]
     );
@@ -124,6 +160,7 @@ router.put('/schedules/:id', async (req, res) => {
   try {
     const { rows: cur } = await pool.query('SELECT * FROM travel_schedules WHERE id = $1', [req.params.id]);
     if (!cur.length) return res.status(404).json({ error: '일정을 찾을 수 없습니다' });
+    if (!(await loadOwnedTrip(req, cur[0].trip_id))) return res.status(404).json({ error: '일정을 찾을 수 없습니다' });
 
     const { date, time, ...rest } = req.body;
     const merged = { ...cur[0].data, date: date ?? cur[0].data?.date, time: time ?? cur[0].data?.time, ...rest };
@@ -141,6 +178,10 @@ router.put('/schedules/:id', async (req, res) => {
 
 router.delete('/schedules/:id', async (req, res) => {
   try {
+    const { rows: cur } = await pool.query('SELECT * FROM travel_schedules WHERE id = $1', [req.params.id]);
+    if (!cur.length) return res.status(404).json({ error: '일정을 찾을 수 없습니다' });
+    if (!(await loadOwnedTrip(req, cur[0].trip_id))) return res.status(404).json({ error: '일정을 찾을 수 없습니다' });
+
     await pool.query('DELETE FROM travel_schedules WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -149,6 +190,7 @@ router.delete('/schedules/:id', async (req, res) => {
 router.post('/schedules/reorder', async (req, res) => {
   try {
     const { tripId, orderedIds } = req.body;
+    if (!(await loadOwnedTrip(req, tripId))) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
     for (let i = 0; i < orderedIds.length; i++) {
       await pool.query(
         'UPDATE travel_schedules SET sort_order = $1 WHERE id = $2 AND trip_id = $3',
@@ -163,10 +205,16 @@ router.post('/schedules/reorder', async (req, res) => {
 router.get('/records', async (req, res) => {
   try {
     const { tripId } = req.query;
-    const q = tripId
-      ? pool.query('SELECT * FROM travel_records WHERE trip_id = $1 ORDER BY record_date DESC', [tripId])
-      : pool.query('SELECT * FROM travel_records ORDER BY record_date DESC');
-    const { rows } = await q;
+    if (tripId) {
+      const trip = await loadOwnedTrip(req, tripId);
+      if (!trip) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+      const { rows } = await pool.query('SELECT * FROM travel_records WHERE trip_id = $1 ORDER BY record_date DESC', [tripId]);
+      return res.json(rows.map(recordFromRow));
+    }
+    const ids = await ownedTripIds(req);
+    const { rows } = ids === null
+      ? await pool.query('SELECT * FROM travel_records ORDER BY record_date DESC')
+      : await pool.query('SELECT * FROM travel_records WHERE trip_id = ANY($1) ORDER BY record_date DESC', [ids]);
     res.json(rows.map(recordFromRow));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -174,6 +222,7 @@ router.get('/records', async (req, res) => {
 router.post('/records', async (req, res) => {
   try {
     const { tripId, date, ...rest } = req.body;
+    if (!(await loadOwnedTrip(req, tripId))) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
     const id = uuidv4();
     const { rows } = await pool.query(
       `INSERT INTO travel_records (id, trip_id, record_date, data, created_at)
@@ -188,6 +237,7 @@ router.put('/records/:id', async (req, res) => {
   try {
     const { rows: cur } = await pool.query('SELECT * FROM travel_records WHERE id = $1', [req.params.id]);
     if (!cur.length) return res.status(404).json({ error: '기록을 찾을 수 없습니다' });
+    if (!(await loadOwnedTrip(req, cur[0].trip_id))) return res.status(404).json({ error: '기록을 찾을 수 없습니다' });
 
     const { date, ...rest } = req.body;
     const merged = { ...cur[0].data, ...rest, date: date ?? cur[0].data?.date };
@@ -201,6 +251,10 @@ router.put('/records/:id', async (req, res) => {
 
 router.delete('/records/:id', async (req, res) => {
   try {
+    const { rows: cur } = await pool.query('SELECT * FROM travel_records WHERE id = $1', [req.params.id]);
+    if (!cur.length) return res.status(404).json({ error: '기록을 찾을 수 없습니다' });
+    if (!(await loadOwnedTrip(req, cur[0].trip_id))) return res.status(404).json({ error: '기록을 찾을 수 없습니다' });
+
     await pool.query('DELETE FROM travel_records WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -210,10 +264,15 @@ router.delete('/records/:id', async (req, res) => {
 router.get('/photos', async (req, res) => {
   try {
     const { tripId } = req.query;
-    const q = tripId
-      ? pool.query('SELECT * FROM travel_photos WHERE trip_id = $1 ORDER BY uploaded_at DESC', [tripId])
-      : pool.query('SELECT * FROM travel_photos ORDER BY uploaded_at DESC');
-    const { rows } = await q;
+    if (tripId) {
+      if (!(await loadOwnedTrip(req, tripId))) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+      const { rows } = await pool.query('SELECT * FROM travel_photos WHERE trip_id = $1 ORDER BY uploaded_at DESC', [tripId]);
+      return res.json(rows.map(photoFromRow));
+    }
+    const ids = await ownedTripIds(req);
+    const { rows } = ids === null
+      ? await pool.query('SELECT * FROM travel_photos ORDER BY uploaded_at DESC')
+      : await pool.query('SELECT * FROM travel_photos WHERE trip_id = ANY($1) ORDER BY uploaded_at DESC', [ids]);
     res.json(rows.map(photoFromRow));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -222,10 +281,16 @@ router.get('/photos', async (req, res) => {
 router.get('/photos/by-location', async (req, res) => {
   try {
     const { tripId } = req.query;
-    const q = tripId
-      ? pool.query(`SELECT * FROM travel_photos WHERE trip_id = $1 AND (data->>'lat') IS NOT NULL`, [tripId])
-      : pool.query(`SELECT * FROM travel_photos WHERE (data->>'lat') IS NOT NULL`);
-    const { rows } = await q;
+    let rows;
+    if (tripId) {
+      if (!(await loadOwnedTrip(req, tripId))) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+      ({ rows } = await pool.query(`SELECT * FROM travel_photos WHERE trip_id = $1 AND (data->>'lat') IS NOT NULL`, [tripId]));
+    } else {
+      const ids = await ownedTripIds(req);
+      ({ rows } = ids === null
+        ? await pool.query(`SELECT * FROM travel_photos WHERE (data->>'lat') IS NOT NULL`)
+        : await pool.query(`SELECT * FROM travel_photos WHERE trip_id = ANY($1) AND (data->>'lat') IS NOT NULL`, [ids]));
+    }
     const photos = rows.map(photoFromRow).filter(p => p.lat && p.lng);
 
     const clusters = [];
@@ -263,6 +328,9 @@ router.post('/photos/upload', upload.array('photos', 30), async (req, res) => {
   try {
     const { tripId, metaJson } = req.body;
     const metaList = metaJson ? JSON.parse(metaJson) : [];
+
+    if (tripId && !(await loadOwnedTrip(req, tripId)))
+      return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
 
     if (!req.files || req.files.length === 0)
       return res.status(400).json({ error: '파일이 없습니다' });
@@ -337,9 +405,9 @@ router.post('/import', async (req, res) => {
 
     let existingTrip = null;
     if (tripId) {
-      const { rows } = await pool.query('SELECT * FROM travel_trips WHERE id = $1', [tripId]);
-      if (!rows.length) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
-      existingTrip = tripFromRow(rows[0]);
+      const trip = await loadOwnedTrip(req, tripId);
+      if (!trip) return res.status(404).json({ error: '여행을 찾을 수 없습니다' });
+      existingTrip = tripFromRow(trip);
     }
 
     /* 여행: 기존 여행에 추가하거나 새로 생성 */
@@ -356,9 +424,9 @@ router.post('/import', async (req, res) => {
         note: t.note || '',
       };
       const { rows } = await pool.query(
-        `INSERT INTO travel_trips (id, start_date, status, data, created_at)
-         VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
-        [id, t.startDate || null, 'planned', JSON.stringify(data)]
+        `INSERT INTO travel_trips (id, start_date, status, data, owner_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+        [id, t.startDate || null, 'planned', JSON.stringify(data), req.user.userId]
       );
       trip = tripFromRow(rows[0]);
     }

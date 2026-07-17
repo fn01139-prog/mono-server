@@ -7,32 +7,18 @@ const fs      = require('fs');
 const path    = require('path');
 const multer  = require('multer');
 const os      = require('os');
-const crypto  = require('crypto');
+const pool    = require('../../shared/db');
 const { Marp } = require('@marp-team/marp-core');
 const drive   = require('./drive');
+const perm    = require('./permissions');
 const router  = express.Router();
 
-/* ── 인증 헬퍼 ────────────────────────────────────────────────────────── */
-function getPassword() { return process.env.MDBOARD_PASSWORD || ''; }
-function makeToken(pwd) {
-  return crypto.createHmac('sha256', pwd).update('mdboard-auth').digest('hex');
-}
-function verifyToken(token) {
-  const pwd = getPassword();
-  if (!pwd || !token) return false;
-  return token === makeToken(pwd);
-}
-function verifyApiKey(key) {
-  const apiKey = process.env.MDBOARD_API_KEY || '';
-  return apiKey && key === apiKey;
-}
-function requireAuth(req, res, next) {
-  if (verifyApiKey(req.headers['x-api-key'])) return next();
-  if (!getPassword()) return next();
-  const token = req.headers['x-auth-token'];
-  if (!verifyToken(token)) return res.status(401).json({ success: false, error: '인증이 필요합니다.' });
-  next();
-}
+/* ── 인증 ─────────────────────────────────────────────────────────────── *
+ * 접근 제어(로그인 여부)는 loader.js 가드가 담당한다. 이 라우터는
+ * "이미 로그인된 사용자가 이 파일에 read/write 권한이 있는가"만 검사한다.
+ * /publish만 예외적으로 x-api-key로 비로그인 접근을 허용한다(Claude Code 등
+ * programmatic 접근용, 기존 동작 유지).
+ * ────────────────────────────────────────────────────────────────────── */
 
 const PROJECT_DIR  = __dirname;
 const CONTENTS_DIR = path.join(PROJECT_DIR, 'public', 'contents');
@@ -175,16 +161,20 @@ router.get('/health', (req, res) => {
   res.json({ success: true, project: 'mdBoard', time: new Date() });
 });
 
-/* ── 인증 ─────────────────────────────────────────────────────────────── */
-router.get('/auth/check', (req, res) => {
-  res.json({ required: !!getPassword() });
-});
-router.post('/auth', (req, res) => {
-  const pwd = getPassword();
-  if (!pwd) return res.json({ success: true, token: '' });
-  const { password } = req.body;
-  if (password !== pwd) return res.status(401).json({ success: false, error: '비밀번호가 틀렸습니다.' });
-  res.json({ success: true, token: makeToken(pwd) });
+/* ── 협업자 목록 (이 앱에 접근 권한이 있는 플랫폼 사용자 — 공유 대상 후보) ── */
+router.get('/collaborators', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT u.id, u.name, u.color
+       FROM platform_users u
+       JOIN platform_accounts a ON a.user_id = u.id AND a.is_active = TRUE
+       LEFT JOIN platform_app_grants g ON g.user_id = u.id AND g.app_prefix = '/mdboard'
+       WHERE a.role = 'admin' OR g.user_id IS NOT NULL
+          OR EXISTS (SELECT 1 FROM platform_app_grants g2 WHERE g2.user_id = '*' AND g2.app_prefix = '/mdboard')
+       ORDER BY u.name`
+    );
+    res.json({ success: true, users: rows });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
 // Drive Lazy Init
@@ -193,31 +183,45 @@ router.use((req, res, next) => {
 });
 
 /* ── 파일 목록 (폴더 구조 포함) ────────────────────────────────────────── */
-router.get('/files', (req, res) => {
+router.get('/files', async (req, res) => {
   try {
     const entries = fs.readdirSync(CONTENTS_DIR, { withFileTypes: true });
 
-    const rootFiles = entries
+    const rootFilesAll = entries
       .filter(e => e.isFile() && e.name.endsWith('.md'))
-      .map(e => getFileInfo(e.name, null))
-      .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+      .map(e => getFileInfo(e.name, null));
 
     const folderEntries = entries
       .filter(e => e.isDirectory() && e.name !== 'img')
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
-    const folders = folderEntries.map(d => {
+    const foldersAll = folderEntries.map(d => {
       try {
         const files = fs.readdirSync(path.join(CONTENTS_DIR, d.name))
           .filter(f => f.endsWith('.md'))
-          .map(f => getFileInfo(f, d.name))
-          .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+          .map(f => getFileInfo(f, d.name));
         return { name: d.name, files };
       } catch { return { name: d.name, files: [] }; }
     });
 
+    const htmlFilesAll = getAllHtmlFileInfos();
+
+    // self-healing: 레지스트리에 없는 파일은 조회 과정에서 admin 소유로 자동 등록
+    const allInfos = [...rootFilesAll, ...foldersAll.flatMap(f => f.files), ...htmlFilesAll];
+    for (const f of allInfos) {
+      await perm.ensureRegistered(f.path, f.type === 'html' ? 'html' : 'md');
+    }
+
+    const readable = await perm.readableFilePaths(req); // null이면 admin(전체 허용)
+    const isReadable = (p) => readable === null || readable.has(p);
+
+    const rootFiles = rootFilesAll.filter(f => isReadable(f.path)).sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    const folders = foldersAll
+      .map(fld => ({ name: fld.name, files: fld.files.filter(f => isReadable(f.path)).sort((a, b) => new Date(b.modified) - new Date(a.modified)) }))
+      .filter(fld => fld.files.length > 0);
+    const htmlFiles = htmlFilesAll.filter(f => isReadable(f.path)).sort((a, b) => new Date(b.modified) - new Date(a.modified));
     const allFiles = [...rootFiles, ...folders.flatMap(f => f.files)];
-    const htmlFiles = getAllHtmlFileInfos();
+
     res.json({ success: true, files: allFiles, rootFiles, folders, htmlFiles });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -225,13 +229,14 @@ router.get('/files', (req, res) => {
 });
 
 /* ── 파일 조회 (/file/* 와일드카드) ────────────────────────────────────── */
-router.get('/file/*', (req, res) => {
+router.get('/file/*', async (req, res) => {
   try {
     const name = req.params[0];
     if (!name.endsWith('.md')) return res.status(400).json({ error: 'Only .md files' });
     const filePath = safePath(name);
     if (!filePath)                return res.status(403).json({ error: 'Forbidden' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+    if (!(await perm.canRead(req, name))) return res.status(404).json({ error: 'Not found' });
 
     const content = fs.readFileSync(filePath, 'utf8');
     const stat    = fs.statSync(filePath);
@@ -245,7 +250,7 @@ router.get('/file/*', (req, res) => {
 });
 
 /* ── 파일 저장 ────────────────────────────────────────────────────────── */
-router.post('/save', requireAuth, async (req, res) => {
+router.post('/save', async (req, res) => {
   try {
     let { name, folder, content, originalName, originalFolder } = req.body;
     if (!name || content === undefined)
@@ -265,21 +270,32 @@ router.post('/save', requireAuth, async (req, res) => {
     const newAbsPath = safePath(newRelPath);
     if (!newAbsPath) return res.status(403).json({ error: 'Forbidden' });
 
-    // 이름/폴더 변경 시 구 파일 삭제
+    let origRelPath = null;
     if (originalName) {
       if (!originalName.endsWith('.md')) originalName += '.md';
-      const origFolder  = originalFolder || null;
-      const origRelPath = origFolder ? `${origFolder}/${originalName}` : originalName;
-      if (origRelPath !== newRelPath) {
-        const oldAbs = safePath(origRelPath);
-        if (oldAbs && fs.existsSync(oldAbs)) {
-          fs.unlinkSync(oldAbs);
-          drive.deleteFile(origRelPath).catch(() => {});
-        }
+      const origFolder = originalFolder || null;
+      origRelPath = origFolder ? `${origFolder}/${originalName}` : originalName;
+    }
+
+    // 기존 파일(원래 이름 또는 덮어쓰려는 대상)에 쓰기 권한이 있는지 확인
+    const targetForCheck = origRelPath || newRelPath;
+    const targetExists = fs.existsSync(safePath(targetForCheck) || '');
+    if (targetExists && !(await perm.canWrite(req, targetForCheck))) {
+      return res.status(403).json({ success: false, error: '이 파일에 대한 쓰기 권한이 없습니다.' });
+    }
+
+    // 이름/폴더 변경 시 구 파일 삭제 + 레지스트리 경로 갱신
+    if (origRelPath && origRelPath !== newRelPath) {
+      const oldAbs = safePath(origRelPath);
+      if (oldAbs && fs.existsSync(oldAbs)) {
+        fs.unlinkSync(oldAbs);
+        drive.deleteFile(origRelPath).catch(() => {});
       }
+      await perm.renamePath(origRelPath, newRelPath);
     }
 
     fs.writeFileSync(newAbsPath, content, 'utf8');
+    if (!targetExists) await perm.registerNew(newRelPath, 'md', req.user.userId);
     drive.pushFile(newRelPath, content).catch(() => {});
     res.json({ success: true, name, folder: folder || null, path: newRelPath });
   } catch (err) {
@@ -288,13 +304,16 @@ router.post('/save', requireAuth, async (req, res) => {
 });
 
 /* ── 파일 삭제 (/file/* 와일드카드) ────────────────────────────────────── */
-router.delete('/file/*', requireAuth, (req, res) => {
+router.delete('/file/*', async (req, res) => {
   try {
     const name     = req.params[0];
     const filePath = safePath(name);
     if (!filePath)                return res.status(403).json({ error: 'Forbidden' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+    if (!(await perm.canWrite(req, name))) return res.status(403).json({ success: false, error: '이 파일에 대한 쓰기 권한이 없습니다.' });
+
     fs.unlinkSync(filePath);
+    await perm.deletePath(name);
     drive.deleteFile(name).catch(() => {});
     res.json({ success: true });
   } catch (err) {
@@ -315,8 +334,8 @@ router.get('/folders', (req, res) => {
   }
 });
 
-/* ── 폴더 생성 ────────────────────────────────────────────────────────── */
-router.post('/folders', requireAuth, (req, res) => {
+/* ── 폴더 생성 (로그인 사용자 전원 — 폴더는 공유 구조, 소유 개념 없음) ──── */
+router.post('/folders', (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'name required' });
@@ -331,7 +350,7 @@ router.post('/folders', requireAuth, (req, res) => {
 });
 
 /* ── 폴더 삭제 (빈 폴더만) ─────────────────────────────────────────────── */
-router.delete('/folders/:name', requireAuth, (req, res) => {
+router.delete('/folders/:name', (req, res) => {
   try {
     const folderPath = safeFolderPath(req.params.name);
     if (!folderPath)                return res.status(403).json({ error: 'Forbidden' });
@@ -346,7 +365,7 @@ router.delete('/folders/:name', requireAuth, (req, res) => {
 });
 
 /* ── 파일 이동 ────────────────────────────────────────────────────────── */
-router.post('/move', requireAuth, (req, res) => {
+router.post('/move', async (req, res) => {
   try {
     const { file, fromFolder, toFolder } = req.body;
     if (!file) return res.status(400).json({ error: 'file required' });
@@ -360,6 +379,7 @@ router.post('/move', requireAuth, (req, res) => {
     if (!fromAbs || !toAbs)           return res.status(403).json({ error: 'Forbidden' });
     if (!fs.existsSync(fromAbs))      return res.status(404).json({ error: '파일을 찾을 수 없습니다.' });
     if (fs.existsSync(toAbs))         return res.status(409).json({ success: false, error: '대상 폴더에 같은 이름의 파일이 있습니다.' });
+    if (!(await perm.canWrite(req, fromRel))) return res.status(403).json({ success: false, error: '이 파일에 대한 쓰기 권한이 없습니다.' });
 
     if (toFolder) {
       const tp = safeFolderPath(toFolder);
@@ -367,6 +387,7 @@ router.post('/move', requireAuth, (req, res) => {
     }
 
     fs.renameSync(fromAbs, toAbs);
+    await perm.renamePath(fromRel, toRel);
     const content = fs.readFileSync(toAbs, 'utf8');
     drive.pushFile(toRel, content).catch(() => {});
     drive.deleteFile(fromRel).catch(() => {});
@@ -416,8 +437,8 @@ router.get('/stats', (req, res) => {
   }
 });
 
-/* ── 이미지 업로드 ────────────────────────────────────────────────────── */
-router.post('/upload-image', requireAuth, upload.single('image'), (req, res) => {
+/* ── 이미지 업로드 (문서에 종속 — 별도 권한 관리 없음, 로그인만 필요) ──── */
+router.post('/upload-image', upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image' });
   res.json({ success: true, filename: req.file.filename,
              url: `/mdboard/contents/img/${req.file.filename}`, size: req.file.size });
@@ -439,8 +460,8 @@ router.get('/images', (req, res) => {
 });
 
 /* ── HTML 파일 업로드 ─────────────────────────────────────────────────── */
-router.post('/upload-html', requireAuth, (req, res) => {
-  htmlUpload.single('html')(req, res, (err) => {
+router.post('/upload-html', (req, res) => {
+  htmlUpload.single('html')(req, res, async (err) => {
     if (err instanceof multer.MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE')
         return res.status(400).json({ error: '파일 크기가 너무 큽니다. (최대 5MB)' });
@@ -450,18 +471,24 @@ router.post('/upload-html', requireAuth, (req, res) => {
     }
     if (!req.file) return res.status(400).json({ error: 'HTML 파일이 없습니다.' });
     const htmlContent = fs.readFileSync(req.file.path, 'utf8');
+    await perm.registerNew(req.file.filename, 'html', req.user.userId);
     drive.pushFile(req.file.filename, htmlContent).catch(() => {});
     res.json({ success: true, filename: req.file.filename, size: req.file.size });
   });
 });
 
 /* ── HTML 파일 삭제 ───────────────────────────────────────────────────── */
-router.delete('/html-file/:filename', requireAuth, (req, res) => {
+router.delete('/html-file/:filename', async (req, res) => {
   try {
     const filePath = safeHtmlPath(req.params.filename);
     if (!filePath)                return res.status(403).json({ error: 'Forbidden' });
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+    if (!(await perm.canWrite(req, req.params.filename))) {
+      return res.status(403).json({ success: false, error: '이 파일에 대한 쓰기 권한이 없습니다.' });
+    }
+
     fs.unlinkSync(filePath);
+    await perm.deletePath(req.params.filename);
     drive.deleteFile(req.params.filename).catch(() => {});
     res.json({ success: true });
   } catch (err) {
@@ -472,7 +499,7 @@ router.delete('/html-file/:filename', requireAuth, (req, res) => {
 /* ── Claude 퍼블리시 (API 키 전용) ─────────────────────────────────────── */
 // POST /publish  { title, content, folder?, overwrite? }
 // x-api-key 헤더로만 접근 가능 (비밀번호 인증 불허)
-router.post('/publish', (req, res) => {
+router.post('/publish', async (req, res) => {
   const apiKey = process.env.MDBOARD_API_KEY || '';
   if (!apiKey || req.headers['x-api-key'] !== apiKey)
     return res.status(401).json({ success: false, error: 'API 키가 필요합니다.' });
@@ -499,7 +526,12 @@ router.post('/publish', (req, res) => {
     if (fs.existsSync(absPath) && !overwrite)
       return res.status(409).json({ success: false, error: '이미 존재하는 파일입니다. overwrite: true 로 덮어쓸 수 있습니다.', path: relPath });
 
+    const fileExisted = fs.existsSync(absPath);
     fs.writeFileSync(absPath, content, 'utf8');
+    if (!fileExisted) {
+      const adminId = await perm.getAdminUserId();
+      if (adminId) await perm.registerNew(relPath, 'md', adminId);
+    }
     drive.pushFile(relPath, content).catch(() => {});
 
     res.json({ success: true, title, folder: folder || null, path: relPath,
@@ -510,12 +542,13 @@ router.post('/publish', (req, res) => {
 });
 
 /* ── Marp HTML 내보내기 ─────────────────────────────────────────────────── */
-router.get('/export/html/*', (req, res) => {
+router.get('/export/html/*', async (req, res) => {
   try {
     const name = req.params[0];
     if (!name.endsWith('.md')) return res.status(400).json({ error: 'Only .md files' });
     const filePath = safePath(name);
     if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+    if (!(await perm.canRead(req, name))) return res.status(404).json({ error: 'Not found' });
 
     const content = fs.readFileSync(filePath, 'utf8');
     const marp    = new Marp({ html: true });
@@ -542,12 +575,13 @@ router.get('/export/html/*', (req, res) => {
 });
 
 /* ── Marp PDF 내보내기 (브라우저 인쇄) ─────────────────────────────────── */
-router.get('/export/pdf/*', (req, res) => {
+router.get('/export/pdf/*', async (req, res) => {
   try {
     const name = req.params[0];
     if (!name.endsWith('.md')) return res.status(400).json({ error: 'Only .md files' });
     const filePath = safePath(name);
     if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: 'Not found' });
+    if (!(await perm.canRead(req, name))) return res.status(404).json({ error: 'Not found' });
 
     const content = fs.readFileSync(filePath, 'utf8');
     const marp    = new Marp({ html: true });
@@ -574,6 +608,37 @@ ${html}
     res.send(fullHtml);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+/* ── 파일 공유 관리 (소유자/admin만) ────────────────────────────────────── */
+router.get('/file-permissions', async (req, res) => {
+  try {
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).json({ success: false, error: 'path 쿼리가 필요합니다' });
+    if (!(await perm.canWrite(req, filePath))) {
+      return res.status(403).json({ success: false, error: '이 파일의 공유 설정을 볼 권한이 없습니다.' });
+    }
+    const info = await perm.getGrants(filePath);
+    res.json({ success: true, ...info });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.put('/file-permissions', async (req, res) => {
+  try {
+    const { path: filePath, grants } = req.body;
+    if (!filePath || !Array.isArray(grants)) {
+      return res.status(400).json({ success: false, error: 'path와 grants 배열이 필요합니다' });
+    }
+    if (!(await perm.canWrite(req, filePath))) {
+      return res.status(403).json({ success: false, error: '이 파일을 공유할 권한이 없습니다.' });
+    }
+    await perm.setGrants(filePath, grants, req.user.userId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

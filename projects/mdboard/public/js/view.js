@@ -24,8 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // 부모 프레임에 로드 완료 알림
   notifyParent({ type: 'view-ready' });
 
-  // 편집 버튼 초기 상태: 부모로부터 auth-changed 메시지 수신 전까지 숨김
-  setEditBtnVisible(Auth.isAuthenticated());
+  // 플랫폼 로그인이 이미 보장되므로 기본적으로 편집 버튼 표시
+  // (실제 쓰기 권한은 저장 시점에 서버가 검사)
+  setEditBtnVisible(true);
 });
 
 function setEditBtnVisible(show) {

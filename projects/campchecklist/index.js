@@ -2,186 +2,68 @@
 
 const express    = require('express');
 const crypto     = require('crypto');
-const bcrypt     = require('bcryptjs');
-const jwt        = require('jsonwebtoken');
 const pool       = require('../../shared/db');
-
-const config     = require('./config');
-const JWT_SECRET = process.env.JWT_SECRET || 'campcheck-dev-secret-change-in-prod';
-const JWT_EXPIRES = '30d';
-const ADMIN_ID   = config.adminLoginId || 'admin';
 
 const uid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 
-/* ── Auth ─────────────────────────────────────────────────────────────── */
-function makeToken(account, user) {
-  const role = (account.loginId === ADMIN_ID) ? 'admin' : account.role;
-  return jwt.sign(
-    { userId: user.id, loginId: account.loginId, name: user.name, color: user.color, role },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRES }
-  );
-}
+const isAdmin = (req) => req.user?.role === 'admin';
 
 function historyEntry(user, action) {
   return { userId: user.userId, loginId: user.loginId, name: user.name, action, at: now() };
 }
 
-function authOptional(req, res, next) {
-  const h = req.headers.authorization;
-  if (h?.startsWith('Bearer ')) {
-    try {
-      const payload = jwt.verify(h.slice(7), JWT_SECRET);
-      if (payload.loginId === ADMIN_ID) payload.role = 'admin';
-      req.user = payload;
-    } catch { req.user = null; }
-  }
-  next();
-}
-
-const authRequired  = (req, res, next) => req.user ? next() : res.status(401).json({ error: '로그인이 필요합니다' });
 const adminRequired = (req, res, next) => {
-  if (!req.user)                return res.status(401).json({ error: '로그인이 필요합니다' });
-  if (req.user.role !== 'admin') return res.status(403).json({ error: '관리자 권한이 필요합니다' });
+  if (!isAdmin(req)) return res.status(403).json({ error: '관리자 권한이 필요합니다' });
   next();
 };
+
+/** trip을 조회하고, 본인이 owner/참여자/admin인지 검사. 접근 불가 시 null. */
+async function loadAccessibleTrip(req, tripId) {
+  const { rows } = await pool.query('SELECT * FROM camp_trips WHERE id = $1', [tripId]);
+  const trip = rows[0];
+  if (!trip) return null;
+  if (isAdmin(req)) return trip;
+  const participants = trip.participants || [];
+  if (trip.owner_id === req.user.userId || participants.includes(req.user.userId)) return trip;
+  return null;
+}
+
+/** trip을 조회하고 소유자(또는 admin)인지 검사. */
+async function loadOwnedTrip(req, tripId) {
+  const { rows } = await pool.query('SELECT * FROM camp_trips WHERE id = $1', [tripId]);
+  const trip = rows[0];
+  if (!trip) return null;
+  if (isAdmin(req) || trip.owner_id === req.user.userId) return trip;
+  return null;
+}
 
 /* ── Router ───────────────────────────────────────────────────────────── */
 const router = express.Router();
 router.use(express.json());
-router.use(authOptional);
 
 /* ── 상태 ─────────────────────────────────────────────────────────────── */
 router.get('/status', (req, res) => {
   res.json({ driveEnabled: false, storage: 'postgresql' });
 });
 
-/* ── AUTH ─────────────────────────────────────────────────────────────── */
-router.post('/auth/register', async (req, res) => {
-  const { name, loginId, password } = req.body;
-  if (!name?.trim() || !loginId?.trim() || !password?.trim())
-    return res.status(400).json({ error: '이름, 아이디, 비밀번호를 모두 입력하세요' });
-
-  try {
-    const { rows: existing } = await pool.query(
-      'SELECT 1 FROM camp_accounts WHERE login_id = $1', [loginId.trim()]
-    );
-    if (existing.length) return res.status(400).json({ error: '이미 사용 중인 아이디입니다' });
-
-    let { rows: users } = await pool.query(
-      'SELECT * FROM camp_users WHERE name = $1', [name.trim()]
-    );
-    let user = users[0];
-
-    if (!user) {
-      const { rows } = await pool.query(
-        'INSERT INTO camp_users (id, name, color, created_at) VALUES ($1, $2, $3, $4) RETURNING *',
-        [uid(), name.trim(), '#4a7c59', now()]
-      );
-      user = rows[0];
-    } else {
-      const { rows: accRows } = await pool.query(
-        'SELECT 1 FROM camp_accounts WHERE user_id = $1', [user.id]
-      );
-      if (accRows.length) return res.status(400).json({ error: '해당 이름으로 이미 계정이 등록되어 있습니다' });
-    }
-
-    const pwHash = await bcrypt.hash(password, 10);
-    const role   = loginId.trim() === ADMIN_ID ? 'admin' : 'member';
-    const { rows: accRows } = await pool.query(
-      `INSERT INTO camp_accounts (user_id, login_id, pw_hash, role, created_at)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [user.id, loginId.trim(), pwHash, role, now()]
-    );
-    const account = { ...accRows[0], loginId: accRows[0].login_id };
-
-    res.json({
-      token: makeToken(account, user),
-      user: { userId: user.id, loginId: account.loginId, name: user.name, color: user.color, role: account.role }
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-router.post('/auth/login', async (req, res) => {
-  const { loginId, password } = req.body;
-  if (!loginId || !password) return res.status(400).json({ error: '아이디와 비밀번호를 입력하세요' });
-
+/* ── MEMBERS (이 앱에 접근 권한이 있는 플랫폼 사용자 — 참여자 후보 목록) ── */
+router.get('/members', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM camp_accounts WHERE login_id = $1', [loginId]
+      `SELECT DISTINCT u.id, u.name, u.color
+       FROM platform_users u
+       JOIN platform_accounts a ON a.user_id = u.id AND a.is_active = TRUE
+       LEFT JOIN platform_app_grants g ON g.user_id = u.id AND g.app_prefix = '/campchecklist'
+       WHERE a.role = 'admin' OR g.user_id IS NOT NULL
+          OR EXISTS (SELECT 1 FROM platform_app_grants g2 WHERE g2.user_id = '*' AND g2.app_prefix = '/campchecklist')
+       ORDER BY u.name`
     );
-    const account = rows[0];
-    if (!account || !(await bcrypt.compare(password, account.pw_hash)))
-      return res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다' });
-
-    await pool.query(
-      'UPDATE camp_accounts SET last_login_at = $1 WHERE login_id = $2', [now(), loginId]
-    );
-
-    const { rows: userRows } = await pool.query('SELECT * FROM camp_users WHERE id = $1', [account.user_id]);
-    const user = userRows[0];
-    if (!user) return res.status(500).json({ error: '계정 데이터 오류' });
-
-    const acc = { ...account, loginId: account.login_id };
-    res.json({
-      token: makeToken(acc, user),
-      user: { userId: user.id, loginId: acc.loginId, name: user.name, color: user.color, role: acc.role }
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-router.get('/auth/me', authRequired, (req, res) => res.json(req.user));
-
-/* ── USERS ────────────────────────────────────────────────────────────── */
-router.get('/users', async (req, res) => {
-  try {
-    const { rows: users }    = await pool.query('SELECT * FROM camp_users ORDER BY created_at');
-    const { rows: accounts } = await pool.query('SELECT * FROM camp_accounts');
-    const result = users.map(u => {
-      const acc = accounts.find(a => a.user_id === u.id);
-      return { ...u, hasAccount: !!acc, loginId: req.user?.role === 'admin' ? acc?.login_id : undefined };
-    });
-    res.json(result);
+    res.json(rows);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/users', adminRequired, async (req, res) => {
-  const { name, color } = req.body;
-  if (!name?.trim()) return res.status(400).json({ error: '이름을 입력하세요' });
-  try {
-    const user = { id: uid(), name: name.trim(), color: color || '#4a7c59', created_at: now(), created_by: JSON.stringify(historyEntry(req.user, '생성')) };
-    const { rows } = await pool.query(
-      'INSERT INTO camp_users (id, name, color, created_at, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [user.id, user.name, user.color, user.created_at, user.created_by]
-    );
-    res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-router.put('/users/:id', adminRequired, async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      'UPDATE camp_users SET name = COALESCE($2, name), color = COALESCE($3, color) WHERE id = $1 RETURNING *',
-      [req.params.id, req.body.name, req.body.color]
-    );
-    if (!rows.length) return res.status(404).json({ error: '사용자 없음' });
-    res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-router.delete('/users/:id', adminRequired, async (req, res) => {
-  try {
-    await pool.query('DELETE FROM camp_users WHERE id = $1', [req.params.id]);
-    res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-/* ── ITEMS ────────────────────────────────────────────────────────────── */
+/* ── ITEMS (본인 품목만 생성/수정/삭제, 조회는 같은 일정 참여자끼리 공유) ── */
 router.get('/items', async (req, res) => {
   try {
     const { userId } = req.query;
@@ -193,10 +75,10 @@ router.get('/items', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/items', authRequired, async (req, res) => {
+router.post('/items', async (req, res) => {
   const { userId, name, category, quantity, unit, note } = req.body;
   if (!userId || !name?.trim()) return res.status(400).json({ error: '필수값 누락' });
-  if (req.user.role !== 'admin' && req.user.userId !== userId)
+  if (!isAdmin(req) && req.user.userId !== userId)
     return res.status(403).json({ error: '본인 품목만 등록할 수 있습니다' });
   try {
     const { rows } = await pool.query(
@@ -208,11 +90,11 @@ router.post('/items', authRequired, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/items/:id', authRequired, async (req, res) => {
+router.put('/items/:id', async (req, res) => {
   try {
     const { rows: cur } = await pool.query('SELECT * FROM camp_items WHERE id = $1', [req.params.id]);
     if (!cur.length) return res.status(404).json({ error: '품목 없음' });
-    if (req.user.role !== 'admin' && req.user.userId !== cur[0].user_id)
+    if (!isAdmin(req) && req.user.userId !== cur[0].user_id)
       return res.status(403).json({ error: '본인 품목만 수정할 수 있습니다' });
 
     const { name, category, quantity, unit, note } = req.body;
@@ -228,57 +110,66 @@ router.put('/items/:id', authRequired, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/items/:id', authRequired, async (req, res) => {
+router.delete('/items/:id', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM camp_items WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: '품목 없음' });
-    if (req.user.role !== 'admin' && req.user.userId !== rows[0].user_id)
+    if (!isAdmin(req) && req.user.userId !== rows[0].user_id)
       return res.status(403).json({ error: '본인 품목만 삭제할 수 있습니다' });
     await pool.query('DELETE FROM camp_items WHERE id = $1', [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── TRIPS ────────────────────────────────────────────────────────────── */
+/* ── TRIPS (생성자가 참여자를 초대하는 방식 — 본인이 만들었거나 초대된 일정만 조회) ── */
 function tripRow(r) {
   return {
     id: r.id, name: r.name, startDate: r.start_date, endDate: r.end_date,
     location: r.location, note: r.note, participants: r.participants,
+    ownerId: r.owner_id,
     createdAt: r.created_at, createdBy: r.created_by, history: r.history,
   };
 }
 
 router.get('/trips', async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT * FROM camp_trips ORDER BY start_date DESC');
+    const { rows } = isAdmin(req)
+      ? await pool.query('SELECT * FROM camp_trips ORDER BY start_date DESC')
+      : await pool.query(
+          `SELECT * FROM camp_trips
+           WHERE owner_id = $1 OR participants @> $2::jsonb
+           ORDER BY start_date DESC`,
+          [req.user.userId, JSON.stringify([req.user.userId])]
+        );
     res.json(rows.map(tripRow));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/trips', authRequired, async (req, res) => {
+router.post('/trips', async (req, res) => {
   const { name, startDate, endDate, location, note, participants } = req.body;
   if (!name?.trim() || !startDate) return res.status(400).json({ error: '필수값 누락' });
   const entry = historyEntry(req.user, '생성');
+  // 생성자 본인은 항상 참여자에 포함 (체크리스트/품목 조회 로직 호환)
+  const parts = new Set([req.user.userId, ...(Array.isArray(participants) ? participants : [])]);
   try {
     const { rows } = await pool.query(
-      `INSERT INTO camp_trips (id, name, start_date, end_date, location, note, participants, created_at, created_by, history)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO camp_trips (id, name, start_date, end_date, location, note, participants, owner_id, created_at, created_by, history)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [uid(), name.trim(), startDate, endDate || startDate, location || '', note || '',
-       JSON.stringify(participants || []), now(), JSON.stringify(entry), JSON.stringify([entry])]
+       JSON.stringify([...parts]), req.user.userId, now(), JSON.stringify(entry), JSON.stringify([entry])]
     );
     res.json(tripRow(rows[0]));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/trips/:id', authRequired, async (req, res) => {
+router.put('/trips/:id', async (req, res) => {
   try {
-    const { rows: cur } = await pool.query('SELECT * FROM camp_trips WHERE id = $1', [req.params.id]);
-    if (!cur.length) return res.status(404).json({ error: '일정 없음' });
-    const t = cur[0];
+    const t = await loadOwnedTrip(req, req.params.id);
+    if (!t) return res.status(404).json({ error: '일정 없음' });
 
     const entry   = historyEntry(req.user, req.body._action || '수정');
     const history = [...(t.history || []), entry];
-    const { name, startDate, endDate, location, note, participants } = req.body;
+    const { name, startDate, endDate, location, note } = req.body;
 
     const { rows } = await pool.query(
       `UPDATE camp_trips SET
@@ -287,11 +178,9 @@ router.put('/trips/:id', authRequired, async (req, res) => {
          end_date = COALESCE($4, end_date),
          location = COALESCE($5, location),
          note = COALESCE($6, note),
-         participants = COALESCE($7, participants),
-         history = $8
+         history = $7
        WHERE id = $1 RETURNING *`,
-      [req.params.id, name, startDate, endDate, location, note,
-       participants ? JSON.stringify(participants) : null, JSON.stringify(history)]
+      [req.params.id, name, startDate, endDate, location, note, JSON.stringify(history)]
     );
     res.json(tripRow(rows[0]));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -306,40 +195,30 @@ router.delete('/trips/:id', adminRequired, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/trips/:id/join', authRequired, async (req, res) => {
+/** 참여자 목록 교체 (owner 또는 admin 전용) — 생성자 자신은 항상 유지된다. */
+router.put('/trips/:id/participants', async (req, res) => {
+  const { participants } = req.body;
+  if (!Array.isArray(participants)) return res.status(400).json({ error: 'participants 배열이 필요합니다' });
   try {
-    const { rows } = await pool.query('SELECT * FROM camp_trips WHERE id = $1', [req.params.id]);
-    if (!rows.length) return res.status(404).json({ error: '일정 없음' });
-    const t       = rows[0];
-    const parts   = new Set(t.participants || []);
-    parts.add(req.user.userId);
-    const history = [...(t.history || []), historyEntry(req.user, '참여')];
-    const { rows: updated } = await pool.query(
+    const t = await loadOwnedTrip(req, req.params.id);
+    if (!t) return res.status(404).json({ error: '일정 없음' });
+
+    const parts = new Set([t.owner_id, ...participants]);
+    const history = [...(t.history || []), historyEntry(req.user, '참여자 변경')];
+    const { rows } = await pool.query(
       'UPDATE camp_trips SET participants = $2, history = $3 WHERE id = $1 RETURNING *',
       [req.params.id, JSON.stringify([...parts]), JSON.stringify(history)]
     );
-    res.json(tripRow(updated[0]));
+    res.json(tripRow(rows[0]));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.delete('/trips/:id/join', authRequired, async (req, res) => {
-  try {
-    const { rows } = await pool.query('SELECT * FROM camp_trips WHERE id = $1', [req.params.id]);
-    if (!rows.length) return res.status(404).json({ error: '일정 없음' });
-    const t       = rows[0];
-    const parts   = (t.participants || []).filter(p => p !== req.user.userId);
-    const history = [...(t.history || []), historyEntry(req.user, '참여 취소')];
-    const { rows: updated } = await pool.query(
-      'UPDATE camp_trips SET participants = $2, history = $3 WHERE id = $1 RETURNING *',
-      [req.params.id, JSON.stringify(parts), JSON.stringify(history)]
-    );
-    res.json(tripRow(updated[0]));
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-/* ── CHECKS ───────────────────────────────────────────────────────────── */
+/* ── CHECKS (일정 참여자만 조회/수정 가능) ─────────────────────────────── */
 router.get('/trips/:tripId/checks', async (req, res) => {
   try {
+    if (!(await loadAccessibleTrip(req, req.params.tripId)))
+      return res.status(404).json({ error: '일정 없음' });
+
     const { rows } = await pool.query(
       'SELECT * FROM camp_checks WHERE trip_id = $1', [req.params.tripId]
     );
@@ -351,12 +230,15 @@ router.get('/trips/:tripId/checks', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/trips/:tripId/checks', authRequired, async (req, res) => {
+router.put('/trips/:tripId/checks', async (req, res) => {
   const { userId, itemId, planned, packed } = req.body;
   if (!userId || !itemId) return res.status(400).json({ error: '필수값 누락' });
-  if (req.user.role !== 'admin' && req.user.userId !== userId)
+  if (!isAdmin(req) && req.user.userId !== userId)
     return res.status(403).json({ error: '본인 체크리스트만 수정할 수 있습니다' });
   try {
+    if (!(await loadAccessibleTrip(req, req.params.tripId)))
+      return res.status(404).json({ error: '일정 없음' });
+
     const { rows: cur } = await pool.query(
       'SELECT * FROM camp_checks WHERE trip_id=$1 AND user_id=$2 AND item_id=$3',
       [req.params.tripId, userId, itemId]
@@ -382,7 +264,7 @@ router.put('/trips/:tripId/checks', authRequired, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/* ── COMMENTS ─────────────────────────────────────────────────────────── */
+/* ── COMMENTS (일정 참여자만 조회/작성) ────────────────────────────────── */
 function commentRow(r) {
   return {
     id: r.id, tripId: r.trip_id, parentId: r.parent_id, depth: r.depth,
@@ -394,19 +276,24 @@ function commentRow(r) {
 router.get('/comments', async (req, res) => {
   try {
     const { tripId } = req.query;
-    const q = tripId
-      ? pool.query('SELECT * FROM camp_comments WHERE trip_id = $1 ORDER BY created_at', [tripId])
-      : pool.query('SELECT * FROM camp_comments ORDER BY created_at');
-    const { rows } = await q;
+    if (tripId) {
+      if (!(await loadAccessibleTrip(req, tripId))) return res.status(404).json({ error: '일정 없음' });
+      const { rows } = await pool.query('SELECT * FROM camp_comments WHERE trip_id = $1 ORDER BY created_at', [tripId]);
+      return res.json(rows.map(commentRow));
+    }
+    if (!isAdmin(req)) return res.status(400).json({ error: 'tripId가 필요합니다' });
+    const { rows } = await pool.query('SELECT * FROM camp_comments ORDER BY created_at');
     res.json(rows.map(commentRow));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.post('/comments', authRequired, async (req, res) => {
+router.post('/comments', async (req, res) => {
   const { tripId, parentId, content } = req.body;
   if (!tripId || !content?.trim()) return res.status(400).json({ error: '필수값 누락' });
   let depth = 0;
   try {
+    if (!(await loadAccessibleTrip(req, tripId))) return res.status(404).json({ error: '일정 없음' });
+
     if (parentId) {
       const { rows } = await pool.query('SELECT depth FROM camp_comments WHERE id = $1', [parentId]);
       if (!rows.length) return res.status(404).json({ error: '부모 댓글 없음' });
@@ -423,13 +310,13 @@ router.post('/comments', authRequired, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-router.put('/comments/:id', authRequired, async (req, res) => {
+router.put('/comments/:id', async (req, res) => {
   const { content } = req.body;
   if (!content?.trim()) return res.status(400).json({ error: '내용을 입력하세요' });
   try {
     const { rows: cur } = await pool.query('SELECT * FROM camp_comments WHERE id = $1', [req.params.id]);
     if (!cur.length) return res.status(404).json({ error: '댓글 없음' });
-    if (req.user.role !== 'admin' && req.user.userId !== cur[0].author_id)
+    if (!isAdmin(req) && req.user.userId !== cur[0].author_id)
       return res.status(403).json({ error: '본인 댓글만 수정할 수 있습니다' });
 
     const { rows } = await pool.query(

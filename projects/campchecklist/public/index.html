@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+  <script src="/shared-assets/auth-guard.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🏕️ CampCheck</title>
@@ -425,19 +426,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green-lt
     <div id="sync-menu-msg" style="font-size:11px; color:#7a9a7a; padding:5px 6px 2px; min-height:16px;"></div>
   </div>
 
-  <!-- 로그인 영역 -->
+  <!-- 로그인 영역 (플랫폼 로그인 사용자 표시) -->
   <div id="login-area">
-    <button id="login-toggle" onclick="toggleLoginDrop()">👤 로그인 ▼</button>
-    <div id="login-dropdown">
-      <input id="ld-id" placeholder="아이디" autocomplete="username" />
-      <input id="ld-pw" type="password" placeholder="비밀번호" autocomplete="current-password"
-             onkeydown="if(event.key==='Enter')doLogin()" />
-      <div id="ld-err" style="font-size:12px;color:var(--red);margin-bottom:6px;display:none"></div>
-      <div class="ld-btns">
-        <button class="btn btn-primary btn-sm" style="flex:1" onclick="doLogin()">로그인</button>
-        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="openRegisterModal()">회원가입</button>
-      </div>
-    </div>
     <div id="logged-in-info">
       <div id="logged-chip" class="user-chip-sm"></div>
       <button id="logout-btn" onclick="doLogout()">로그아웃</button>
@@ -477,18 +467,8 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--green-lt
 
 <!-- ══ 참여자 ══ -->
 <div id="view-users" class="view">
-  <div class="page-title">👤 참여자 관리</div>
-  <div id="user-auth-gate" class="auth-gate" style="display:none">🔒 참여자 등록은 관리자만 가능합니다</div>
-  <div class="stoggle" id="st-user">
-    <div class="stoggle-hd" onclick="toggleSt('st-user')"><span>➕ 참여자 추가 (관리자)</span><span class="sarrow">▼</span></div>
-    <div class="stoggle-bd">
-      <div class="form-row">
-        <div class="form-group" style="flex:2"><label>이름 *</label><input id="uf-name" placeholder="예: 홍길동" /></div>
-        <div class="form-group" style="flex:0 0 80px"><label>색상</label><input id="uf-color" type="color" value="#3a5a40" style="height:38px;padding:2px 4px;cursor:pointer" /></div>
-      </div>
-      <div class="form-actions"><button class="btn btn-primary" onclick="saveUser()">저장</button></div>
-    </div>
-  </div>
+  <div class="page-title">👤 참여자 목록</div>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">이 앱에 접근 권한이 있는 사용자 목록입니다. 새 사용자 등록·권한 부여는 관리자 페이지(/admin)에서 합니다.</p>
   <div class="users-grid" id="users-grid"></div>
 </div>
 
@@ -572,52 +552,39 @@ const CATS  = ['텐트/거처','침구','주방/취사','식재료','의류','�
 const ICONS = {'텐트/거처':'⛺','침구':'🛌','주방/취사':'🍳','식재료':'🥘','의류':'👕','세면/위생':'🧴','조명/전기':'💡','응급/안전':'🚑','놀이/레저':'🎮','기타':'🧰'};
 
 // ═══════════════════════════════════════════
-// AUTH STATE
+// AUTH STATE (플랫폼 로그인 — 이 페이지에 도달했다는 것은 이미 로그인된 상태)
 // ═══════════════════════════════════════════
-const AUTH = { token: null, user: null };
+const AUTH = { user: null };
 
-function loadAuth() {
-  const t = localStorage.getItem('campcheck_token');
-  if (!t) return;
+async function loadAuth() {
   try {
-    const payload = JSON.parse(atob(t.split('.')[1]));
-    if (payload.exp * 1000 < Date.now()) { localStorage.removeItem('campcheck_token'); return; }
-    AUTH.token = t;
-    AUTH.user  = payload;
-  } catch { localStorage.removeItem('campcheck_token'); }
+    const res = await fetch('/auth/me', { credentials: 'include' });
+    if (!res.ok) return;
+    AUTH.user = await res.json();
+  } catch {}
 }
-loadAuth();
 
 function isAdmin()     { return AUTH.user?.role === 'admin'; }
 function isLoggedIn()  { return !!AUTH.user; }
 function myUserId()    { return AUTH.user?.userId; }
 
+async function doLogout() {
+  await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+  location.href = '/login';
+}
+
 function applyAuthUI() {
-  const toggle    = document.getElementById('login-toggle');
-  const loggedDiv = document.getElementById('logged-in-info');
-  const chip      = document.getElementById('logged-chip');
+  const chip = document.getElementById('logged-chip');
   if (AUTH.user) {
-    toggle.style.display    = 'none';
-    loggedDiv.style.display = 'flex';
     const u    = S.users.find(u => u.id === AUTH.user.userId);
     const color = u?.color || '#4a7c59';
     chip.innerHTML = `<span style="background:${color};width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0">${AUTH.user.name[0]}</span>
       ${esc(AUTH.user.name)} ${isAdmin() ? '<span class="role-badge">관리자</span>' : ''}`;
     chip.style.background = color;
-  } else {
-    toggle.style.display    = 'flex';
-    loggedDiv.style.display = 'none';
   }
-  // 권한 게이트 표시
-  document.getElementById('trip-auth-gate').style.display  = isLoggedIn() ? 'none' : 'flex';
-  document.getElementById('user-auth-gate').style.display  = isAdmin() ? 'none' : 'flex';
-  document.getElementById('item-auth-gate').style.display  = isLoggedIn() ? 'none' : 'flex';
-  // 일정 추가 폼 표시
-  const tripToggle = document.querySelector('#st-trip .stoggle-hd');
-  if (tripToggle) tripToggle.style.display = isLoggedIn() ? 'flex' : 'none';
-  // 참여자 추가 폼
+  // 참여자 추가 폼 (관리자만 — 참여자 등록 UI는 이제 없으므로 항상 숨김. 하위 호환용으로 유지)
   const userToggle = document.querySelector('#st-user .stoggle-hd');
-  if (userToggle) userToggle.style.display = isAdmin() ? 'flex' : 'none';
+  if (userToggle) userToggle.style.display = 'none';
 }
 
 // ═══════════════════════════════════════════
@@ -629,15 +596,13 @@ const S = { users: [], items: [], trips: [], checks: {}, itemsUser: null };
 // API
 // ═══════════════════════════════════════════
 function headers() {
-  const h = { 'Content-Type': 'application/json' };
-  if (AUTH.token) h['Authorization'] = `Bearer ${AUTH.token}`;
-  return h;
+  return { 'Content-Type': 'application/json' };
 }
 const api = {
-  get:    p    => fetch(`${BASE}/api${p}`, { headers: headers() }).then(r => r.json()),
-  post:  (p,d) => fetch(`${BASE}/api${p}`, { method:'POST',   headers: headers(), body: JSON.stringify(d) }).then(r => r.json()),
-  put:   (p,d) => fetch(`${BASE}/api${p}`, { method:'PUT',    headers: headers(), body: JSON.stringify(d) }).then(r => r.json()),
-  delete: p    => fetch(`${BASE}/api${p}`, { method:'DELETE', headers: headers() }).then(r => r.json()),
+  get:    p    => fetch(`${BASE}/api${p}`, { credentials:'include', headers: headers() }).then(r => r.json()),
+  post:  (p,d) => fetch(`${BASE}/api${p}`, { credentials:'include', method:'POST',   headers: headers(), body: JSON.stringify(d) }).then(r => r.json()),
+  put:   (p,d) => fetch(`${BASE}/api${p}`, { credentials:'include', method:'PUT',    headers: headers(), body: JSON.stringify(d) }).then(r => r.json()),
+  delete: p    => fetch(`${BASE}/api${p}`, { credentials:'include', method:'DELETE', headers: headers() }).then(r => r.json()),
 };
 
 // ═══════════════════════════════════════════
@@ -704,85 +669,6 @@ async function manualDrivePush() {
 }
 
 // ═══════════════════════════════════════════
-// LOGIN DROPDOWN
-// ═══════════════════════════════════════════
-function toggleLoginDrop() {
-  document.getElementById('login-dropdown').classList.toggle('open');
-}
-document.addEventListener('click', e => {
-  if (!document.getElementById('login-area').contains(e.target))
-    document.getElementById('login-dropdown').classList.remove('open');
-});
-
-async function doLogin() {
-  const loginId  = document.getElementById('ld-id').value.trim();
-  const password = document.getElementById('ld-pw').value;
-  const errEl    = document.getElementById('ld-err');
-  errEl.style.display = 'none';
-  if (!loginId || !password) { errEl.textContent='아이디와 비밀번호를 입력하세요'; errEl.style.display='block'; return; }
-  const res = await api.post('/auth/login', { loginId, password });
-  if (res.error) { errEl.textContent = res.error; errEl.style.display='block'; return; }
-  AUTH.token = res.token; AUTH.user = res.user;
-  localStorage.setItem('campcheck_token', res.token);
-  document.getElementById('ld-id').value = '';
-  document.getElementById('ld-pw').value = '';
-  document.getElementById('login-dropdown').classList.remove('open');
-  applyAuthUI(); renderTrips(); renderUsers(); renderItems();
-  toast(`${res.user.name}님 환영합니다 ${res.user.role==='admin'?'(관리자)':''}`);
-}
-
-function doLogout() {
-  AUTH.token = null; AUTH.user = null;
-  localStorage.removeItem('campcheck_token');
-  applyAuthUI(); renderTrips(); renderUsers(); renderItems();
-  toast('로그아웃 되었습니다');
-}
-
-function openRegisterModal() {
-  document.getElementById('login-dropdown').classList.remove('open');
-  openModal(`
-    <div class="modal-title">👤 회원가입</div>
-    <div class="form-row">
-      <div class="form-group"><label>이름 *</label><input id="rg-name" placeholder="실명 입력" /></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>아이디 *</label><input id="rg-id" placeholder="영문+숫자" /></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>비밀번호 *</label><input id="rg-pw" type="password" placeholder="6자 이상" /></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>비밀번호 확인 *</label><input id="rg-pw2" type="password" /></div>
-    </div>
-    <div id="rg-err" style="font-size:12px;color:var(--red);display:none;margin-top:4px"></div>
-    <p style="font-size:11px;color:var(--muted);margin-top:8px">기존 참여자와 같은 이름으로 가입하면 자동 연결됩니다</p>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeModal()">취소</button>
-      <button class="btn btn-primary" onclick="doRegister()">가입하기</button>
-    </div>`);
-}
-
-async function doRegister() {
-  const name  = document.getElementById('rg-name').value.trim();
-  const loginId = document.getElementById('rg-id').value.trim();
-  const pw    = document.getElementById('rg-pw').value;
-  const pw2   = document.getElementById('rg-pw2').value;
-  const errEl = document.getElementById('rg-err');
-  errEl.style.display = 'none';
-  if (!name || !loginId || !pw) { errEl.textContent='모든 항목을 입력하세요'; errEl.style.display='block'; return; }
-  if (pw !== pw2) { errEl.textContent='비밀번호가 일치하지 않습니다'; errEl.style.display='block'; return; }
-  if (pw.length < 6) { errEl.textContent='비밀번호는 6자 이상이어야 합니다'; errEl.style.display='block'; return; }
-  const res = await api.post('/auth/register', { name, loginId, password: pw });
-  if (res.error) { errEl.textContent=res.error; errEl.style.display='block'; return; }
-  AUTH.token = res.token; AUTH.user = res.user;
-  localStorage.setItem('campcheck_token', res.token);
-  closeModal();
-  await loadAll();
-  applyAuthUI();
-  toast(`${res.user.name}님 가입 완료!`);
-}
-
-// ═══════════════════════════════════════════
 // NAV
 // ═══════════════════════════════════════════
 document.getElementById('nav').addEventListener('click', e => {
@@ -808,7 +694,7 @@ function toggleSt(id) {
 // INIT LOAD
 // ═══════════════════════════════════════════
 async function loadAll() {
-  [S.users, S.items, S.trips] = await Promise.all([api.get('/users'), api.get('/items'), api.get('/trips')]);
+  [S.users, S.items, S.trips] = await Promise.all([api.get('/members'), api.get('/items'), api.get('/trips')]);
   renderTrips(); renderUsers(); populateTripSelects();
 }
 
@@ -823,46 +709,12 @@ function renderUsers() {
       <div class="user-card">
         <div class="user-dot" style="background:${u.color}">${u.name[0]}</div>
         <div class="user-info">
-          <div class="user-name">${esc(u.name)} ${u.hasAccount ? '<span class="badge badge-green" style="font-size:10px">계정있음</span>' : ''}</div>
-          <div class="user-meta">품목 ${S.items.filter(i=>i.userId===u.id).length}개${u.loginId ? ` · ${u.loginId}` : ''}</div>
+          <div class="user-name">${esc(u.name)}</div>
+          <div class="user-meta">품목 ${S.items.filter(i=>i.userId===u.id).length}개</div>
         </div>
-        ${isAdmin() ? `<button class="btn-icon" onclick="openEditUser('${u.id}')">✏️</button>
-        <button class="btn-icon" onclick="deleteUser('${u.id}','${esc(u.name)}')">🗑️</button>` : ''}
       </div>`).join('');
   refreshTripParticipants();
   applyAuthUI();
-}
-
-async function saveUser() {
-  if (!isAdmin()) { toast('관리자만 참여자를 등록할 수 있습니다','err'); return; }
-  const name=document.getElementById('uf-name').value.trim(), color=document.getElementById('uf-color').value;
-  if (!name) { toast('이름을 입력하세요','err'); return; }
-  const u = await api.post('/users', {name,color});
-  if (u.error) { toast(u.error,'err'); return; }
-  S.users.push(u); document.getElementById('uf-name').value='';
-  renderUsers(); renderItems(); toast(`${u.name} 추가 완료`);
-}
-
-function openEditUser(id) {
-  const u=S.users.find(x=>x.id===id);
-  openModal(`<div class="modal-title">✏️ 참여자 수정</div>
-    <div class="form-row">
-      <div class="form-group" style="flex:2"><label>이름</label><input id="eu-name" value="${esc(u.name)}" /></div>
-      <div class="form-group" style="flex:0 0 80px"><label>색상</label><input id="eu-color" type="color" value="${u.color}" style="height:38px;padding:2px 4px" /></div>
-    </div>
-    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">취소</button><button class="btn btn-primary" onclick="updateUser('${id}')">저장</button></div>`);
-}
-async function updateUser(id) {
-  const u=await api.put(`/users/${id}`,{name:document.getElementById('eu-name').value.trim(),color:document.getElementById('eu-color').value});
-  if (u.error){toast(u.error,'err');return;}
-  S.users[S.users.findIndex(x=>x.id===id)]=u; closeModal(); renderUsers(); renderTrips(); toast('수정 완료');
-}
-async function deleteUser(id,name) {
-  if(!confirm(`"${name}" 참여자를 삭제할까요?`))return;
-  await api.delete(`/users/${id}`);
-  S.users=S.users.filter(u=>u.id!==id); S.items=S.items.filter(i=>i.userId!==id);
-  S.trips.forEach(t=>{t.participants=(t.participants||[]).filter(p=>p!==id)});
-  renderUsers(); renderItems(); renderTrips(); toast(`${name} 삭제 완료`);
 }
 function refreshTripParticipants() {
   const c=document.getElementById('tf-parts');
@@ -964,14 +816,15 @@ function renderTrips() {
     const cancelled=t.note?.includes('취소됨');
     const status=cancelled?'<span class="badge badge-red">취소됨</span>':past?'<span class="badge badge-gray">종료</span>':upcoming?'<span class="badge badge-blue">예정</span>':'<span class="badge badge-green">진행중</span>';
     const parts=(t.participants||[]).map(uid=>{const u=S.users.find(x=>x.id===uid);return u?`<span class="user-dot" style="background:${u.color};width:22px;height:22px;font-size:10px" title="${esc(u.name)}">${u.name[0]}</span>`:''}).join('');
-    const isMember=(t.participants||[]).includes(myUserId());
+    const isOwner=t.ownerId===myUserId();
+    const canManage=isOwner||isAdmin();
     const dateStr=t.endDate&&t.endDate!==t.startDate?`${t.startDate} ~ ${t.endDate}`:t.startDate;
     const historyLast=t.history?.slice(-1)[0];
     return `<div class="trip-card ${cancelled?'cancelled':''}">
       <div class="trip-card-actions">
-        ${isLoggedIn()&&!cancelled?`<button class="btn btn-ghost btn-sm" onclick="openEditTrip('${t.id}');event.stopPropagation()">✏️</button>`:''}
+        ${canManage&&!cancelled?`<button class="btn btn-ghost btn-sm" onclick="openEditTrip('${t.id}');event.stopPropagation()">✏️</button>`:''}
         ${isAdmin()?`<button class="btn btn-danger btn-sm" onclick="deleteTrip('${t.id}','${esc(t.name)}');event.stopPropagation()">🗑️</button>`:''}
-        ${isLoggedIn()&&!isAdmin()&&!cancelled?`<button class="btn btn-warn btn-sm" onclick="cancelTrip('${t.id}');event.stopPropagation()">취소처리</button>`:''}
+        ${isOwner&&!cancelled?`<button class="btn btn-warn btn-sm" onclick="cancelTrip('${t.id}');event.stopPropagation()">취소처리</button>`:''}
       </div>
       <div class="trip-date">${dateStr}</div>
       <div class="trip-name">${esc(t.name)}</div>
@@ -980,7 +833,7 @@ function renderTrips() {
         ${status}
         <span style="display:flex;gap:3px">${parts}</span>
         <span class="badge badge-gray">${(t.participants||[]).length}명</span>
-        ${isLoggedIn()&&!cancelled?isMember?`<button class="btn btn-ghost btn-sm" onclick="leaveTrip('${t.id}')">참여취소</button>`:`<button class="btn btn-primary btn-sm" onclick="joinTrip('${t.id}')">참여하기</button>`:''}
+        ${canManage&&!cancelled?`<button class="btn btn-ghost btn-sm" onclick="openManageParticipants('${t.id}')">참여자 관리</button>`:''}
       </div>
       ${historyLast?`<div class="trip-history">${esc(historyLast.name)} · ${historyLast.action} · ${new Date(historyLast.at).toLocaleDateString('ko-KR')}</div>`:''}
     </div>`;
@@ -1002,10 +855,6 @@ async function saveTrip() {
 
 function openEditTrip(id) {
   const t=S.trips.find(x=>x.id===id);
-  const pc=S.users.map(u=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px;border-radius:4px">
-    <input type="checkbox" value="${u.id}" ${(t.participants||[]).includes(u.id)?'checked':''} />
-    <span class="user-dot" style="background:${u.color};width:20px;height:20px;font-size:10px">${u.name[0]}</span>
-    <span style="font-size:12px">${esc(u.name)}</span></label>`).join('');
   openModal(`<div class="modal-title">✏️ 일정 수정</div>
     <div class="form-row">
       <div class="form-group" style="flex:2"><label>일정 이름</label><input id="et-name" value="${esc(t.name)}" /></div>
@@ -1015,15 +864,11 @@ function openEditTrip(id) {
       <div class="form-group"><label>출발일</label><input id="et-start" type="date" value="${t.startDate}" /></div>
       <div class="form-group"><label>귀가일</label><input id="et-end" type="date" value="${t.endDate||t.startDate}" /></div>
     </div>
-    ${isAdmin()?`<div class="form-group" style="margin-bottom:10px"><label>참여자</label>
-      <div id="et-parts" style="display:flex;gap:4px;flex-wrap:wrap;padding:6px;border:1px solid var(--border);border-radius:6px;min-height:36px">${pc}</div></div>`:''}
     <div class="form-group"><label>메모</label><input id="et-note" value="${esc(t.note||'')}" /></div>
     <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">취소</button><button class="btn btn-primary" onclick="updateTrip('${id}')">저장</button></div>`);
 }
 async function updateTrip(id) {
-  const partsEl=document.getElementById('et-parts');
-  const parts=partsEl?[...partsEl.querySelectorAll('input:checked')].map(el=>el.value):S.trips.find(t=>t.id===id).participants;
-  const u=await api.put(`/trips/${id}`,{name:document.getElementById('et-name').value.trim(),startDate:document.getElementById('et-start').value,endDate:document.getElementById('et-end').value,location:document.getElementById('et-loc').value.trim(),note:document.getElementById('et-note').value.trim(),participants:parts,_action:'수정'});
+  const u=await api.put(`/trips/${id}`,{name:document.getElementById('et-name').value.trim(),startDate:document.getElementById('et-start').value,endDate:document.getElementById('et-end').value,location:document.getElementById('et-loc').value.trim(),note:document.getElementById('et-note').value.trim(),_action:'수정'});
   if(u.error){toast(u.error,'err');return;}
   S.trips[S.trips.findIndex(x=>x.id===id)]=u; closeModal(); renderTrips(); toast('일정 수정 완료');
 }
@@ -1041,15 +886,26 @@ async function deleteTrip(id,name) {
   if(r.error){toast(r.error,'err');return;}
   S.trips=S.trips.filter(t=>t.id!==id); delete S.checks[id]; renderTrips(); toast(`"${name}" 삭제 완료`);
 }
-async function joinTrip(id) {
-  const t=await api.put(`/trips/${id}/join`,{});
-  if(t.error){toast(t.error,'err');return;}
-  S.trips[S.trips.findIndex(x=>x.id===id)]=t; renderTrips(); toast('일정에 참여했습니다');
+function openManageParticipants(id) {
+  const t=S.trips.find(x=>x.id===id);
+  const invitable=S.users.filter(u=>u.id!==t.ownerId);
+  const owner=S.users.find(u=>u.id===t.ownerId);
+  const rows=invitable.map(u=>`<label style="display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px 7px;border-radius:4px">
+    <input type="checkbox" value="${u.id}" ${(t.participants||[]).includes(u.id)?'checked':''} />
+    <span class="user-dot" style="background:${u.color};width:20px;height:20px;font-size:10px">${u.name[0]}</span>
+    <span style="font-size:12px">${esc(u.name)}</span></label>`).join('');
+  openModal(`<div class="modal-title">👥 참여자 관리</div>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:8px">생성자(${owner?esc(owner.name):'-'})는 항상 포함됩니다. 초대할 참여자를 선택하세요.</p>
+    <div id="mp-parts" style="display:flex;gap:4px;flex-wrap:wrap;padding:6px;border:1px solid var(--border);border-radius:6px;min-height:36px">
+      ${rows||'<span style="color:var(--muted);font-size:12px">초대할 수 있는 다른 참여자가 없습니다</span>'}
+    </div>
+    <div class="modal-actions"><button class="btn btn-ghost" onclick="closeModal()">취소</button><button class="btn btn-primary" onclick="saveParticipants('${id}')">저장</button></div>`);
 }
-async function leaveTrip(id) {
-  const t=await api.delete(`/trips/${id}/join`);
+async function saveParticipants(id) {
+  const parts=[...document.querySelectorAll('#mp-parts input:checked')].map(el=>el.value);
+  const t=await api.put(`/trips/${id}/participants`,{participants:parts});
   if(t.error){toast(t.error,'err');return;}
-  S.trips[S.trips.findIndex(x=>x.id===id)]=t; renderTrips(); toast('참여 취소했습니다');
+  S.trips[S.trips.findIndex(x=>x.id===id)]=t; closeModal(); renderTrips(); toast('참여자가 변경되었습니다');
 }
 
 // ═══════════════════════════════════════════
@@ -1265,7 +1121,7 @@ function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 // ═══════════════════════════════════════════
 // START
 // ═══════════════════════════════════════════
-loadAll().then(() => applyAuthUI());
+loadAuth().then(loadAll).then(() => applyAuthUI());
 </script>
 </body>
 </html>

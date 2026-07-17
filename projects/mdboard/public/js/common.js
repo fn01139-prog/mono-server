@@ -3,16 +3,7 @@
  * mdBoard
  */
 
-/* ── 인증 토큰 관리 ────────────────────────────────────────────────────── */
-const Auth = {
-  KEY: 'mdboard_token',
-  getToken()  { return localStorage.getItem(this.KEY) || ''; },
-  setToken(t) { localStorage.setItem(this.KEY, t); },
-  clear()     { localStorage.removeItem(this.KEY); },
-  isAuthenticated() { return !!this.getToken(); }
-};
-
-/* ── API 래퍼 ──────────────────────────────────────────────────────────── */
+/* ── API 래퍼 (인증은 플랫폼 로그인 쿠키로 처리됨) ───────────────────────── */
 const API = {
   async get(url) {
     const res = await fetch(url);
@@ -23,10 +14,7 @@ const API = {
   async post(url, body) {
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-auth-token': Auth.getToken()
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -34,10 +22,7 @@ const API = {
   },
 
   async delete(url) {
-    const res = await fetch(url, {
-      method: 'DELETE',
-      headers: { 'x-auth-token': Auth.getToken() }
-    });
+    const res = await fetch(url, { method: 'DELETE' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
@@ -45,11 +30,7 @@ const API = {
   async uploadImage(file) {
     const fd = new FormData();
     fd.append('image', file);
-    const res = await fetch('/mdboard/api/upload-image', {
-      method: 'POST',
-      headers: { 'x-auth-token': Auth.getToken() },
-      body: fd
-    });
+    const res = await fetch('/mdboard/api/upload-image', { method: 'POST', body: fd });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   },
@@ -57,26 +38,8 @@ const API = {
   async uploadHtml(file) {
     const fd = new FormData();
     fd.append('html', file);
-    const res = await fetch('/mdboard/api/upload-html', {
-      method: 'POST',
-      headers: { 'x-auth-token': Auth.getToken() },
-      body: fd
-    });
+    const res = await fetch('/mdboard/api/upload-html', { method: 'POST', body: fd });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
-  },
-
-  async authCheck() {
-    const res = await fetch('/mdboard/api/auth/check');
-    return res.json();
-  },
-
-  async auth(password) {
-    const res = await fetch('/mdboard/api/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
-    });
     return res.json();
   }
 };

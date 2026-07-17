@@ -7,26 +7,42 @@ const pool = require('../../../shared/db');
 /* ── 평면도 ─────────────────────────────────────────────────────────── */
 async function listFloorplans() {
   const { rows } = await pool.query(
-    'SELECT id, name, modified_at FROM floorplan_templates ORDER BY modified_at DESC'
+    'SELECT id, name, owner_id, modified_at FROM floorplan_templates ORDER BY modified_at DESC'
   );
-  return rows.map(r => ({ id: r.id, name: r.name, modifiedTime: r.modified_at }));
+  return rows.map(r => ({ id: r.id, name: r.name, ownerId: r.owner_id, modifiedTime: r.modified_at }));
+}
+
+async function getFloorplanRow(id) {
+  const { rows } = await pool.query(
+    'SELECT id, name, data, owner_id FROM floorplan_templates WHERE id = $1', [id]
+  );
+  if (!rows.length) return null;
+  return rows[0];
 }
 
 async function getFloorplan(id) {
-  const { rows } = await pool.query(
-    'SELECT data FROM floorplan_templates WHERE id = $1', [id]
-  );
-  if (!rows.length) throw new Error('평면도 없음: ' + id);
-  return rows[0].data;
+  const row = await getFloorplanRow(id);
+  if (!row) throw new Error('평면도 없음: ' + id);
+  return row.data;
 }
 
-async function saveFloorplan(name, data) {
+/** 신규 생성: ownerId를 지정해 저장 */
+async function createFloorplan(name, data, ownerId) {
   const id = name.endsWith('.fpd') ? name : name + '.fpd';
   await pool.query(
-    `INSERT INTO floorplan_templates (id, name, data, modified_at)
-     VALUES ($1, $2, $3, NOW())
+    `INSERT INTO floorplan_templates (id, name, data, owner_id, modified_at)
+     VALUES ($1, $2, $3, $4, NOW())
      ON CONFLICT (id)
      DO UPDATE SET name = $2, data = $3, modified_at = NOW()`,
+    [id, name.replace(/\.fpd$/, ''), JSON.stringify(data), ownerId]
+  );
+  return id;
+}
+
+/** 기존 항목 갱신: owner_id는 유지 (변경하지 않음) */
+async function updateFloorplan(id, name, data) {
+  await pool.query(
+    `UPDATE floorplan_templates SET name = $2, data = $3, modified_at = NOW() WHERE id = $1`,
     [id, name.replace(/\.fpd$/, ''), JSON.stringify(data)]
   );
   return id;
@@ -97,4 +113,7 @@ function getDefaultCategories() {
   ];
 }
 
-module.exports = { listFloorplans, getFloorplan, saveFloorplan, deleteFloorplan, getCategories, saveCategories, getDefaultCategories };
+module.exports = {
+  listFloorplans, getFloorplan, getFloorplanRow, createFloorplan, updateFloorplan, deleteFloorplan,
+  getCategories, saveCategories, getDefaultCategories,
+};

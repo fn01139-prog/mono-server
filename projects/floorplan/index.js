@@ -5,53 +5,28 @@
  */
 const express  = require('express');
 const path     = require('path');
-const crypto   = require('crypto');
 const router   = express.Router();
 const storage  = require('./services/storage');
 const config           = require('./config');
 
-/* ── 인증 헬퍼 (mdBoard 동일 패턴) ───────────────────────────────────── */
-function getAdminTokens() {
-  return (process.env.FLOORPLAN_ADMIN_TOKENS || process.env.ADMIN_TOKENS || '')
-    .split(',').map(t => t.trim()).filter(Boolean);
-}
-
-function verifyToken(token) {
-  if (!token) return false;
-  return getAdminTokens().includes(token);
-}
-
-function requireAdmin(req, res, next) {
-  const tokens = getAdminTokens();
-  if (!tokens.length) return next(); // 토큰 미설정 시 인증 불필요
-  const token = req.headers['x-admin-token'] || '';
-  if (!verifyToken(token)) {
-    return res.status(403).json({ ok: false, error: '권한이 없습니다', code: 'FORBIDDEN' });
-  }
-  next();
-}
+const isAdmin = (req) => req.user?.role === 'admin';
 
 /* ── Health ───────────────────────────────────────────────────────────── */
 router.get('/health', (req, res) => {
   res.json({ ok: true, project: 'floorplan', time: new Date() });
 });
 
-/* ── 인증 확인 ────────────────────────────────────────────────────────── */
-router.get('/auth/check', (req, res) => {
-  res.json({ ok: true, required: getAdminTokens().length > 0 });
-});
-
-router.post('/auth/verify', (req, res) => {
-  const { token } = req.body || {};
-  if (!token) return res.json({ ok: true, isAdmin: false });
-  res.json({ ok: true, isAdmin: verifyToken(token) });
-});
-
-/* ── 평면도 CRUD ──────────────────────────────────────────────────────── */
+/* ── 평면도 CRUD ──────────────────────────────────────────────────────── *
+ * 조회: 로그인 사용자 전원이 전체 템플릿을 볼 수 있음 (소유자 표시 포함).
+ * 수정/삭제: 소유자 본인 또는 admin만. 타인 템플릿은 읽기 전용.
+ * ────────────────────────────────────────────────────────────────────── */
 router.get('/floorplans', async (req, res) => {
   try {
     const list = await storage.listFloorplans();
-    res.json({ ok: true, data: list });
+    res.json({
+      ok: true,
+      data: list.map(f => ({ ...f, canEdit: isAdmin(req) || f.ownerId === req.user.userId })),
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
@@ -59,32 +34,51 @@ router.get('/floorplans', async (req, res) => {
 
 router.get('/floorplans/:id', async (req, res) => {
   try {
-    const data = await storage.getFloorplan(req.params.id);
-    res.json({ ok: true, data });
+    const row = await storage.getFloorplanRow(req.params.id);
+    if (!row) return res.status(404).json({ ok: false, error: '평면도 없음: ' + req.params.id });
+    res.json({
+      ok: true, data: row.data, ownerId: row.owner_id,
+      canEdit: isAdmin(req) || row.owner_id === req.user.userId,
+    });
   } catch (e) {
     res.status(404).json({ ok: false, error: e.message });
   }
 });
 
-router.post('/floorplans', requireAdmin, async (req, res) => {
+router.post('/floorplans', async (req, res) => {
   try {
     const { name, data } = req.body;
     if (!name || !data) return res.status(400).json({ ok: false, error: 'name, data 필수' });
-    const id = await storage.saveFloorplan(name, {
+
+    // 이름에서 파생되는 id가 이미 존재하면 사실상 "수정"이므로, 이 경우도 소유권 검사를 거친다.
+    // (그렇지 않으면 같은 이름으로 저장해 타인의 평면도를 덮어쓸 수 있음)
+    const id = name.endsWith('.fpd') ? name : name + '.fpd';
+    const existing = await storage.getFloorplanRow(id);
+    if (existing && !isAdmin(req) && existing.owner_id !== req.user.userId) {
+      return res.status(403).json({ ok: false, error: '이미 존재하는 이름입니다 (다른 사용자 소유)', code: 'FORBIDDEN' });
+    }
+
+    const savedId = await storage.createFloorplan(name, {
       ...data,
       meta: { ...data.meta, name, savedAt: new Date().toISOString() }
-    });
-    res.json({ ok: true, id });
+    }, existing ? existing.owner_id : req.user.userId);
+    res.json({ ok: true, id: savedId });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-router.put('/floorplans/:id', requireAdmin, async (req, res) => {
+router.put('/floorplans/:id', async (req, res) => {
   try {
+    const row = await storage.getFloorplanRow(req.params.id);
+    if (!row) return res.status(404).json({ ok: false, error: '평면도 없음: ' + req.params.id });
+    if (!isAdmin(req) && row.owner_id !== req.user.userId) {
+      return res.status(403).json({ ok: false, error: '본인 평면도만 수정할 수 있습니다', code: 'FORBIDDEN' });
+    }
+
     const { name, data } = req.body;
     const saveName = name || req.params.id;
-    const id = await storage.saveFloorplan(saveName, {
+    const id = await storage.updateFloorplan(req.params.id, saveName, {
       ...data,
       meta: { ...data.meta, name: saveName, savedAt: new Date().toISOString() }
     });
@@ -94,8 +88,14 @@ router.put('/floorplans/:id', requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/floorplans/:id', requireAdmin, async (req, res) => {
+router.delete('/floorplans/:id', async (req, res) => {
   try {
+    const row = await storage.getFloorplanRow(req.params.id);
+    if (!row) return res.status(404).json({ ok: false, error: '평면도 없음: ' + req.params.id });
+    if (!isAdmin(req) && row.owner_id !== req.user.userId) {
+      return res.status(403).json({ ok: false, error: '본인 평면도만 삭제할 수 있습니다', code: 'FORBIDDEN' });
+    }
+
     await storage.deleteFloorplan(req.params.id);
     res.json({ ok: true });
   } catch (e) {
@@ -103,7 +103,7 @@ router.delete('/floorplans/:id', requireAdmin, async (req, res) => {
   }
 });
 
-/* ── 카테고리 ─────────────────────────────────────────────────────────── */
+/* ── 카테고리 (공용 가구 카탈로그 — 로그인 사용자 전원이 조회/편집 가능) ── */
 router.get('/categories', async (req, res) => {
   try {
     const data = await storage.getCategories();
@@ -113,7 +113,7 @@ router.get('/categories', async (req, res) => {
   }
 });
 
-router.put('/categories', requireAdmin, async (req, res) => {
+router.put('/categories', async (req, res) => {
   try {
     const { data } = req.body;
     if (!Array.isArray(data)) return res.status(400).json({ ok: false, error: 'data는 배열' });
@@ -124,7 +124,7 @@ router.put('/categories', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/categories', requireAdmin, async (req, res) => {
+router.post('/categories', async (req, res) => {
   try {
     const cats = await storage.getCategories();
     const { id, name } = req.body;
@@ -138,7 +138,7 @@ router.post('/categories', requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/categories/:catId', requireAdmin, async (req, res) => {
+router.delete('/categories/:catId', async (req, res) => {
   try {
     let cats = await storage.getCategories();
     cats = cats.filter(c => c.id !== req.params.catId);
@@ -149,7 +149,7 @@ router.delete('/categories/:catId', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/categories/:catId/items', requireAdmin, async (req, res) => {
+router.post('/categories/:catId/items', async (req, res) => {
   try {
     const cats = await storage.getCategories();
     const cat  = cats.find(c => c.id === req.params.catId);
@@ -165,7 +165,7 @@ router.post('/categories/:catId/items', requireAdmin, async (req, res) => {
   }
 });
 
-router.delete('/categories/:catId/items/:itemId', requireAdmin, async (req, res) => {
+router.delete('/categories/:catId/items/:itemId', async (req, res) => {
   try {
     const cats = await storage.getCategories();
     const cat  = cats.find(c => c.id === req.params.catId);

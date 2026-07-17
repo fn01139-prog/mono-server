@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+  <script src="/shared-assets/auth-guard.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>평면도 편집기</title>
@@ -30,8 +31,6 @@ body{font-family:'IBM Plex Sans KR',sans-serif;background:var(--bg);color:var(--
 .tool-btn:hover{background:var(--panel);color:var(--text);}
 .spacer{flex:1;min-width:4px;}
 #admin-badge{padding:2px 8px;background:rgba(227,179,65,.15);border:1px solid rgba(227,179,65,.4);border-radius:10px;font-size:10px;color:var(--accent4);white-space:nowrap;flex-shrink:0;}
-#login-btn{height:26px;padding:0 10px;border:1px solid rgba(88,166,255,.4);background:transparent;color:var(--accent);font-size:11px;cursor:pointer;border-radius:4px;font-family:'IBM Plex Sans KR',sans-serif;white-space:nowrap;flex-shrink:0;}
-#login-btn:hover{background:rgba(88,166,255,.1);}
 
 /* ── LAYOUT ── */
 #layout{flex:1;display:flex;overflow:hidden;position:relative;}
@@ -244,8 +243,7 @@ body{font-family:'IBM Plex Sans KR',sans-serif;background:var(--bg);color:var(--
   <button class="tool-btn" onclick="zoomFit()">⊡</button>
   <button class="tool-btn" onclick="saveImage()">↓PNG</button>
   <div class="sep"></div>
-  <span id="admin-badge" style="display:none">👑 관리자</span>
-  <button id="login-btn" onclick="openLoginModal()">🔑 관리자</button>
+  <span id="admin-badge" style="display:none">🔒 읽기 전용</span>
 </div>
 
 <!-- LAYOUT -->
@@ -416,18 +414,6 @@ body{font-family:'IBM Plex Sans KR',sans-serif;background:var(--bg);color:var(--
   </div>
 </div>
 
-<!-- ── LOGIN MODAL ── -->
-<div class="modal-ov" id="login-modal">
-  <div class="modal-box" style="max-width:320px">
-    <div class="modal-hdr"><h2>🔑 관리자 로그인</h2><button class="modal-close" onclick="closeModal('login-modal')">✕</button></div>
-    <div class="modal-body">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">관리자 토큰을 입력하면 평면도 제작 및 서버 저장 기능이 활성화됩니다.</div>
-      <input class="login-input" type="password" id="login-token-inp" placeholder="관리자 토큰 입력...">
-      <button class="login-submit" onclick="doLogin()">확인</button>
-      <div class="login-err" id="login-err">토큰이 올바르지 않습니다</div>
-    </div>
-  </div>
-</div>
 
 <!-- ── CATEGORY MODAL (ADMIN) ── -->
 <div class="modal-ov" id="cat-modal">
@@ -465,8 +451,9 @@ const canvas = document.getElementById('main-canvas');
 const ctx    = canvas.getContext('2d');
 const wrap   = document.getElementById('canvas-wrap');
 
-let isAdmin  = false;
-let adminToken = '';
+// 새로 그리는(아직 서버 저장 안 된) 평면도는 항상 편집 가능. 서버에서 불러온 평면도는
+// loadServerFP()가 응답의 canEdit 값(본인 소유 또는 admin)에 맞춰 이 값을 갱신한다.
+let isAdmin  = true;
 let mode     = 'select';
 let snapOn   = true;
 let gridMM   = 100;
@@ -516,6 +503,7 @@ async function init() {
   // Check empty state
   checkEmptyState();
 
+  applyAdminMode(isAdmin);
   render();
 }
 
@@ -527,57 +515,18 @@ function resize() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-//  ADMIN AUTH
+//  편집 권한 (플랫폼 로그인은 이미 완료된 상태 — 이 값은 "현재 평면도를
+//  수정할 수 있는가"만 나타낸다. 본인 소유이거나 서버 관리자면 true)
 // ═══════════════════════════════════════════════════════════════════════
-function openLoginModal() {
-  if (isAdmin) { doLogout(); return; }
-  document.getElementById('login-token-inp').value = '';
-  document.getElementById('login-err').style.display = 'none';
-  openModal('login-modal');
-}
-
-async function doLogin() {
-  const token = document.getElementById('login-token-inp').value.trim();
-  if (!token) return;
-  try {
-    const res  = await fetch(BASE + '/api/auth/verify', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ token })
-    });
-    const data = await res.json();
-    if (data.isAdmin) {
-      isAdmin    = true;
-      adminToken = token;
-      applyAdminMode(true);
-      closeModal('login-modal');
-      showToast('👑 관리자로 로그인됨', 'ok');
-    } else {
-      document.getElementById('login-err').style.display = 'block';
-    }
-  } catch {
-    showToast('서버 연결 오류', 'err');
-  }
-}
-
-function doLogout() {
-  if (!confirm('관리자 모드를 종료하시겠습니까?')) return;
-  isAdmin = false; adminToken = '';
-  applyAdminMode(false);
-  showToast('관리자 모드 종료');
-}
-
 function applyAdminMode(on) {
   document.body.classList.toggle('admin-mode', on);
   document.querySelectorAll('.admin-only').forEach(el => {
     el.style.display = on ? '' : 'none';
   });
-  document.getElementById('admin-badge').style.display = on ? '' : 'none';
-  document.getElementById('login-btn').textContent = on ? '🔓 로그아웃' : '🔑 관리자';
+  document.getElementById('admin-badge').style.display = on ? 'none' : '';
   document.querySelector('.admin-save-tab').style.display = on ? '' : 'none';
   checkEmptyState();
-  if (on) {
-    loadServerFPList();
-  }
+  loadServerFPList();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -723,7 +672,7 @@ async function deleteCat(catId) {
 async function apiFetch(url, method='GET', body=null) {
   const opts = {
     method,
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+    headers: { 'Content-Type': 'application/json' },
   };
   if (body) opts.body = JSON.stringify(body);
   // BASE_PATH 자동 적용: url이 /api/로 시작하면 앞에 BASE 붙임
@@ -749,9 +698,9 @@ async function loadServerFPList() {
   if (!r.data.length) { el.innerHTML = '<span style="color:var(--muted);font-size:11px">저장된 평면도 없음</span>'; return; }
   el.innerHTML = r.data.map(fp => `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
-      <span style="font-size:11px">🏠 ${fp.name}</span>
+      <span style="font-size:11px">🏠 ${fp.name}${fp.canEdit ? '' : ' <span style="color:var(--muted)">(읽기 전용)</span>'}</span>
       <div style="display:flex;gap:4px">
-        <button class="sa del" onclick="deleteServerFP('${fp.id}','${fp.name}')">삭제</button>
+        ${fp.canEdit ? `<button class="sa del" onclick="deleteServerFP('${fp.id}','${fp.name}')">삭제</button>` : ''}
       </div>
     </div>
   `).join('');
@@ -761,8 +710,14 @@ async function saveToServer() {
   const name = document.getElementById('server-save-name').value.trim();
   if (!name) { showToast('이름을 입력하세요', 'err'); return; }
   const r = await apiFetch('/api/floorplans', 'POST', { name, data: getState() });
-  if (r.ok) { showToast(`☁ "${name}" 서버 저장됨`, 'ok'); loadServerFPList(); }
-  else showToast(r.error, 'err');
+  if (r.ok) {
+    isAdmin = true; // 새로 저장(또는 본인 소유 갱신)했으므로 편집 가능 상태로 전환
+    applyAdminModeSilent(true);
+    showToast(`☁ "${name}" 서버 저장됨`, 'ok');
+    loadServerFPList();
+  } else {
+    showToast(r.error, 'err');
+  }
 }
 
 async function deleteServerFP(id, name) {
@@ -777,14 +732,15 @@ async function loadServerTemplates() {
   el.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">불러오는 중...</div>';
   const r = await apiFetch('/api/floorplans');
   if (!r.ok || !r.data.length) {
-    el.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">등록된 기본 평면도가 없습니다.<br>관리자가 평면도를 등록해야 사용할 수 있습니다.</div>';
+    el.innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:20px">등록된 평면도가 없습니다.<br>평면도를 저장하면 여기에 표시됩니다.</div>';
     return;
   }
   el.innerHTML = '';
   r.data.forEach(fp => {
     const item = document.createElement('div');
     item.className = 'fp-item';
-    item.innerHTML = `<span class="fp-icon">🏠</span><div><div class="fp-name">${fp.name}</div><div class="fp-meta">${new Date(fp.modifiedTime||Date.now()).toLocaleDateString('ko-KR')}</div></div>`;
+    const roTag = fp.canEdit ? '' : ' <span style="color:var(--muted);font-size:10px">(읽기 전용)</span>';
+    item.innerHTML = `<span class="fp-icon">🏠</span><div><div class="fp-name">${fp.name}${roTag}</div><div class="fp-meta">${new Date(fp.modifiedTime||Date.now()).toLocaleDateString('ko-KR')}</div></div>`;
     item.addEventListener('click', () => loadServerFP(fp.id, fp.name));
     el.appendChild(item);
   });
@@ -795,8 +751,19 @@ async function loadServerFP(id, name) {
   if (!r.ok) { showToast('불러오기 실패: ' + r.error, 'err'); return; }
   pushHistory();
   loadState(r.data);
-  showToast(`📂 "${name}" 불러옴`);
+  isAdmin = !!r.canEdit;
+  applyAdminModeSilent(isAdmin);
+  showToast(r.canEdit ? `📂 "${name}" 불러옴` : `📂 "${name}" 불러옴 (읽기 전용)`);
   closeModal('load-modal');
+}
+
+/** applyAdminMode와 달리 목록을 다시 불러오지 않는 버전 (로드 직후 재귀 호출 방지) */
+function applyAdminModeSilent(on) {
+  document.body.classList.toggle('admin-mode', on);
+  document.querySelectorAll('.admin-only').forEach(el => { el.style.display = on ? '' : 'none'; });
+  document.getElementById('admin-badge').style.display = on ? 'none' : '';
+  document.querySelector('.admin-save-tab').style.display = on ? '' : 'none';
+  checkEmptyState();
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1547,10 +1514,8 @@ document.addEventListener('keydown',e=>{
     if(e.key==='ArrowUp'){furns[selected.idx].y-=step;render();e.preventDefault();}
     if(e.key==='ArrowDown'){furns[selected.idx].y+=step;render();e.preventDefault();}
   }
-  if(e.key==='Enter'&&mode==='login'){doLogin();}
 });
 document.addEventListener('keyup',e=>{if(e.key===' ')panMode=false;});
-document.getElementById('login-token-inp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 
 // ═══════════════════════════════════════════════════════════════════════
 //  START

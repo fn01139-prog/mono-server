@@ -11,9 +11,40 @@
 
 const fs   = require('fs');
 const path = require('path');
+const { requireLogin, requireApp, matchesPublicPath } = require('./auth');
 
 const PROJECTS_DIR = path.join(__dirname, '../projects');
 const registeredProjects = [];
+
+/**
+ * 앱별 접근 가드 생성.
+ * - config.public === true 이면 가드 없이 전면 공개
+ * - publicPaths 에 매칭되는 "GET 요청"만 로그인 없이 통과 (앱 라우트에서 2차 검사 필요).
+ *   쓰기 메서드(POST/PUT/DELETE 등)는 경로가 같아도 항상 로그인이 필요하다.
+ * - 그 외에는 requireLogin → requireApp(prefix) 순서로 검사
+ *
+ * API 마운트(`${prefix}/api`)와 정적/SPA 마운트(`${prefix}`)는 서로 다른 상대경로 공간을
+ * 가지므로(같은 '/pages' 같은 문자열이 완전히 다른 의미일 수 있음), publicPaths 목록을
+ * 마운트별로 분리해서 받는다 — config.publicPaths(API용), config.publicStaticPaths(정적/SPA용).
+ */
+function makeGuard(prefix, config, publicPaths) {
+  if (config.public) return (req, res, next) => next();
+
+  publicPaths = publicPaths || [];
+  // customRoutes로 등록된 파일(예: studio.html)은 정적 서빙 경로로 직접 요청해도
+  // publicPaths 와일드카드에 걸려 우회되지 않도록 항상 로그인을 요구한다.
+  const protectedFiles = new Set((config.customRoutes || []).map(r => '/' + r.file));
+  const appGuard = requireApp(prefix);
+
+  return (req, res, next) => {
+    const bypassable = publicPaths.length
+      && req.method === 'GET'
+      && !protectedFiles.has(req.path)
+      && matchesPublicPath(req.path, publicPaths);
+    if (bypassable) return next();
+    requireLogin(req, res, () => appGuard(req, res, next));
+  };
+}
 
 function mount(app) {
   const folders = fs.readdirSync(PROJECTS_DIR).filter(name => {
@@ -43,17 +74,19 @@ function mount(app) {
     }
 
     const prefix = config.prefix || `/${name}`;
+    const apiGuard    = makeGuard(prefix, config, config.publicPaths);
+    const staticGuard = makeGuard(prefix, config, config.publicStaticPaths || config.publicPaths);
 
     // 정적 파일 (public/ 폴더가 있을 경우)
     const publicDir = path.join(projectDir, 'public');
     if (fs.existsSync(publicDir)) {
-      app.use(prefix, require('express').static(publicDir));
+      app.use(prefix, staticGuard, require('express').static(publicDir));
     }
 
     // API 라우터 (index.js 있을 경우)
     if (fs.existsSync(routerPath)) {
       const router = require(routerPath);
-      app.use(`${prefix}/api`, router);
+      app.use(`${prefix}/api`, apiGuard, router);
     }
 
     // 커스텀 라우트: config.customRoutes = [{path, file}] → SPA catch-all 이전에 등록
@@ -61,7 +94,7 @@ function mount(app) {
       config.customRoutes.forEach(({ path: routePath, file }) => {
         const filePath = path.join(publicDir, file);
         if (fs.existsSync(filePath)) {
-          app.get(`${prefix}${routePath}`, (req, res) => res.sendFile(filePath));
+          app.get(`${prefix}${routePath}`, staticGuard, (req, res) => res.sendFile(filePath));
         }
       });
     }
@@ -71,7 +104,7 @@ function mount(app) {
     if (config.spa && fs.existsSync(publicDir)) {
       const indexFile = path.join(publicDir, 'index.html');
       if (fs.existsSync(indexFile)) {
-        app.get(`${prefix}/*`, (req, res) => res.sendFile(indexFile));
+        app.get(`${prefix}/*`, staticGuard, (req, res) => res.sendFile(indexFile));
       }
     }
 
