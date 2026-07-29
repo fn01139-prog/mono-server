@@ -51,16 +51,23 @@ body {
   background: rgba(13,17,23,.92);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
-  padding: 0 20px;
+  padding: 10px 20px;
   display: flex; align-items:center; gap:12px;
-  height: 52px;
+  min-height: 52px;
+  flex-wrap: wrap;
 }
-.app-header h1 { font-size:15px; font-weight:600; letter-spacing:-.3px; }
+.app-header h1 {
+  font-size:15px; font-weight:600; letter-spacing:-.3px;
+  flex:1; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
 .app-header .badge {
   font-size:10px; padding:2px 8px;
   background: var(--blue-dim); color:var(--blue);
   border-radius:20px; font-family:var(--mono); font-weight:600;
+  flex-shrink:0;
 }
+.app-header .print-btn { flex-shrink:0; white-space:nowrap; }
 .container { max-width:1100px; margin:0 auto; padding:20px; }
 
 /* ─── Tabs ──────────────────────────────────────────────── */
@@ -259,6 +266,13 @@ tr.sub td.label { font-family:var(--sans); }
 
 @media(max-width:600px){
   .container { padding:12px; }
+  .app-header { padding:8px 12px; gap:8px; }
+  .app-header h1 { font-size:13px; }
+  .app-header .print-btn span.label { display:none; }
+  .tabs { padding:3px; gap:1px; }
+  .tab-btn { min-width:0; padding:7px 4px; font-size:11px; gap:4px; }
+  .tab-btn .step { width:15px; height:15px; font-size:9px; }
+
   .jd-row.header { display:none; }
   .jd-row {
     grid-template-columns: 28px 1fr 1fr 28px;
@@ -272,6 +286,27 @@ tr.sub td.label { font-family:var(--sans); }
   .jd-amt   { grid-column:1 / span 2; grid-row:2; }
   .jd-int   { grid-column:3; grid-row:2; text-align:right; font-size:11px; align-self:center; }
   .jd-days  { display:none; }
+
+  .comp-table { width:auto; min-width:480px; }
+  .comp-table th, .comp-table td { white-space:nowrap; }
+
+  .jd-row.jd-total {
+    display:flex; flex-wrap:wrap; align-items:center;
+    gap:2px 12px;
+  }
+  .jd-row.jd-total .jd-total-label { flex:1 0 100%; }
+  .jd-row.jd-total .jd-total-days  { display:none; }
+  .jd-row.jd-total .jd-total-amt,
+  .jd-row.jd-total .jd-total-int   { flex:1; text-align:right; }
+
+  .summary-bar { padding:8px 12px; }
+  .summary-bar-inner {
+    display:grid; grid-template-columns:1fr 1fr; gap:0;
+  }
+  .sum-item { min-width:0; padding:6px 8px; border-right:none; }
+  .sum-item:not(:last-child) { border-bottom:1px solid var(--border); }
+  .sum-item:nth-child(odd):not(:last-child) { border-right:1px solid var(--border); }
+  .sum-item:last-child { grid-column:1 / -1; }
 }
 
 /* ─── Print ─────────────────────────────────────────────── */
@@ -311,7 +346,7 @@ tr.sub td.label { font-family:var(--sans); }
   <span>🏠</span>
   <h1>아파트 입주비용 &middot; 대출 계산기</h1>
   <span class="badge">v1.0</span>
-  <button class="btn btn-ghost print-btn" onclick="window.print()" style="margin-left:auto;font-size:12px;">🖨️ 결과 인쇄</button>
+  <button class="btn btn-ghost print-btn" onclick="window.print()" style="margin-left:auto;font-size:12px;">🖨️ <span class="label">결과 인쇄</span></button>
 </header>
 
 <!-- ─── Main ────────────────────────────────────────────── -->
@@ -464,11 +499,11 @@ tr.sub td.label { font-family:var(--sans); }
       <div id="jd-rows"></div>
 
       <hr class="divider">
-      <div class="jd-row" style="font-weight:600; padding-top:8px;">
-        <span style="grid-column:1/4;font-size:12px;color:var(--text2);">합계</span>
-        <span class="calc-val r num-blue" id="jd-total-amt" style="grid-column:4;"></span>
-        <span class="calc-val r" id="jd-total-days" style="grid-column:5;color:var(--text3)"></span>
-        <span class="calc-val r num-amber" id="jd-total-int" style="grid-column:6;"></span>
+      <div class="jd-row jd-total" style="font-weight:600; padding-top:8px;">
+        <span class="jd-total-label" style="grid-column:1/4;font-size:12px;color:var(--text2);">합계</span>
+        <span class="calc-val r num-blue jd-total-amt" id="jd-total-amt" style="grid-column:4;"></span>
+        <span class="calc-val r jd-total-days" id="jd-total-days" style="grid-column:5;color:var(--text3)"></span>
+        <span class="calc-val r num-amber jd-total-int" id="jd-total-int" style="grid-column:6;"></span>
         <span></span>
       </div>
       <p class="note" id="jd-formula-note"></p>
