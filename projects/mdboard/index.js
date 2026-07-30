@@ -11,6 +11,7 @@ const pool    = require('../../shared/db');
 const { Marp } = require('@marp-team/marp-core');
 const drive   = require('./drive');
 const perm    = require('./permissions');
+const mailer  = require('../../shared/mailer');
 const router  = express.Router();
 
 /* ── 인증 ─────────────────────────────────────────────────────────────── *
@@ -176,6 +177,9 @@ router.get('/collaborators', async (req, res) => {
     res.json({ success: true, users: rows });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
+
+/* ── 메일 발송 이력 조회 (GET /mail-logs) — shared/mailer.js 공통 라우터 ── */
+router.use(mailer.mailLogRouter('/mdboard'));
 
 // Drive Lazy Init
 router.use((req, res, next) => {
