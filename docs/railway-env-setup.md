@@ -29,12 +29,11 @@ JWT_SECRET=아래 명령으로 생성한 랜덤 값으로 교체
 PLATFORM_ADMIN_ID=admin
 PLATFORM_ADMIN_PW=최초 로그인 후 반드시 admin 콘솔에서 변경할 임시 비밀번호
 
-# ── 플랫폼 공통 메일 발송 (선택 — SMTP 쓸 때만) ────────────────
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your_smtp_user
-SMTP_PASS=your_smtp_password
+# ── 플랫폼 공통 메일 발송 (선택 — 메일 기능 쓸 때만) ─────────────
+# Railway는 아웃바운드 SMTP 포트(25/465/587/2525)를 막아둬서 raw SMTP는 항상
+# Connection timeout으로 실패한다. Brevo REST API(HTTPS 443)로 발송하므로 SMTP_HOST/PORT
+# 등은 필요 없고 아래 두 변수만 있으면 된다.
+BREVO_API_KEY=xkeysib-발급받은_API_키
 SMTP_FROM=noreply@your-domain.com
 
 # ── mdBoard programmatic 접근 (선택) ─────────────────────────
@@ -57,17 +56,21 @@ GDRIVE_FOLDER_ID=
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
+`BREVO_API_KEY`는 Brevo 대시보드 → **Settings → SMTP & API → API Keys 탭**에서 발급받는다
+(SMTP 탭의 "SMTP 키"와는 다른 값이므로 혼동하지 말 것 — HTTP API는 API Keys 탭 값을 쓴다).
+`SMTP_FROM`에 넣을 주소는 **Senders, Domains & Dedicated IPs** 메뉴에서 미리 인증해둬야 한다.
+
 ## 체크리스트
 
 | 변수 | 없으면 어떻게 되나 |
 |---|---|
 | `DATABASE_URL` | 서버가 DB 마이그레이션/인증을 전부 건너뜀 — **필수** |
 | `JWT_SECRET` | 기본값(`campcheck-dev-secret-change-in-prod`)으로 기동되고 시작 로그에 경고 출력, admin 콘솔 "시스템 점검" 탭에도 경고로 표시됨 — 프로덕션에서 반드시 교체 |
-| `SMTP_*` | 메일 발송 기능이 항상 실패로 끝나고 `platform_mail_log`에 실패 기록만 쌓임 (서버는 정상 동작) |
+| `BREVO_API_KEY` / `SMTP_FROM` | 메일 발송 기능이 항상 실패로 끝나고 `platform_mail_log`에 실패 기록만 쌓임 (서버는 정상 동작) |
 | `MDBOARD_API_KEY` / `GOOGLE_SERVICE_ACCOUNT` / `GDRIVE_*` | 해당 기능(Claude 연동, Drive 백업)만 비활성 — 나머지 앱엔 영향 없음 |
 
 ## 배포 후 확인
 
 1. `https://<도메인>/health` → `{"status":"ok"}`
-2. `admin` 계정으로 로그인 → `/admin` → **시스템 점검** 탭에서 JWT_SECRET/SMTP 설정 상태 확인
-3. SMTP를 설정했다면 **메일 발송** 탭에서 본인 이메일로 테스트 발송해서 실제 도착 확인
+2. `admin` 계정으로 로그인 → `/admin` → **시스템 점검** 탭에서 JWT_SECRET/메일 발송 설정 상태 확인
+3. `BREVO_API_KEY`를 설정했다면 **메일 발송** 탭에서 본인 이메일로 테스트 발송해서 실제 도착 확인

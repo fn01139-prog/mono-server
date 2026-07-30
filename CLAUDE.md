@@ -123,7 +123,8 @@ customRoutes: [
 
 **메일 발송 (`shared/mailer.js`)**
 - 모든 앱/배치잡이 재사용하는 공통 발송 함수: `sendMail({ to, subject, text, html, appPrefix, sentBy })`
-- SMTP 자격 증명은 `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` 환경변수로만 설정(admin 콘솔에서는 편집 불가, 상태 조회만). **발신자 주소(`SMTP_FROM`)는 전 프로젝트가 동일하게 공유** — 프로젝트별로 다른 발신 주소를 지정하는 기능은 없음(대부분의 SMTP는 인증 계정과 다른 From을 거부/스팸 처리하기 때문). 미설정 시 `SMTP_USER`로 자동 폴백하며 이 경우 시스템 점검 탭에 경고 표시됨
+- **Brevo REST API(HTTPS)로 발송한다 — raw SMTP가 아님.** Railway 등 일부 호스팅이 아웃바운드 SMTP 포트(25/465/587/2525)를 막아둬서 nodemailer/SMTP 방식은 `Connection timeout`/`ENETUNREACH`로 실패하는 게 실측 확인됨 → HTTPS(443)로 통신하는 Brevo API로 전환. `BREVO_API_KEY` 환경변수 필요(admin 콘솔에서는 편집 불가, 상태 조회만)
+- 발신 주소는 `SMTP_FROM` 환경변수 하나로 전 프로젝트가 동일하게 사용(과거 SMTP 시절 변수명을 그대로 유지). Brevo의 Senders에 인증된 주소여야 발송이 성공함. 미설정 시 `SMTP_USER`로 자동 폴백하며 이 경우 시스템 점검 탭에 경고 표시됨
 - 모든 발송 시도(성공/실패)는 `app_prefix`/`sent_by`와 함께 `platform_mail_log`에 기록됨
 - 프로젝트가 자신의 발송 이력을 직접 보여주고 싶으면 `mailer.mailLogRouter(appPrefix, { scopeToSender? })`를 자기 라우터에 `router.use()`로 마운트 — `GET <prefix>/api/mail-logs` 자동 등록(로그인/앱 권한 가드는 loader.js가 이미 처리)
 - admin API(전체 이력, admin 전용): `GET /auth/admin/mail/config`(설정 상태), `POST /auth/admin/mail/test`(테스트 발송), `GET /auth/admin/mail/logs`
@@ -136,7 +137,7 @@ customRoutes: [
 - admin API: `GET/PUT /auth/admin/batch/jobs(/:id)`, `POST /auth/admin/batch/jobs/:id/run`, `GET /auth/admin/batch/logs`
 
 **시스템 점검 (`GET /auth/admin/system/check`)**
-- 로그인/권한 제어(`core/auth.js`) 상태를 점검: `JWT_SECRET` 기본값 여부, 활성 admin 수, 비활성 계정 수, 와일드카드(`*`) 권한 수, 앱 권한이 하나도 없는 사용자, SMTP 설정 여부
+- 로그인/권한 제어(`core/auth.js`) 상태를 점검: `JWT_SECRET` 기본값 여부, 활성 admin 수, 비활성 계정 수, 와일드카드(`*`) 권한 수, 앱 권한이 하나도 없는 사용자, 메일 발송(Brevo API) 설정 여부
 - 부수 안전장치: `/auth/admin/users/:id`의 PUT(비활성화)/DELETE는 **마지막으로 남은 활성 admin 계정**을 대상으로 하면 차단됨(전원 잠금 방지)
 
 ### mdboard 폴더 구조
@@ -183,12 +184,8 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `GDRIVE_CLIENT_SECRET` | (없음) | mdboard/campchecklist Drive OAuth2 시크릿 |
 | `GDRIVE_REFRESH_TOKEN` | (없음) | mdboard/campchecklist Drive OAuth2 리프레시 토큰 |
 | `GDRIVE_FOLDER_ID` | (없음) | mdboard/campchecklist Drive 폴더 ID |
-| `SMTP_HOST` | (없음) | 플랫폼 공통 메일 발송(`shared/mailer.js`) SMTP 호스트. 미설정 시 발송 시도는 실패로 로그만 남음 |
-| `SMTP_PORT` | `587` | SMTP 포트 |
-| `SMTP_SECURE` | `false` | `true`면 SMTPS(암시적 TLS) |
-| `SMTP_USER` | (없음) | SMTP 인증 계정 |
-| `SMTP_PASS` | (없음) | SMTP 인증 비밀번호 |
-| `SMTP_FROM` | `SMTP_USER` 값 | 발신자 주소 |
+| `BREVO_API_KEY` | (없음) | 플랫폼 공통 메일 발송(`shared/mailer.js`)용 Brevo API 키. 미설정 시 발송 시도는 실패로 로그만 남음 |
+| `SMTP_FROM` | `SMTP_USER` 값 | 발신자 주소 — Brevo Senders에 인증된 주소여야 함 (변수명은 과거 SMTP 시절 그대로 유지) |
 
 ### Deployment
 
