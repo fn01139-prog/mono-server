@@ -445,7 +445,7 @@
           <div class="stat-box"><div class="k">HOST</div><div class="v small">${esc(cfg.host || '-')}</div></div>
           <div class="stat-box"><div class="k">PORT</div><div class="v small">${esc(cfg.port || '587')}</div></div>
           <div class="stat-box"><div class="k">SECURE</div><div class="v small">${cfg.secure ? 'true' : 'false'}</div></div>
-          <div class="stat-box"><div class="k">FROM</div><div class="v small">${esc(cfg.from || '-')}</div></div>
+          <div class="stat-box"><div class="k">FROM</div><div class="v small">${esc(cfg.from || '-')}${cfg.fromExplicit ? '' : ' <span class="badge badge-warn">SMTP_USER 폴백</span>'}</div></div>
         `;
         await loadMailLogs();
       } catch (e) {

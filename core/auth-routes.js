@@ -204,7 +204,7 @@ router.get('/admin/mail/config', async (req, res) => {
 
 router.get('/admin/mail/logs', async (req, res) => {
   try {
-    res.json(await mailer.getLogs(Number(req.query.limit) || 50));
+    res.json(await mailer.getLogs({ limit: Number(req.query.limit) || 50 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -305,6 +305,12 @@ router.get('/admin/system/check', async (req, res) => {
     checks.push({
       key: 'mail_configured', label: 'SMTP 메일 발송 설정', ok: mailStatus.configured,
       detail: mailStatus.configured ? `${mailStatus.host}:${mailStatus.port || 587}` : '미설정 (SMTP_HOST/USER/PASS)',
+    });
+    checks.push({
+      key: 'mail_from', label: '발신자 주소(SMTP_FROM) 설정', ok: mailStatus.fromExplicit,
+      detail: mailStatus.fromExplicit
+        ? `${mailStatus.from} (모든 프로젝트 공통)`
+        : `미설정 — SMTP_USER(${mailStatus.from || '-'})로 폴백 중`,
     });
 
     res.json({ checks, env: process.env.NODE_ENV || 'development' });

@@ -123,9 +123,10 @@ customRoutes: [
 
 **메일 발송 (`shared/mailer.js`)**
 - 모든 앱/배치잡이 재사용하는 공통 발송 함수: `sendMail({ to, subject, text, html, appPrefix, sentBy })`
-- SMTP 자격 증명은 `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` 환경변수로만 설정(admin 콘솔에서는 편집 불가, 상태 조회만)
-- 모든 발송 시도(성공/실패)는 `platform_mail_log`에 기록됨
-- admin API: `GET /auth/admin/mail/config`(설정 상태), `POST /auth/admin/mail/test`(테스트 발송), `GET /auth/admin/mail/logs`
+- SMTP 자격 증명은 `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` 환경변수로만 설정(admin 콘솔에서는 편집 불가, 상태 조회만). **발신자 주소(`SMTP_FROM`)는 전 프로젝트가 동일하게 공유** — 프로젝트별로 다른 발신 주소를 지정하는 기능은 없음(대부분의 SMTP는 인증 계정과 다른 From을 거부/스팸 처리하기 때문). 미설정 시 `SMTP_USER`로 자동 폴백하며 이 경우 시스템 점검 탭에 경고 표시됨
+- 모든 발송 시도(성공/실패)는 `app_prefix`/`sent_by`와 함께 `platform_mail_log`에 기록됨
+- 프로젝트가 자신의 발송 이력을 직접 보여주고 싶으면 `mailer.mailLogRouter(appPrefix, { scopeToSender? })`를 자기 라우터에 `router.use()`로 마운트 — `GET <prefix>/api/mail-logs` 자동 등록(로그인/앱 권한 가드는 loader.js가 이미 처리)
+- admin API(전체 이력, admin 전용): `GET /auth/admin/mail/config`(설정 상태), `POST /auth/admin/mail/test`(테스트 발송), `GET /auth/admin/mail/logs`
 
 **배치잡 (`core/batch.js`)**
 - `core/jobs/*.js`를 자동 스캔해 `node-cron`으로 등록 (projects/ 자동 로딩과 동일한 패턴). 각 파일은 `{ id, name, schedule, description, run(pool) }`을 export
