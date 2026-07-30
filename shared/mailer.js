@@ -15,6 +15,8 @@
  */
 
 const express = require('express');
+const net = require('net');
+const dns = require('dns').promises;
 const nodemailer = require('nodemailer');
 const pool = require('./db');
 
@@ -22,18 +24,35 @@ function isConfigured() {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
-let transporter = null;
-function getTransporter() {
-  if (!isConfigured()) return null;
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    });
+/**
+ * nodemailer(9.x)의 내부 DNS 처리는 A/AAAA 레코드를 모두 조회한 뒤 그 중 하나를 "무작위"로
+ * 골라 접속한다. Railway 등 컨테이너 환경은 로컬 인터페이스상 IPv6가 있는 것처럼 보여도
+ * 실제 아웃바운드 IPv6 경로가 없는 경우가 많아, 이 무작위 선택이 IPv6를 고르면
+ * `connect ENETUNREACH ...:587 - Local (:::0)` 로 실패한다(간헐적으로 재현됨).
+ * → 호스트명을 IPv4로 직접 미리 resolve해서 리터럴 IP로 넘기면 nodemailer가 자체 DNS 로직을
+ *   완전히 건너뛰므로 이 문제를 원천 차단한다. (A 레코드가 없으면 원래 호스트명으로 폴백)
+ */
+async function resolveSmtpHostIPv4(host) {
+  if (!host || net.isIP(host)) return host;
+  try {
+    const addresses = await dns.resolve4(host);
+    if (addresses.length) return addresses[Math.floor(Math.random() * addresses.length)];
+  } catch {
+    // A 레코드가 없거나 조회 실패 — 원래 호스트명으로 폴백 (nodemailer 자체 처리에 맡김)
   }
-  return transporter;
+  return host;
+}
+
+async function buildTransporter() {
+  const host = process.env.SMTP_HOST;
+  const resolvedHost = await resolveSmtpHostIPv4(host);
+  return nodemailer.createTransport({
+    host: resolvedHost,
+    servername: host, // 리터럴 IP로 접속해도 TLS SNI/인증서 검증은 원래 호스트명 기준으로 수행
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
 }
 
 /**
@@ -47,8 +66,8 @@ async function sendMail({ to, subject, text, html, appPrefix = null, sentBy = nu
   let errorMsg = null;
 
   try {
-    const tx = getTransporter();
-    if (!tx) throw new Error('SMTP가 설정되지 않았습니다 (SMTP_HOST/SMTP_USER/SMTP_PASS 확인)');
+    if (!isConfigured()) throw new Error('SMTP가 설정되지 않았습니다 (SMTP_HOST/SMTP_USER/SMTP_PASS 확인)');
+    const tx = await buildTransporter();
     await tx.sendMail({ from, to, subject, text, html });
   } catch (e) {
     status = 'error';
