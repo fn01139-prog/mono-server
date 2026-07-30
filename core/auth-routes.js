@@ -9,6 +9,8 @@ const crypto       = require('crypto');
 const rateLimit    = require('express-rate-limit');
 const pool         = require('../shared/db');
 const loader       = require('./loader');
+const batch        = require('./batch');
+const mailer       = require('../shared/mailer');
 const {
   signToken, setAuthCookie, clearAuthCookie,
   attachUser, requireLogin, requireRole,
@@ -136,9 +138,24 @@ router.post('/admin/users', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/** 이 계정을 제외하고 활성 admin이 0명이 되는지 검사 (마지막 admin 보호용) */
+async function isLastActiveAdmin(userId) {
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::int c FROM platform_accounts WHERE role = 'admin' AND is_active AND user_id <> $1`,
+    [userId]
+  );
+  return rows[0].c === 0;
+}
+
 router.put('/admin/users/:id', async (req, res) => {
   const { name, password, isActive } = req.body;
   try {
+    if (isActive === false) {
+      const { rows } = await pool.query('SELECT role FROM platform_accounts WHERE user_id = $1', [req.params.id]);
+      if (rows[0]?.role === 'admin' && await isLastActiveAdmin(req.params.id)) {
+        return res.status(400).json({ error: '마지막 admin 계정은 비활성화할 수 없습니다' });
+      }
+    }
     if (name) await pool.query('UPDATE platform_users SET name = $1 WHERE id = $2', [name, req.params.id]);
     if (password) {
       const pwHash = await bcrypt.hash(password, 10);
@@ -168,9 +185,129 @@ router.put('/admin/users/:id/apps', async (req, res) => {
 
 router.delete('/admin/users/:id', async (req, res) => {
   try {
+    const { rows } = await pool.query('SELECT role FROM platform_accounts WHERE user_id = $1', [req.params.id]);
+    if (rows[0]?.role === 'admin' && await isLastActiveAdmin(req.params.id)) {
+      return res.status(400).json({ error: '마지막 admin 계정은 삭제할 수 없습니다' });
+    }
     await pool.query('DELETE FROM platform_users WHERE id = $1', [req.params.id]);
     await pool.query('DELETE FROM platform_app_grants WHERE user_id = $1', [req.params.id]);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── admin: 메일 발송 (shared/mailer.js) ──────────────────────────────── */
+router.get('/admin/mail/config', async (req, res) => {
+  try {
+    res.json(await mailer.getConfigStatus());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/admin/mail/logs', async (req, res) => {
+  try {
+    res.json(await mailer.getLogs(Number(req.query.limit) || 50));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/mail/test', async (req, res) => {
+  const { to } = req.body;
+  if (!to?.trim()) return res.status(400).json({ error: '받는 사람 주소를 입력하세요' });
+  try {
+    await mailer.sendMail({
+      to: to.trim(),
+      subject: '[mono-server] 테스트 메일',
+      text: `이 메일은 관리자(${req.user.name})가 admin 콘솔에서 보낸 테스트 메일입니다.\n발송 시각: ${new Date().toLocaleString('ko-KR')}`,
+      appPrefix: 'admin',
+      sentBy: req.user.userId,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/* ── admin: 배치잡 (core/batch.js) ────────────────────────────────────── */
+router.get('/admin/batch/jobs', async (req, res) => {
+  try {
+    res.json(await batch.list());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/admin/batch/jobs/:id', async (req, res) => {
+  const { enabled } = req.body;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled(boolean)이 필요합니다' });
+  try {
+    await batch.setEnabled(req.params.id, enabled);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/batch/jobs/:id/run', async (req, res) => {
+  try {
+    const summary = await batch.execute(req.params.id);
+    res.json({ ok: true, summary });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+router.get('/admin/batch/logs', async (req, res) => {
+  try {
+    res.json(await batch.getLogs(req.query.jobId || null, Number(req.query.limit) || 50));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── admin: 로그인/권한 제어 시스템 점검 ─────────────────────────────────── */
+router.get('/admin/system/check', async (req, res) => {
+  try {
+    const checks = [];
+
+    const jwtOk = !!process.env.JWT_SECRET && process.env.JWT_SECRET !== 'campcheck-dev-secret-change-in-prod';
+    checks.push({
+      key: 'jwt_secret', label: 'JWT_SECRET 설정', ok: jwtOk,
+      detail: jwtOk ? '커스텀 값으로 설정됨' : '기본값 사용 중 — 프로덕션에서는 반드시 교체 필요',
+    });
+
+    const { rows: adminRows } = await pool.query(
+      `SELECT COUNT(*)::int c FROM platform_accounts WHERE role = 'admin' AND is_active`
+    );
+    checks.push({
+      key: 'admin_count', label: '활성 admin 계정 수', ok: adminRows[0].c >= 1,
+      detail: `${adminRows[0].c}명`,
+    });
+
+    const { rows: inactiveRows } = await pool.query(
+      `SELECT COUNT(*)::int c FROM platform_accounts WHERE NOT is_active`
+    );
+    checks.push({
+      key: 'inactive_count', label: '비활성 계정 수', ok: true,
+      detail: `${inactiveRows[0].c}명`,
+    });
+
+    const { rows: wildcardRows } = await pool.query(
+      `SELECT COUNT(*)::int c FROM platform_app_grants WHERE user_id = '*'`
+    );
+    checks.push({
+      key: 'wildcard_grants', label: "전체공개('*') 앱 권한 수", ok: true,
+      detail: `${wildcardRows[0].c}건`,
+    });
+
+    const { rows: noGrantRows } = await pool.query(`
+      SELECT COUNT(*)::int c FROM platform_accounts a
+      WHERE a.role = 'member' AND a.is_active
+        AND NOT EXISTS (SELECT 1 FROM platform_app_grants g WHERE g.user_id IN (a.user_id, '*'))
+    `);
+    checks.push({
+      key: 'no_grant_users', label: '앱 권한이 하나도 없는 활성 사용자', ok: noGrantRows[0].c === 0,
+      detail: `${noGrantRows[0].c}명`,
+    });
+
+    const mailStatus = await mailer.getConfigStatus();
+    checks.push({
+      key: 'mail_configured', label: 'SMTP 메일 발송 설정', ok: mailStatus.configured,
+      detail: mailStatus.configured ? `${mailStatus.host}:${mailStatus.port || 587}` : '미설정 (SMTP_HOST/USER/PASS)',
+    });
+
+    res.json({ checks, env: process.env.NODE_ENV || 'development' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

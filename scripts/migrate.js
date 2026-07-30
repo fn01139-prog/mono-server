@@ -275,6 +275,40 @@ CREATE INDEX IF NOT EXISTS idx_mindmap_relations_board  ON mindmap_relations(boa
 CREATE INDEX IF NOT EXISTS idx_mindmap_relations_parent ON mindmap_relations(parent_id);
 CREATE INDEX IF NOT EXISTS idx_mindmap_relations_child  ON mindmap_relations(child_id);
 CREATE INDEX IF NOT EXISTS idx_mindmap_memos_object     ON mindmap_memos(object_id);
+
+/* ── platform 공통 인프라: 메일 발송 / 배치잡 (core/batch.js, shared/mailer.js) ── */
+CREATE TABLE IF NOT EXISTS platform_mail_log (
+  id          SERIAL       PRIMARY KEY,
+  to_addr     VARCHAR(300) NOT NULL,
+  subject     VARCHAR(500) NOT NULL,
+  status      VARCHAR(20)  NOT NULL,
+  error       TEXT,
+  app_prefix  VARCHAR(100),
+  sent_by     VARCHAR(100),
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_platform_mail_log_created ON platform_mail_log(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS platform_batch_jobs (
+  id          VARCHAR(100) PRIMARY KEY,
+  name        VARCHAR(200) NOT NULL,
+  schedule    VARCHAR(100) NOT NULL,
+  enabled     BOOLEAN      NOT NULL DEFAULT TRUE,
+  last_run_at TIMESTAMPTZ,
+  last_status VARCHAR(20)
+);
+
+CREATE TABLE IF NOT EXISTS platform_batch_log (
+  id           SERIAL       PRIMARY KEY,
+  job_id       VARCHAR(100) NOT NULL,
+  status       VARCHAR(20)  NOT NULL,
+  started_at   TIMESTAMPTZ  NOT NULL,
+  finished_at  TIMESTAMPTZ  NOT NULL,
+  duration_ms  INTEGER      NOT NULL,
+  error        TEXT,
+  summary      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_platform_batch_log_job ON platform_batch_log(job_id, started_at DESC);
 `;
 
 async function run(pool) {

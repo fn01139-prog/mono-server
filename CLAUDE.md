@@ -98,7 +98,7 @@ customRoutes: [
 - `core/auth.js` — JWT 서명/검증, `attachUser`(모든 요청에 `req.user` 주입), `requireLogin`, `requireApp(prefix)`, `requireRole(role)`, `matchesPublicPath`
 - `core/auth-routes.js` — `/auth/login`, `/auth/logout`, `/auth/me`, `/auth/admin/*`(사용자·권한 관리, admin 전용)
 - `core/loader.js` — 각 앱을 마운트할 때 `requireLogin` + `requireApp(prefix)` 가드를 정적 파일/API/customRoutes/SPA catch-all 앞에 자동 삽입. 앱 코드는 가드를 신경 쓸 필요 없음
-- `core/views/login.html`, `core/views/admin.html` — 로그인 페이지, 사용자 관리 페이지(`/admin`, admin 전용)
+- `core/views/login.html`, `core/views/admin.html` — 로그인 페이지, **관리자 콘솔**(`/admin`, admin 전용, 탭형 단일 페이지: 사용자 관리 / 메일 발송 / 배치잡 / 시스템 점검)
 
 **DB 테이블**
 - `platform_users` / `platform_accounts` — 사용자·계정(로그인ID, bcrypt 해시, role: `admin`|`member`)
@@ -116,6 +116,27 @@ customRoutes: [
 - `mdboard`는 파일시스템 기반이라 예외: `mdboard_files`/`mdboard_file_grants`로 파일별 소유자·공유 권한을 DB로 관리 (파일 자체는 격리하지 않음)
 - `campchecklist`는 트립 생성자가 참여자를 초대하는 방식 (`camp_trips.owner_id` + `participants` JSONB)
 - `floorplan`은 조회는 로그인 사용자 전원, 수정/삭제만 소유자 제한
+
+### 플랫폼 공통 인프라: 메일 발송 / 배치잡 / 관리자 콘솔
+
+`/admin`(admin 전용)은 4개 탭으로 구성된 탭형 단일 페이지다: 사용자 관리, 메일 발송, 배치잡, 시스템 점검. API는 모두 `core/auth-routes.js`의 `/auth/admin/*` 아래 있다(기존 `requireRole('admin')` 가드 재사용).
+
+**메일 발송 (`shared/mailer.js`)**
+- 모든 앱/배치잡이 재사용하는 공통 발송 함수: `sendMail({ to, subject, text, html, appPrefix, sentBy })`
+- SMTP 자격 증명은 `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` 환경변수로만 설정(admin 콘솔에서는 편집 불가, 상태 조회만)
+- 모든 발송 시도(성공/실패)는 `platform_mail_log`에 기록됨
+- admin API: `GET /auth/admin/mail/config`(설정 상태), `POST /auth/admin/mail/test`(테스트 발송), `GET /auth/admin/mail/logs`
+
+**배치잡 (`core/batch.js`)**
+- `core/jobs/*.js`를 자동 스캔해 `node-cron`으로 등록 (projects/ 자동 로딩과 동일한 패턴). 각 파일은 `{ id, name, schedule, description, run(pool) }`을 export
+- 실행 이력은 `platform_batch_log`에, 활성화 여부/마지막 실행 상태는 `platform_batch_jobs`에 저장
+- 활성화 스위치는 "자동 스케줄 실행"만 제어 — admin 콘솔의 "지금 실행"은 비활성 상태여도 항상 동작
+- 기본 등록된 잡: `mail-log-cleanup`(90일 지난 메일 로그 정리), `batch-log-cleanup`(180일 지난 배치 로그 정리)
+- admin API: `GET/PUT /auth/admin/batch/jobs(/:id)`, `POST /auth/admin/batch/jobs/:id/run`, `GET /auth/admin/batch/logs`
+
+**시스템 점검 (`GET /auth/admin/system/check`)**
+- 로그인/권한 제어(`core/auth.js`) 상태를 점검: `JWT_SECRET` 기본값 여부, 활성 admin 수, 비활성 계정 수, 와일드카드(`*`) 권한 수, 앱 권한이 하나도 없는 사용자, SMTP 설정 여부
+- 부수 안전장치: `/auth/admin/users/:id`의 PUT(비활성화)/DELETE는 **마지막으로 남은 활성 admin 계정**을 대상으로 하면 차단됨(전원 잠금 방지)
 
 ### mdboard 폴더 구조
 
@@ -161,6 +182,12 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `GDRIVE_CLIENT_SECRET` | (없음) | mdboard/campchecklist Drive OAuth2 시크릿 |
 | `GDRIVE_REFRESH_TOKEN` | (없음) | mdboard/campchecklist Drive OAuth2 리프레시 토큰 |
 | `GDRIVE_FOLDER_ID` | (없음) | mdboard/campchecklist Drive 폴더 ID |
+| `SMTP_HOST` | (없음) | 플랫폼 공통 메일 발송(`shared/mailer.js`) SMTP 호스트. 미설정 시 발송 시도는 실패로 로그만 남음 |
+| `SMTP_PORT` | `587` | SMTP 포트 |
+| `SMTP_SECURE` | `false` | `true`면 SMTPS(암시적 TLS) |
+| `SMTP_USER` | (없음) | SMTP 인증 계정 |
+| `SMTP_PASS` | (없음) | SMTP 인증 비밀번호 |
+| `SMTP_FROM` | `SMTP_USER` 값 | 발신자 주소 |
 
 ### Deployment
 
