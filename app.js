@@ -5,6 +5,7 @@ const cors         = require('cors');
 const cookieParser = require('cookie-parser');
 const path         = require('path');
 const loader       = require('./core/loader');
+const batch        = require('./core/batch');
 const pool         = require('./shared/db');
 const authRoutes   = require('./core/auth-routes');
 const { attachUser, requireLogin, requireRole } = require('./core/auth');
@@ -147,6 +148,7 @@ async function start() {
       console.log('[DB] Migration check complete.');
       await require('./scripts/migrate-auth').run(pool);
       console.log('[DB] Auth bootstrap/migration complete.');
+      await batch.init();
     } catch (e) {
       console.error('[DB] Migration failed:', e.message);
     }

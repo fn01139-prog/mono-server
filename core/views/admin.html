@@ -3,23 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>사용자 관리 · Yu's App Hub</title>
+<title>관리자 콘솔 · Yu's App Hub</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0;
     padding: 32px 40px 60px;
   }
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
   h1 { font-size: 1.5rem; color: #fff; }
   a.back { color: #4a9eff; text-decoration: none; font-size: 0.85rem; }
   a.back:hover { text-decoration: underline; }
+
+  .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid #2a2a2a; }
+  .tab {
+    background: none; border: none; color: #888; padding: 10px 16px; font-size: 0.88rem;
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab:hover { color: #ccc; }
+  .tab.active { color: #4a9eff; border-bottom-color: #4a9eff; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 
   .panel {
     background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
     padding: 20px; margin-bottom: 24px;
   }
   .panel h2 { font-size: 1rem; color: #fff; margin-bottom: 14px; }
+  .panel p.hint { color: #888; font-size: 0.8rem; margin-bottom: 14px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; }
@@ -32,6 +43,9 @@
   .badge-admin { background: rgba(227,179,65,.15); border: 1px solid rgba(227,179,65,.4); color: #e3b341; }
   .badge-member { background: rgba(88,166,255,.12); border: 1px solid rgba(88,166,255,.3); color: #58a6ff; }
   .badge-inactive { background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); color: #f85149; }
+  .badge-ok { background: rgba(63,185,80,.12); border: 1px solid rgba(63,185,80,.35); color: #3fb950; }
+  .badge-err { background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); color: #f85149; }
+  .badge-warn { background: rgba(227,179,65,.15); border: 1px solid rgba(227,179,65,.4); color: #e3b341; }
 
   .apps-cell { display: flex; flex-wrap: wrap; gap: 4px; max-width: 260px; }
   .app-chip {
@@ -44,6 +58,8 @@
     padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;
   }
   button:hover { border-color: #4a9eff; color: #4a9eff; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:disabled:hover { border-color: #30363d; color: #c9d1d9; }
   button.primary { background: #4a9eff; border-color: #4a9eff; color: #fff; }
   button.primary:hover { background: #3a8eef; }
   button.danger:hover { border-color: #f85149; color: #f85149; }
@@ -84,38 +100,135 @@
   }
   .toast.err { border-color: #f85149; color: #f85149; }
   .empty { color: #666; font-size: 0.85rem; padding: 16px 0; }
+
+  /* 메일/배치/시스템 점검 탭 공용 */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 4px; }
+  .stat-box { background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px 14px; }
+  .stat-box .k { font-size: 0.72rem; color: #888; text-transform: uppercase; margin-bottom: 4px; }
+  .stat-box .v { font-size: 0.95rem; color: #fff; }
+  .stat-box .v.small { font-size: 0.8rem; color: #aaa; font-weight: normal; }
+
+  .toggle { position: relative; display: inline-block; width: 36px; height: 20px; vertical-align: middle; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .slider {
+    position: absolute; cursor: pointer; inset: 0; background: #333; border-radius: 20px; transition: .15s;
+  }
+  .toggle .slider::before {
+    content: ""; position: absolute; height: 14px; width: 14px; left: 3px; bottom: 3px;
+    background: #ccc; border-radius: 50%; transition: .15s;
+  }
+  .toggle input:checked + .slider { background: #3a8eef; }
+  .toggle input:checked + .slider::before { transform: translateX(16px); background: #fff; }
+
+  .check-list { display: flex; flex-direction: column; gap: 8px; }
+  .check-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 8px;
+  }
+  .check-item .icon { font-size: 1rem; width: 20px; text-align: center; }
+  .check-item .label { color: #e0e0e0; font-size: 0.85rem; min-width: 220px; }
+  .check-item .detail { color: #888; font-size: 0.8rem; }
+
+  code.mono { font-family: 'Consolas', monospace; background: #0f0f0f; border: 1px solid #2a2a2a; padding: 1px 6px; border-radius: 4px; font-size: 0.78rem; }
 </style>
 </head>
 <body>
   <div class="topbar">
-    <h1>👤 사용자 관리</h1>
+    <h1>⚙️ 관리자 콘솔</h1>
     <a class="back" href="/">← 허브로 돌아가기</a>
   </div>
 
-  <div class="panel">
-    <h2>➕ 새 사용자 생성</h2>
-    <form class="inline" id="createForm">
-      <div class="field"><label>이름</label><input id="cf-name" required></div>
-      <div class="field"><label>아이디</label><input id="cf-loginId" required autocomplete="off"></div>
-      <div class="field"><label>비밀번호</label><input id="cf-password" type="password" required></div>
-      <div class="field" style="flex:1; min-width:240px;">
-        <label>앱 권한</label>
-        <div class="apps-picker" id="cf-apps"></div>
-      </div>
-      <button type="submit" class="primary">생성</button>
-    </form>
+  <div class="tabs">
+    <button class="tab active" data-tab="users">👤 사용자 관리</button>
+    <button class="tab" data-tab="mail">✉️ 메일 발송</button>
+    <button class="tab" data-tab="batch">⏱ 배치잡</button>
+    <button class="tab" data-tab="system">🩺 시스템 점검</button>
   </div>
 
-  <div class="panel">
-    <h2>전체 사용자 (<span id="userCount">0</span>)</h2>
-    <table>
-      <thead>
-        <tr><th>이름</th><th>아이디</th><th>역할</th><th>앱 권한</th><th>마지막 로그인</th><th>작업</th></tr>
-      </thead>
-      <tbody id="userRows"></tbody>
-    </table>
-    <div class="empty" id="emptyMsg" style="display:none">사용자가 없습니다.</div>
-  </div>
+  <!-- ══════════════════ 사용자 관리 ══════════════════ -->
+  <section class="tab-panel active" id="tab-users">
+    <div class="panel">
+      <h2>➕ 새 사용자 생성</h2>
+      <form class="inline" id="createForm">
+        <div class="field"><label>이름</label><input id="cf-name" required></div>
+        <div class="field"><label>아이디</label><input id="cf-loginId" required autocomplete="off"></div>
+        <div class="field"><label>비밀번호</label><input id="cf-password" type="password" required></div>
+        <button type="submit" class="primary">생성</button>
+        <div class="field" style="flex-basis:100%;">
+          <label>앱 권한</label>
+          <div class="apps-picker" id="cf-apps"></div>
+        </div>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>전체 사용자 (<span id="userCount">0</span>)</h2>
+      <table>
+        <thead>
+          <tr><th>이름</th><th>아이디</th><th>역할</th><th>앱 권한</th><th>마지막 로그인</th><th>작업</th></tr>
+        </thead>
+        <tbody id="userRows"></tbody>
+      </table>
+      <div class="empty" id="emptyMsg" style="display:none">사용자가 없습니다.</div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ 메일 발송 ══════════════════ -->
+  <section class="tab-panel" id="tab-mail">
+    <div class="panel">
+      <h2>✉️ SMTP 설정 상태</h2>
+      <p class="hint">SMTP 자격 증명은 보안을 위해 환경변수(SMTP_HOST/PORT/USER/PASS/FROM)로만 설정합니다. 이 화면에서는 편집할 수 없습니다.</p>
+      <div class="stat-grid" id="mailConfigGrid"></div>
+    </div>
+
+    <div class="panel">
+      <h2>🧪 테스트 메일 발송</h2>
+      <form class="inline" id="mailTestForm">
+        <div class="field"><label>받는 사람</label><input id="mt-to" type="email" required placeholder="you@example.com"></div>
+        <button type="submit" class="primary">발송</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>최근 발송 로그</h2>
+      <table>
+        <thead><tr><th>시각</th><th>받는사람</th><th>제목</th><th>상태</th><th>보낸 앱</th><th>오류</th></tr></thead>
+        <tbody id="mailLogRows"></tbody>
+      </table>
+      <div class="empty" id="mailLogEmpty" style="display:none">발송 이력이 없습니다.</div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ 배치잡 ══════════════════ -->
+  <section class="tab-panel" id="tab-batch">
+    <div class="panel">
+      <h2>⏱ 등록된 배치잡</h2>
+      <p class="hint"><code class="mono">core/jobs/*.js</code> 를 자동 스캔해 등록됩니다. 활성화 스위치는 자동 스케줄 실행 여부만 제어하며, "지금 실행"은 항상 동작합니다.</p>
+      <table>
+        <thead><tr><th>이름</th><th>스케줄(cron)</th><th>마지막 실행</th><th>결과</th><th>활성화</th><th>작업</th></tr></thead>
+        <tbody id="batchJobRows"></tbody>
+      </table>
+      <div class="empty" id="batchJobEmpty" style="display:none">등록된 배치잡이 없습니다.</div>
+    </div>
+
+    <div class="panel">
+      <h2>최근 실행 로그</h2>
+      <table>
+        <thead><tr><th>시각</th><th>잡</th><th>상태</th><th>소요시간</th><th>요약/오류</th></tr></thead>
+        <tbody id="batchLogRows"></tbody>
+      </table>
+      <div class="empty" id="batchLogEmpty" style="display:none">실행 이력이 없습니다.</div>
+    </div>
+  </section>
+
+  <!-- ══════════════════ 시스템 점검 ══════════════════ -->
+  <section class="tab-panel" id="tab-system">
+    <div class="panel">
+      <h2>🩺 로그인 · 권한 제어 점검</h2>
+      <p class="hint">플랫폼 통합 인증(core/auth.js) 관련 상태를 점검합니다.</p>
+      <div class="check-list" id="systemChecks"></div>
+    </div>
+  </section>
 
   <!-- 권한 편집 모달 -->
   <div class="modal-overlay" id="appsModal">
@@ -147,6 +260,7 @@
     let allApps = [];
     let users = [];
     let editingUserId = null;
+    const loadedTabs = new Set(['users']);
 
     function toast(msg, isErr) {
       const t = document.getElementById('toast');
@@ -170,6 +284,28 @@
       return el.innerHTML;
     }
 
+    function fmtDate(v) {
+      return v ? new Date(v).toLocaleString('ko-KR') : '-';
+    }
+
+    /* ── 탭 전환 ── */
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const key = btn.dataset.tab;
+        document.getElementById('tab-' + key).classList.add('active');
+        if (!loadedTabs.has(key)) {
+          loadedTabs.add(key);
+          if (key === 'mail') loadMail();
+          if (key === 'batch') loadBatch();
+          if (key === 'system') loadSystem();
+        }
+      });
+    });
+
+    /* ══════════════════ 사용자 관리 ══════════════════ */
     function appsPickerHtml(idPrefix, checkedSet) {
       const items = allApps.map(a => `<label><input type="checkbox" value="${esc(a.prefix)}" ${checkedSet.has(a.prefix) ? 'checked' : ''}> ${esc(a.icon || '📦')} ${esc(a.name)}</label>`).join('');
       const wildcard = `<label style="border-color:#e3b341"><input type="checkbox" value="*" ${checkedSet.has('*') ? 'checked' : ''}> 🌐 전체 공개(모든 앱)</label>`;
@@ -206,7 +342,7 @@
           <td>${esc(u.loginId)}</td>
           <td>${roleBadge}${inactiveBadge}</td>
           <td><div class="apps-cell">${apps}</div></td>
-          <td style="color:#888;font-size:0.78rem">${u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('ko-KR') : '-'}</td>
+          <td style="color:#888;font-size:0.78rem">${fmtDate(u.lastLoginAt)}</td>
           <td>
             <div class="row-actions">
               <button onclick="openAppsModal('${u.userId}')">권한</button>
@@ -297,6 +433,140 @@
         await loadAll();
       } catch (e) {
         toast('삭제 실패: ' + e.message, true);
+      }
+    }
+
+    /* ══════════════════ 메일 발송 ══════════════════ */
+    async function loadMail() {
+      try {
+        const cfg = await api('/auth/admin/mail/config');
+        document.getElementById('mailConfigGrid').innerHTML = `
+          <div class="stat-box"><div class="k">설정 상태</div><div class="v">${cfg.configured ? '<span class="badge badge-ok">설정됨</span>' : '<span class="badge badge-err">미설정</span>'}</div></div>
+          <div class="stat-box"><div class="k">HOST</div><div class="v small">${esc(cfg.host || '-')}</div></div>
+          <div class="stat-box"><div class="k">PORT</div><div class="v small">${esc(cfg.port || '587')}</div></div>
+          <div class="stat-box"><div class="k">SECURE</div><div class="v small">${cfg.secure ? 'true' : 'false'}</div></div>
+          <div class="stat-box"><div class="k">FROM</div><div class="v small">${esc(cfg.from || '-')}${cfg.fromExplicit ? '' : ' <span class="badge badge-warn">SMTP_USER 폴백</span>'}</div></div>
+        `;
+        await loadMailLogs();
+      } catch (e) {
+        toast('메일 설정 로드 실패: ' + e.message, true);
+      }
+    }
+
+    async function loadMailLogs() {
+      const logs = await api('/auth/admin/mail/logs?limit=50');
+      const rows = document.getElementById('mailLogRows');
+      document.getElementById('mailLogEmpty').style.display = logs.length ? 'none' : 'block';
+      rows.innerHTML = logs.map(l => `
+        <tr>
+          <td style="color:#888;font-size:0.78rem">${fmtDate(l.created_at)}</td>
+          <td>${esc(l.to_addr)}</td>
+          <td>${esc(l.subject)}</td>
+          <td>${l.status === 'success' ? '<span class="badge badge-ok">성공</span>' : '<span class="badge badge-err">실패</span>'}</td>
+          <td style="color:#888;font-size:0.78rem">${esc(l.app_prefix || '-')}</td>
+          <td style="color:#f85149;font-size:0.78rem">${esc(l.error || '')}</td>
+        </tr>
+      `).join('');
+    }
+
+    document.getElementById('mailTestForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const to = document.getElementById('mt-to').value.trim();
+      try {
+        await api('/auth/admin/mail/test', { method: 'POST', body: JSON.stringify({ to }) });
+        toast(`${to} 로 테스트 메일을 발송했습니다.`);
+        e.target.reset();
+        await loadMailLogs();
+      } catch (err) {
+        toast('발송 실패: ' + err.message, true);
+        await loadMailLogs();
+      }
+    });
+
+    /* ══════════════════ 배치잡 ══════════════════ */
+    async function loadBatch() {
+      await Promise.all([loadBatchJobs(), loadBatchLogs()]);
+    }
+
+    async function loadBatchJobs() {
+      try {
+        const jobs = await api('/auth/admin/batch/jobs');
+        const rows = document.getElementById('batchJobRows');
+        document.getElementById('batchJobEmpty').style.display = jobs.length ? 'none' : 'block';
+        rows.innerHTML = jobs.map(j => {
+          const statusBadge = !j.lastStatus ? '<span style="color:#555;font-size:0.75rem">실행 이력 없음</span>'
+            : j.lastStatus === 'success' ? '<span class="badge badge-ok">성공</span>'
+            : '<span class="badge badge-err">실패</span>';
+          return `<tr>
+            <td>${esc(j.name)}${j.registered ? '' : ' <span class="badge badge-warn">코드 없음</span>'}</td>
+            <td><code class="mono">${esc(j.schedule)}</code></td>
+            <td style="color:#888;font-size:0.78rem">${fmtDate(j.lastRunAt)}</td>
+            <td>${statusBadge}</td>
+            <td>
+              <label class="toggle">
+                <input type="checkbox" ${j.enabled ? 'checked' : ''} onchange="toggleBatchJob('${j.id}', this.checked)">
+                <span class="slider"></span>
+              </label>
+            </td>
+            <td><button onclick="runBatchJob('${j.id}', this)" ${j.running ? 'disabled' : ''}>${j.running ? '실행 중...' : '지금 실행'}</button></td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        toast('배치잡 목록 로드 실패: ' + e.message, true);
+      }
+    }
+
+    async function loadBatchLogs() {
+      const logs = await api('/auth/admin/batch/logs?limit=50');
+      const rows = document.getElementById('batchLogRows');
+      document.getElementById('batchLogEmpty').style.display = logs.length ? 'none' : 'block';
+      rows.innerHTML = logs.map(l => `
+        <tr>
+          <td style="color:#888;font-size:0.78rem">${fmtDate(l.started_at)}</td>
+          <td>${esc(l.job_id)}</td>
+          <td>${l.status === 'success' ? '<span class="badge badge-ok">성공</span>' : '<span class="badge badge-err">실패</span>'}</td>
+          <td style="color:#888;font-size:0.78rem">${l.duration_ms != null ? l.duration_ms + 'ms' : '-'}</td>
+          <td style="font-size:0.78rem;${l.error ? 'color:#f85149' : 'color:#aaa'}">${esc(l.error || l.summary || '')}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function toggleBatchJob(id, enabled) {
+      try {
+        await api(`/auth/admin/batch/jobs/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) });
+        toast(enabled ? '배치잡이 활성화되었습니다.' : '배치잡이 비활성화되었습니다.');
+      } catch (e) {
+        toast('변경 실패: ' + e.message, true);
+        await loadBatchJobs();
+      }
+    }
+
+    async function runBatchJob(id, btn) {
+      btn.disabled = true;
+      btn.textContent = '실행 중...';
+      try {
+        const res = await api(`/auth/admin/batch/jobs/${id}/run`, { method: 'POST' });
+        toast(`실행 완료: ${res.summary || 'OK'}`);
+      } catch (e) {
+        toast('실행 실패: ' + e.message, true);
+      } finally {
+        await loadBatch();
+      }
+    }
+
+    /* ══════════════════ 시스템 점검 ══════════════════ */
+    async function loadSystem() {
+      try {
+        const { checks } = await api('/auth/admin/system/check');
+        document.getElementById('systemChecks').innerHTML = checks.map(c => `
+          <div class="check-item">
+            <span class="icon">${c.ok ? '✅' : '⚠️'}</span>
+            <span class="label">${esc(c.label)}</span>
+            <span class="detail">${esc(c.detail)}</span>
+          </div>
+        `).join('');
+      } catch (e) {
+        toast('시스템 점검 로드 실패: ' + e.message, true);
       }
     }
 
