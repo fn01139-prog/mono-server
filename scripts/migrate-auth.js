@@ -186,11 +186,24 @@ async function repointCampItemsFK(client) {
   console.log('[migrate-auth] camp_items.user_id FK를 platform_users로 재지정함');
 }
 
+/** notify_recipients가 비어있으면 relation='self' 수신자 1명을 자동 생성 (알림 채널을 여기 연결) */
+async function ensureSelfRecipient(client) {
+  const { rows } = await client.query('SELECT COUNT(*)::int AS c FROM notify_recipients');
+  if (rows[0].c > 0) return;
+
+  await client.query(
+    `INSERT INTO notify_recipients (name, relation) VALUES ($1, 'self')`,
+    [PLATFORM_ADMIN_ID]
+  );
+  console.log(`[migrate-auth] notify_recipients 'self' 수신자 자동 생성됨 (name: ${PLATFORM_ADMIN_ID}) — admin 콘솔 알림 탭에서 텔레그램/디스코드 등 채널을 연결하세요`);
+}
+
 async function run(pool) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await ensureAdmin(client);
+    await ensureSelfRecipient(client);
     await migrateCampAccounts(client);
     await repointCampItemsFK(client);
     await backfillCampTripOwners(client);

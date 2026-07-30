@@ -11,6 +11,8 @@ const pool         = require('../shared/db');
 const loader       = require('./loader');
 const batch        = require('./batch');
 const mailer       = require('../shared/mailer');
+const notify       = require('../shared/notify');
+const notifyDb     = require('../shared/notify/db');
 const {
   signToken, setAuthCookie, clearAuthCookie,
   attachUser, requireLogin, requireRole,
@@ -313,7 +315,110 @@ router.get('/admin/system/check', async (req, res) => {
         : `미설정 — SMTP_USER(${mailStatus.from || '-'})로 폴백 중`,
     });
 
+    checks.push({
+      key: 'notify_telegram', label: '텔레그램 봇 토큰 설정', ok: !!process.env.TELEGRAM_BOT_TOKEN,
+      detail: process.env.TELEGRAM_BOT_TOKEN ? '설정됨' : '미설정 (TELEGRAM_BOT_TOKEN) — 텔레그램 채널 발송 불가',
+    });
+    const vapidOk = !!(process.env.VAPID_SUBJECT && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+    checks.push({
+      key: 'notify_webpush', label: '웹푸시 VAPID 키 설정', ok: vapidOk,
+      detail: vapidOk ? '설정됨' : '미설정 (VAPID_*) — 웹푸시 채널 발송 불가',
+    });
+    const { rows: recipientRows } = await pool.query(`SELECT COUNT(*)::int c FROM notify_recipients WHERE is_active`);
+    checks.push({
+      key: 'notify_recipients', label: '알림 수신자 등록 수', ok: recipientRows[0].c > 0,
+      detail: `${recipientRows[0].c}명`,
+    });
+
     res.json({ checks, env: process.env.NODE_ENV || 'development' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── admin: 메신저 알림 (shared/notify/) ─────────────────────────────── */
+router.get('/admin/notify/recipients', async (req, res) => {
+  try {
+    res.json(await notifyDb.listRecipients());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/notify/recipients', async (req, res) => {
+  const { name, relation } = req.body;
+  if (!name?.trim()) return res.status(400).json({ error: '이름을 입력하세요' });
+  try {
+    res.json(await notifyDb.createRecipient(name.trim(), relation));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/admin/notify/recipients/:id', async (req, res) => {
+  try {
+    await notifyDb.updateRecipient(req.params.id, req.body);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/admin/notify/recipients/:id', async (req, res) => {
+  try {
+    await notifyDb.deleteRecipient(req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/admin/notify/recipients/:id/channels', async (req, res) => {
+  try {
+    res.json(await notifyDb.listChannelsForRecipient(req.params.id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/notify/recipients/:id/channels', async (req, res) => {
+  const { type, ...config } = req.body;
+  try {
+    res.json(await notifyDb.addChannel(req.params.id, type, config));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/admin/notify/channels/:type/:id', async (req, res) => {
+  try {
+    await notifyDb.deleteChannel(req.params.type, req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.get('/admin/notify/categories', async (req, res) => {
+  try {
+    res.json(await notifyDb.listCategories());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/admin/notify/recipients/:id/subscriptions', async (req, res) => {
+  try {
+    res.json(await notifyDb.listSubscriptionsForRecipient(req.params.id));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/admin/notify/recipients/:id/subscriptions/:categoryId', async (req, res) => {
+  const { channels, isActive } = req.body;
+  if (!Array.isArray(channels)) return res.status(400).json({ error: 'channels 배열이 필요합니다' });
+  try {
+    res.json(await notifyDb.upsertSubscription(req.params.id, req.params.categoryId, channels, isActive !== false));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/admin/notify/test', async (req, res) => {
+  const { recipientId, channel, title, body } = req.body;
+  if (!recipientId || !channel || !body?.trim()) {
+    return res.status(400).json({ error: 'recipientId, channel, body가 필요합니다' });
+  }
+  try {
+    await notify.sendTest({ recipientId, channel, title, body });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/admin/notify/logs', async (req, res) => {
+  try {
+    res.json(await notify.getLog({ limit: Number(req.query.limit) || 50 }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

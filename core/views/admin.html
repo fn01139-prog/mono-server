@@ -141,6 +141,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="users">👤 사용자 관리</button>
     <button class="tab" data-tab="mail">✉️ 메일 발송</button>
+    <button class="tab" data-tab="notify">🔔 알림</button>
     <button class="tab" data-tab="batch">⏱ 배치잡</button>
     <button class="tab" data-tab="system">🩺 시스템 점검</button>
   </div>
@@ -198,6 +199,94 @@
       <div class="empty" id="mailLogEmpty" style="display:none">발송 이력이 없습니다.</div>
     </div>
   </section>
+
+  <!-- ══════════════════ 알림 (텔레그램/디스코드/ntfy/웹푸시) ══════════════════ -->
+  <section class="tab-panel" id="tab-notify">
+    <div class="panel">
+      <h2>➕ 새 수신자 생성</h2>
+      <p class="hint">알림을 받을 사람(본인/가족/지인)을 먼저 만든 뒤, 채널(텔레그램/디스코드/ntfy/웹푸시)을 연결하세요.</p>
+      <form class="inline" id="notifyRecipientForm">
+        <div class="field"><label>이름</label><input id="nr-name" required></div>
+        <div class="field">
+          <label>관계</label>
+          <select id="nr-relation" style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem;">
+            <option value="self">본인</option>
+            <option value="family">가족</option>
+            <option value="friend">지인</option>
+          </select>
+        </div>
+        <button type="submit" class="primary">생성</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>수신자 목록</h2>
+      <table>
+        <thead><tr><th>이름</th><th>관계</th><th>연결된 채널</th><th>작업</th></tr></thead>
+        <tbody id="notifyRecipientRows"></tbody>
+      </table>
+      <div class="empty" id="notifyRecipientEmpty" style="display:none">수신자가 없습니다.</div>
+    </div>
+
+    <div class="panel">
+      <h2>🧪 테스트 발송</h2>
+      <form class="inline" id="notifyTestForm">
+        <div class="field">
+          <label>수신자</label>
+          <select id="nt-recipient" style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem; min-width:140px;"></select>
+        </div>
+        <div class="field">
+          <label>채널</label>
+          <select id="nt-channel" style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem;">
+            <option value="telegram">텔레그램</option>
+            <option value="discord">디스코드</option>
+            <option value="ntfy">ntfy</option>
+            <option value="webpush">웹푸시</option>
+          </select>
+        </div>
+        <div class="field"><label>제목(선택)</label><input id="nt-title" placeholder="제목"></div>
+        <div class="field" style="flex:1; min-width:200px;"><label>본문</label><input id="nt-body" required placeholder="테스트 메시지입니다"></div>
+        <button type="submit" class="primary">발송</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>최근 발송 로그</h2>
+      <table>
+        <thead><tr><th>시각</th><th>수신자</th><th>카테고리</th><th>채널</th><th>상태</th><th>오류</th></tr></thead>
+        <tbody id="notifyLogRows"></tbody>
+      </table>
+      <div class="empty" id="notifyLogEmpty" style="display:none">발송 이력이 없습니다.</div>
+    </div>
+  </section>
+
+  <!-- 채널 관리 모달 -->
+  <div class="modal-overlay" id="channelsModal">
+    <div class="modal" style="width:440px;">
+      <h3>채널 관리 — <span id="channelsModalName"></span></h3>
+      <div id="channelsModalList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px; max-height:240px; overflow-y:auto;"></div>
+      <form id="addChannelForm" style="display:flex; flex-direction:column; gap:8px;">
+        <select id="ac-type" style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem;">
+          <option value="telegram">텔레그램 (chat_id)</option>
+          <option value="discord">디스코드 (webhook URL)</option>
+          <option value="ntfy">ntfy (topic)</option>
+        </select>
+        <input id="ac-value" placeholder="값 입력" required style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem;">
+        <button type="submit" class="primary">채널 추가</button>
+      </form>
+      <div class="modal-btns"><button onclick="closeChannelsModal()">닫기</button></div>
+    </div>
+  </div>
+
+  <!-- 구독 관리 모달 -->
+  <div class="modal-overlay" id="subsModal">
+    <div class="modal" style="width:440px;">
+      <h3>구독 관리 — <span id="subsModalName"></span></h3>
+      <div id="subsModalList" style="display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto;"></div>
+      <div class="empty" id="subsModalEmpty" style="display:none">아직 등록된 알림 카테고리가 없습니다. 프로젝트가 알림을 처음 보낼 때 자동으로 생깁니다.</div>
+      <div class="modal-btns"><button onclick="closeSubsModal()">닫기</button></div>
+    </div>
+  </div>
 
   <!-- ══════════════════ 배치잡 ══════════════════ -->
   <section class="tab-panel" id="tab-batch">
@@ -299,6 +388,7 @@
         if (!loadedTabs.has(key)) {
           loadedTabs.add(key);
           if (key === 'mail') loadMail();
+          if (key === 'notify') loadNotify();
           if (key === 'batch') loadBatch();
           if (key === 'system') loadSystem();
         }
@@ -481,6 +571,224 @@
         await loadMailLogs();
       }
     });
+
+    /* ══════════════════ 알림 (텔레그램/디스코드/ntfy/웹푸시) ══════════════════ */
+    const CHANNEL_LABEL = { telegram: '텔레그램', discord: '디스코드', ntfy: 'ntfy', webpush: '웹푸시' };
+    let notifyRecipients = [];
+    let notifyCategories = [];
+    let editingRecipientId = null;
+
+    async function loadNotify() {
+      await Promise.all([loadNotifyRecipients(), loadNotifyLogs()]);
+    }
+
+    async function loadNotifyRecipients() {
+      try {
+        notifyRecipients = await api('/auth/admin/notify/recipients');
+        renderNotifyRecipients();
+        const sel = document.getElementById('nt-recipient');
+        sel.innerHTML = notifyRecipients.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+      } catch (e) {
+        toast('수신자 목록 로드 실패: ' + e.message, true);
+      }
+    }
+
+    function relationLabel(rel) {
+      return rel === 'self' ? '본인' : rel === 'family' ? '가족' : '지인';
+    }
+
+    function renderNotifyRecipients() {
+      const rows = document.getElementById('notifyRecipientRows');
+      document.getElementById('notifyRecipientEmpty').style.display = notifyRecipients.length ? 'none' : 'block';
+      rows.innerHTML = notifyRecipients.map(r => {
+        const chips = Object.entries(r.channels || {})
+          .filter(([, c]) => c > 0)
+          .map(([type, c]) => `<span class="app-chip">${CHANNEL_LABEL[type] || type} ${c}</span>`)
+          .join('');
+        return `<tr>
+          <td>${esc(r.name)}</td>
+          <td>${relationLabel(r.relation)}</td>
+          <td><div class="apps-cell">${chips || '<span style="color:#555;font-size:0.75rem">없음</span>'}</div></td>
+          <td>
+            <div class="row-actions">
+              <button onclick="openChannelsModal(${r.id})">채널 관리</button>
+              <button onclick="openSubsModal(${r.id})">구독 관리</button>
+              <button class="danger" onclick="deleteRecipient(${r.id}, '${esc(r.name)}')">삭제</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.getElementById('notifyRecipientForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('nr-name').value.trim();
+      const relation = document.getElementById('nr-relation').value;
+      try {
+        await api('/auth/admin/notify/recipients', { method: 'POST', body: JSON.stringify({ name, relation }) });
+        toast(`${name} 수신자가 생성되었습니다.`);
+        e.target.reset();
+        await loadNotifyRecipients();
+      } catch (err) {
+        toast('생성 실패: ' + err.message, true);
+      }
+    });
+
+    async function deleteRecipient(id, name) {
+      if (!confirm(`"${name}" 수신자를 삭제할까요? 연결된 채널/구독도 함께 삭제됩니다.`)) return;
+      try {
+        await api(`/auth/admin/notify/recipients/${id}`, { method: 'DELETE' });
+        toast(`${name} 수신자가 삭제되었습니다.`);
+        await loadNotifyRecipients();
+      } catch (e) {
+        toast('삭제 실패: ' + e.message, true);
+      }
+    }
+
+    /* ── 채널 관리 모달 ── */
+    async function openChannelsModal(id) {
+      editingRecipientId = id;
+      const r = notifyRecipients.find(x => x.id === id);
+      document.getElementById('channelsModalName').textContent = r ? r.name : '';
+      await renderChannelsModalList();
+      document.getElementById('channelsModal').classList.add('open');
+    }
+    function closeChannelsModal() {
+      document.getElementById('channelsModal').classList.remove('open');
+      editingRecipientId = null;
+    }
+    async function renderChannelsModalList() {
+      const channels = await api(`/auth/admin/notify/recipients/${editingRecipientId}/channels`);
+      const list = document.getElementById('channelsModalList');
+      const items = [];
+      for (const [type, rows] of Object.entries(channels)) {
+        for (const c of rows) {
+          const value = type === 'telegram' ? c.chat_id : type === 'discord' ? c.webhook_url : type === 'ntfy' ? c.topic : c.endpoint;
+          items.push(`<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; padding:6px 10px;">
+            <span style="font-size:0.78rem; color:#aaa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${CHANNEL_LABEL[type] || type}: ${esc(String(value || '').slice(0, 40))}</span>
+            <button class="danger" onclick="deleteChannel('${type}', ${c.id})">삭제</button>
+          </div>`);
+        }
+      }
+      list.innerHTML = items.join('') || '<div style="color:#555;font-size:0.8rem">연결된 채널이 없습니다.</div>';
+    }
+
+    document.getElementById('addChannelForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const type = document.getElementById('ac-type').value;
+      const value = document.getElementById('ac-value').value.trim();
+      if (!value) return;
+      const config = { type };
+      if (type === 'telegram') config.chatId = value;
+      if (type === 'discord') config.webhookUrl = value;
+      if (type === 'ntfy') config.topic = value;
+      try {
+        await api(`/auth/admin/notify/recipients/${editingRecipientId}/channels`, { method: 'POST', body: JSON.stringify(config) });
+        toast('채널이 추가되었습니다.');
+        document.getElementById('ac-value').value = '';
+        await renderChannelsModalList();
+        await loadNotifyRecipients();
+      } catch (err) {
+        toast('추가 실패: ' + err.message, true);
+      }
+    });
+
+    async function deleteChannel(type, id) {
+      try {
+        await api(`/auth/admin/notify/channels/${type}/${id}`, { method: 'DELETE' });
+        toast('채널이 삭제되었습니다.');
+        await renderChannelsModalList();
+        await loadNotifyRecipients();
+      } catch (e) {
+        toast('삭제 실패: ' + e.message, true);
+      }
+    }
+
+    /* ── 구독 관리 모달 ── */
+    async function openSubsModal(id) {
+      editingRecipientId = id;
+      const r = notifyRecipients.find(x => x.id === id);
+      document.getElementById('subsModalName').textContent = r ? r.name : '';
+      try {
+        notifyCategories = await api('/auth/admin/notify/categories');
+        const subs = await api(`/auth/admin/notify/recipients/${id}/subscriptions`);
+        document.getElementById('subsModalEmpty').style.display = notifyCategories.length ? 'none' : 'block';
+        document.getElementById('subsModalList').innerHTML = notifyCategories.map(cat => {
+          const sub = subs.find(s => s.category_id === cat.id);
+          const checkedChannels = new Set(sub?.channels || []);
+          const active = sub ? sub.is_active : false;
+          const channelBoxes = Object.keys(CHANNEL_LABEL).map(ch => `
+            <label style="font-size:0.75rem;"><input type="checkbox" class="sub-ch" value="${ch}" ${checkedChannels.has(ch) ? 'checked' : ''}> ${CHANNEL_LABEL[ch]}</label>
+          `).join(' ');
+          return `<div style="background:#0f0f0f; border:1px solid #2a2a2a; border-radius:8px; padding:10px;" data-category-id="${cat.id}">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <strong style="font-size:0.85rem; color:#fff;">${esc(cat.name)} <span style="color:#666; font-weight:normal;">(${esc(cat.key)})</span></strong>
+              <label style="font-size:0.75rem;"><input type="checkbox" class="sub-active" ${active ? 'checked' : ''}> 구독</label>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">${channelBoxes}</div>
+            <button style="margin-top:8px;" onclick="saveSubscription(${cat.id}, this)">저장</button>
+          </div>`;
+        }).join('');
+      } catch (e) {
+        toast('구독 정보 로드 실패: ' + e.message, true);
+      }
+      document.getElementById('subsModal').classList.add('open');
+    }
+    function closeSubsModal() {
+      document.getElementById('subsModal').classList.remove('open');
+      editingRecipientId = null;
+    }
+    async function saveSubscription(categoryId, btn) {
+      const card = btn.closest('[data-category-id]');
+      const channels = [...card.querySelectorAll('.sub-ch:checked')].map(el => el.value);
+      const isActive = card.querySelector('.sub-active').checked;
+      try {
+        await api(`/auth/admin/notify/recipients/${editingRecipientId}/subscriptions/${categoryId}`, {
+          method: 'PUT', body: JSON.stringify({ channels, isActive }),
+        });
+        toast('구독이 저장되었습니다.');
+      } catch (e) {
+        toast('저장 실패: ' + e.message, true);
+      }
+    }
+
+    /* ── 테스트 발송 ── */
+    document.getElementById('notifyTestForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const recipientId = document.getElementById('nt-recipient').value;
+      const channel = document.getElementById('nt-channel').value;
+      const title = document.getElementById('nt-title').value.trim();
+      const body = document.getElementById('nt-body').value.trim();
+      if (!recipientId) { toast('수신자를 먼저 생성하세요.', true); return; }
+      try {
+        await api('/auth/admin/notify/test', { method: 'POST', body: JSON.stringify({ recipientId, channel, title, body }) });
+        toast('발송되었습니다.');
+        await loadNotifyLogs();
+      } catch (err) {
+        toast('발송 실패: ' + err.message, true);
+        await loadNotifyLogs();
+      }
+    });
+
+    async function loadNotifyLogs() {
+      try {
+        const logs = await api('/auth/admin/notify/logs?limit=50');
+        const rows = document.getElementById('notifyLogRows');
+        document.getElementById('notifyLogEmpty').style.display = logs.length ? 'none' : 'block';
+        rows.innerHTML = logs.map(l => `
+          <tr>
+            <td style="color:#888;font-size:0.78rem">${fmtDate(l.sent_at)}</td>
+            <td>${esc(l.recipient_name || '-')}</td>
+            <td style="color:#888;font-size:0.78rem">${esc(l.category_key || '-')}</td>
+            <td>${CHANNEL_LABEL[l.channel] || esc(l.channel)}</td>
+            <td>${l.status === 'success' ? '<span class="badge badge-ok">성공</span>' : '<span class="badge badge-err">실패</span>'}</td>
+            <td style="color:#f85149;font-size:0.78rem">${esc(l.error_message || '')}</td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        toast('알림 로그 로드 실패: ' + e.message, true);
+      }
+    }
 
     /* ══════════════════ 배치잡 ══════════════════ */
     async function loadBatch() {
