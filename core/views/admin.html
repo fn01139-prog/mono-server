@@ -176,8 +176,8 @@
   <!-- ══════════════════ 메일 발송 ══════════════════ -->
   <section class="tab-panel" id="tab-mail">
     <div class="panel">
-      <h2>✉️ SMTP 설정 상태</h2>
-      <p class="hint">SMTP 자격 증명은 보안을 위해 환경변수(SMTP_HOST/PORT/USER/PASS/FROM)로만 설정합니다. 이 화면에서는 편집할 수 없습니다.</p>
+      <h2>✉️ 메일 발송 설정 상태 (Brevo API)</h2>
+      <p class="hint">Railway 등 일부 호스팅 환경이 아웃바운드 SMTP 포트를 막아둬서 raw SMTP 대신 Brevo HTTP API(443 포트)로 발송합니다. 자격 증명은 보안을 위해 환경변수(BREVO_API_KEY/SMTP_FROM)로만 설정하며, 이 화면에서는 편집할 수 없습니다.</p>
       <div class="stat-grid" id="mailConfigGrid"></div>
     </div>
 
@@ -442,9 +442,8 @@
         const cfg = await api('/auth/admin/mail/config');
         document.getElementById('mailConfigGrid').innerHTML = `
           <div class="stat-box"><div class="k">설정 상태</div><div class="v">${cfg.configured ? '<span class="badge badge-ok">설정됨</span>' : '<span class="badge badge-err">미설정</span>'}</div></div>
-          <div class="stat-box"><div class="k">HOST</div><div class="v small">${esc(cfg.host || '-')}</div></div>
-          <div class="stat-box"><div class="k">PORT</div><div class="v small">${esc(cfg.port || '587')}</div></div>
-          <div class="stat-box"><div class="k">SECURE</div><div class="v small">${cfg.secure ? 'true' : 'false'}</div></div>
+          <div class="stat-box"><div class="k">PROVIDER</div><div class="v small">${esc(cfg.provider || '-')}</div></div>
+          <div class="stat-box"><div class="k">BREVO_API_KEY</div><div class="v small">${cfg.apiKeySet ? '설정됨' : '<span class="badge badge-err">미설정</span>'}</div></div>
           <div class="stat-box"><div class="k">FROM</div><div class="v small">${esc(cfg.from || '-')}${cfg.fromExplicit ? '' : ' <span class="badge badge-warn">SMTP_USER 폴백</span>'}</div></div>
         `;
         await loadMailLogs();

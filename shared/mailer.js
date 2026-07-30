@@ -1,8 +1,12 @@
 /**
  * shared/mailer.js
- * 플랫폼 공통 메일 발송 유틸 — SMTP_* 환경변수 기반.
+ * 플랫폼 공통 메일 발송 유틸 — Brevo(구 Sendinblue) HTTP API 기반.
  * 모든 앱/배치잡이 require해서 재사용하며, 발송 시도는 항상 platform_mail_log에 기록된다.
  * 발신자 주소는 SMTP_FROM 환경변수 하나로 전 프로젝트가 동일하게 사용한다 (프로젝트별 발신자 지정 기능 없음).
+ *
+ * Railway 등 일부 호스팅 환경은 아웃바운드 SMTP 계열 포트(25/465/587/2525)를 막아두는 경우가 있어
+ * (Gmail/Brevo SMTP 전부 connection timeout으로 확인됨) raw SMTP 대신 HTTPS(443)로 통신하는
+ * Brevo REST API로 발송한다. 443은 이 서버가 이미 문제없이 쓰는 포트라 막힐 가능성이 없다.
  *
  * 발송 사용 예:
  *   const { sendMail } = require('../../shared/mailer');
@@ -15,44 +19,12 @@
  */
 
 const express = require('express');
-const net = require('net');
-const dns = require('dns').promises;
-const nodemailer = require('nodemailer');
 const pool = require('./db');
 
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+
 function isConfigured() {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
-}
-
-/**
- * nodemailer(9.x)의 내부 DNS 처리는 A/AAAA 레코드를 모두 조회한 뒤 그 중 하나를 "무작위"로
- * 골라 접속한다. Railway 등 컨테이너 환경은 로컬 인터페이스상 IPv6가 있는 것처럼 보여도
- * 실제 아웃바운드 IPv6 경로가 없는 경우가 많아, 이 무작위 선택이 IPv6를 고르면
- * `connect ENETUNREACH ...:587 - Local (:::0)` 로 실패한다(간헐적으로 재현됨).
- * → 호스트명을 IPv4로 직접 미리 resolve해서 리터럴 IP로 넘기면 nodemailer가 자체 DNS 로직을
- *   완전히 건너뛰므로 이 문제를 원천 차단한다. (A 레코드가 없으면 원래 호스트명으로 폴백)
- */
-async function resolveSmtpHostIPv4(host) {
-  if (!host || net.isIP(host)) return host;
-  try {
-    const addresses = await dns.resolve4(host);
-    if (addresses.length) return addresses[Math.floor(Math.random() * addresses.length)];
-  } catch {
-    // A 레코드가 없거나 조회 실패 — 원래 호스트명으로 폴백 (nodemailer 자체 처리에 맡김)
-  }
-  return host;
-}
-
-async function buildTransporter() {
-  const host = process.env.SMTP_HOST;
-  const resolvedHost = await resolveSmtpHostIPv4(host);
-  return nodemailer.createTransport({
-    host: resolvedHost,
-    servername: host, // 리터럴 IP로 접속해도 TLS SNI/인증서 검증은 원래 호스트명 기준으로 수행
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
+  return !!(process.env.BREVO_API_KEY && (process.env.SMTP_FROM || process.env.SMTP_USER));
 }
 
 /**
@@ -66,9 +38,26 @@ async function sendMail({ to, subject, text, html, appPrefix = null, sentBy = nu
   let errorMsg = null;
 
   try {
-    if (!isConfigured()) throw new Error('SMTP가 설정되지 않았습니다 (SMTP_HOST/SMTP_USER/SMTP_PASS 확인)');
-    const tx = await buildTransporter();
-    await tx.sendMail({ from, to, subject, text, html });
+    if (!isConfigured()) throw new Error('메일 발송이 설정되지 않았습니다 (BREVO_API_KEY/SMTP_FROM 확인)');
+    const res = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'api-key': process.env.BREVO_API_KEY,
+        'content-type': 'application/json',
+        accept: 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { email: from },
+        to: [{ email: to.trim() }],
+        subject: subject.trim(),
+        textContent: text || undefined,
+        htmlContent: html || undefined,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Brevo API ${res.status}: ${body.slice(0, 300)}`);
+    }
   } catch (e) {
     status = 'error';
     errorMsg = e.message;
@@ -87,11 +76,10 @@ async function sendMail({ to, subject, text, html, appPrefix = null, sentBy = nu
 async function getConfigStatus() {
   return {
     configured: isConfigured(),
-    host: process.env.SMTP_HOST || null,
-    port: process.env.SMTP_PORT || null,
-    secure: process.env.SMTP_SECURE === 'true',
+    provider: 'Brevo (HTTP API)',
+    apiKeySet: !!process.env.BREVO_API_KEY,
     from: process.env.SMTP_FROM || process.env.SMTP_USER || null,
-    fromExplicit: !!process.env.SMTP_FROM, // false면 SMTP_USER로 폴백 중이라는 뜻
+    fromExplicit: !!process.env.SMTP_FROM,
   };
 }
 

@@ -303,8 +303,8 @@ router.get('/admin/system/check', async (req, res) => {
 
     const mailStatus = await mailer.getConfigStatus();
     checks.push({
-      key: 'mail_configured', label: 'SMTP 메일 발송 설정', ok: mailStatus.configured,
-      detail: mailStatus.configured ? `${mailStatus.host}:${mailStatus.port || 587}` : '미설정 (SMTP_HOST/USER/PASS)',
+      key: 'mail_configured', label: '메일 발송 설정 (Brevo API)', ok: mailStatus.configured,
+      detail: mailStatus.apiKeySet ? 'BREVO_API_KEY 설정됨' : '미설정 (BREVO_API_KEY)',
     });
     checks.push({
       key: 'mail_from', label: '발신자 주소(SMTP_FROM) 설정', ok: mailStatus.fromExplicit,
