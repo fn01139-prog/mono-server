@@ -309,6 +309,96 @@ CREATE TABLE IF NOT EXISTS platform_batch_log (
   summary      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_platform_batch_log_job ON platform_batch_log(job_id, started_at DESC);
+
+/* ── platform 공통 인프라: 메신저 알림 (shared/notify/) ──────────────────
+ * 텔레그램/디스코드/ntfy/웹푸시로 다중 수신자(본인/가족/지인)에게 알림 발송.
+ * 카테고리(어느 프로젝트의 어떤 알림인지) 단위로 구독을 관리하고 발송 이력을 남긴다.
+ */
+CREATE TABLE IF NOT EXISTS notify_recipients (
+  id          SERIAL       PRIMARY KEY,
+  name        VARCHAR(100) NOT NULL,
+  relation    VARCHAR(20)  NOT NULL DEFAULT 'self', -- 'self' | 'family' | 'friend'
+  is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notify_telegram_channels (
+  id            SERIAL       PRIMARY KEY,
+  recipient_id  INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,
+  chat_id       VARCHAR(50)  NOT NULL UNIQUE,
+  is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notify_discord_channels (
+  id            SERIAL       PRIMARY KEY,
+  recipient_id  INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,
+  webhook_url   TEXT         NOT NULL,
+  is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notify_ntfy_channels (
+  id            SERIAL       PRIMARY KEY,
+  recipient_id  INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,
+  topic         VARCHAR(100) NOT NULL UNIQUE,
+  server        TEXT         NOT NULL DEFAULT 'https://ntfy.sh',
+  is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notify_push_subscriptions (
+  id            SERIAL       PRIMARY KEY,
+  recipient_id  INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,
+  endpoint      TEXT         NOT NULL UNIQUE,
+  p256dh        TEXT         NOT NULL,
+  auth          TEXT         NOT NULL,
+  label         VARCHAR(100),
+  is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  last_sent_at  TIMESTAMPTZ,
+  last_error    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS notify_categories (
+  id          SERIAL       PRIMARY KEY,
+  key         VARCHAR(50)  NOT NULL UNIQUE,  -- 'sap-batch', 'camp-check' 등 — 프로젝트가 정하는 알림 종류 키
+  name        VARCHAR(100) NOT NULL,
+  project     VARCHAR(50),                    -- 어느 프로젝트가 등록했는지 (app_prefix)
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notify_subscriptions (
+  id            SERIAL       PRIMARY KEY,
+  recipient_id  INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,
+  category_id   INTEGER      NOT NULL REFERENCES notify_categories(id) ON DELETE CASCADE,
+  channels      TEXT[]       NOT NULL DEFAULT ARRAY['telegram','discord','ntfy','webpush'],
+  is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+  UNIQUE (recipient_id, category_id)
+);
+
+CREATE TABLE IF NOT EXISTS notify_log (
+  id            SERIAL       PRIMARY KEY,
+  category_id   INTEGER      REFERENCES notify_categories(id) ON DELETE SET NULL,
+  recipient_id  INTEGER      REFERENCES notify_recipients(id) ON DELETE SET NULL,
+  channel       VARCHAR(20)  NOT NULL,
+  title         TEXT,
+  body          TEXT,
+  status        VARCHAR(10)  NOT NULL, -- 'success' | 'fail'
+  error_message TEXT,
+  sent_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_notify_log_sent_at   ON notify_log(sent_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notify_log_recipient ON notify_log(recipient_id);
+CREATE INDEX IF NOT EXISTS idx_notify_log_category  ON notify_log(category_id);
+
+-- 가족/지인 온보딩용 1회성 초대 토큰 (현재는 테이블만 존재 — 초대 링크/딥링크 수신 플로우는 미구현)
+CREATE TABLE IF NOT EXISTS notify_invite_tokens (
+  token         VARCHAR(64)  PRIMARY KEY,
+  recipient_id  INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,
+  expires_at    TIMESTAMPTZ  NOT NULL,
+  used_at       TIMESTAMPTZ
+);
 `;
 
 async function run(pool) {
