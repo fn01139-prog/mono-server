@@ -65,6 +65,18 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 - `ok(res, data, msg)` — standard `{ success: true, data, message }` response
 - `fail(res, msg, status)` — standard `{ success: false, message }` error response
 
+### 프로젝트가 바로 갖다 쓸 수 있는 플랫폼 공용 기능
+
+새 프로젝트를 만들 때 아래 기능들은 직접 구현하지 말고 재사용할 것 — 전부 DB 연결/로깅/admin 콘솔 관리 화면까지 이미 갖춰져 있다. 각 기능의 자세한 사용법은 아래 "플랫폼 공통 인프라" 섹션 참고.
+
+| 기능 | require 경로 | 한 줄 사용법 |
+|---|---|---|
+| 메일 발송 | `shared/mailer.js` | `await require('../../shared/mailer').sendMail({ to, subject, text, appPrefix: '/myapp' })` |
+| 메신저 알림 (텔레그램/디스코드/ntfy/웹푸시) | `shared/notify/` | `const notify = require('../../shared/notify'); await notify.registerCategory('my-cat', '설명', '/myapp'); await notify.send({ category: 'my-cat', title, body });` |
+| 배치잡(정기 실행 작업) | `core/jobs/<name>.js` | 이 폴더에 `{ id, name, schedule, description, run(pool) }`를 export하는 파일 하나 추가하면 서버 재시작 시 자동 등록·스케줄링됨 (프로젝트 코드에서 직접 호출하는 게 아니라 파일을 추가하는 방식) |
+
+이 기능들은 `projects/_template/index.js`에도 예시 주석으로 남아있으니 새 프로젝트를 템플릿에서 복사해 시작하면 바로 참고할 수 있다.
+
 ### Active Projects
 
 | Prefix | Description | Notes |
