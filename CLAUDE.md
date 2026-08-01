@@ -152,7 +152,7 @@ customRoutes: [
   ```
 - 채널 어댑터는 플러그인 구조: `shared/notify/channels/<name>.js`에 `{ name, send(config, {title, body, url}) }` export → `shared/notify/index.js`의 `channels` 레지스트리와 `shared/notify/db.js`의 `CHANNEL_TABLES`, DB 마이그레이션에 테이블 추가
 - 텔레그램은 `TELEGRAM_BOT_TOKEN` 환경변수(전역), 디스코드는 수신자별 webhook URL을 그대로 저장(전역 설정 불필요), ntfy는 기본 공개 서버 사용, 웹푸시는 `VAPID_SUBJECT`/`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` 필요
-- **웹푸시는 발송 어댑터만 구현되어 있고 브라우저 구독 플로우(서비스워커·구독 버튼)는 아직 없음** — `notify_push_subscriptions`에 구독을 채워 넣는 프론트엔드 작업 필요
+- **웹푸시 구독**: `shared/public/sw.js`(서비스워커, `GET /sw.js`로 루트 경로 서빙 — 스코프가 사이트 전체를 덮으려면 필수)와 admin 콘솔 알림 탭의 "이 브라우저를 웹푸시로 구독" 버튼으로 브라우저가 직접 구독해서 `notify_push_subscriptions`에 등록됨. VAPID public key는 `GET /auth/admin/notify/vapid-public-key`로 노출(private key만 비밀)
 - **카카오톡은 미구현** — "나에게 보내기" API는 사용자별 OAuth 토큰 관리가 필요해 범위가 커서 보류
 - 수신자/채널/구독 관리는 전부 admin 콘솔(알림 탭)에서 수동으로 함 — 가족/지인이 스스로 초대 링크로 연결하는 온보딩 플로우(`notify_invite_tokens` 테이블은 존재하나 딥링크/웹훅 수신 로직 미구현)는 다음 단계
 - 모든 발송 시도(성공/실패)는 `notify_log`에 기록됨
@@ -217,7 +217,7 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `BREVO_API_KEY` | (없음) | 플랫폼 공통 메일 발송(`shared/mailer.js`)용 Brevo API 키. 미설정 시 발송 시도는 실패로 로그만 남음 |
 | `SMTP_FROM` | `SMTP_USER` 값 | 발신자 주소 — Brevo Senders에 인증된 주소여야 함 (변수명은 과거 SMTP 시절 그대로 유지) |
 | `TELEGRAM_BOT_TOKEN` | (없음) | 플랫폼 공통 메신저 알림(`shared/notify/`)용 텔레그램 봇 토큰. 미설정 시 텔레그램 채널만 발송 실패 |
-| `VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | (없음) | 웹푸시 채널용 VAPID 키 (`node -e "console.log(require('web-push').generateVAPIDKeys())"`로 생성). 브라우저 구독 UI가 아직 없어 당장은 미사용 |
+| `VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | (없음) | 웹푸시 채널용 VAPID 키 (`node -e "console.log(require('web-push').generateVAPIDKeys())"`로 생성). admin 콘솔 알림 탭에서 브라우저 구독 가능 |
 
 ### Deployment
 

@@ -45,6 +45,12 @@ app.get('/admin', requireLogin, requireRole('admin'), (req, res) => {
 /* ── 공통 클라이언트 자산 (401 리다이렉트 가드 등) ── */
 app.use('/shared-assets', express.static(path.join(__dirname, 'shared/public')));
 
+/* ── 웹푸시 서비스워커: 스코프가 사이트 전체를 덮으려면 루트 경로(/sw.js)로 서빙해야 함 ── */
+app.get('/sw.js', (req, res) => {
+  res.type('application/javascript');
+  res.sendFile(path.join(__dirname, 'shared/public/sw.js'));
+});
+
 /* ── 프로젝트 자동 로딩 ── */
 loader.mount(app);
 

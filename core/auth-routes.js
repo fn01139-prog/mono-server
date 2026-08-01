@@ -389,6 +389,11 @@ router.get('/admin/notify/categories', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// VAPID public key는 브라우저의 pushManager.subscribe()에 넘겨야 해서 공개해도 안전함 (private key만 비밀)
+router.get('/admin/notify/vapid-public-key', (req, res) => {
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || null });
+});
+
 router.get('/admin/notify/recipients/:id/subscriptions', async (req, res) => {
   try {
     res.json(await notifyDb.listSubscriptionsForRecipient(req.params.id));

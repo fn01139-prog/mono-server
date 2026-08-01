@@ -229,6 +229,19 @@
     </div>
 
     <div class="panel">
+      <h2>🖥️ 이 브라우저를 웹푸시로 구독</h2>
+      <p class="hint">VAPID_SUBJECT/VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY 환경변수가 설정되어 있어야 합니다(시스템 점검 탭 참고). 구독 후 아래 테스트 발송에서 채널을 "웹푸시"로 선택하면 실제 브라우저 알림으로 도착합니다.</p>
+      <form class="inline" id="webpushSubscribeForm">
+        <div class="field">
+          <label>수신자</label>
+          <select id="wp-recipient" style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem; min-width:140px;"></select>
+        </div>
+        <button type="submit" class="primary">이 브라우저 구독하기</button>
+        <span id="webpushStatus" style="font-size:0.78rem; color:#888;"></span>
+      </form>
+    </div>
+
+    <div class="panel">
       <h2>🧪 테스트 발송</h2>
       <form class="inline" id="notifyTestForm">
         <div class="field">
@@ -586,8 +599,9 @@
       try {
         notifyRecipients = await api('/auth/admin/notify/recipients');
         renderNotifyRecipients();
-        const sel = document.getElementById('nt-recipient');
-        sel.innerHTML = notifyRecipients.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+        const optsHtml = notifyRecipients.map(r => `<option value="${r.id}">${esc(r.name)}</option>`).join('');
+        document.getElementById('nt-recipient').innerHTML = optsHtml;
+        document.getElementById('wp-recipient').innerHTML = optsHtml;
       } catch (e) {
         toast('수신자 목록 로드 실패: ' + e.message, true);
       }
@@ -751,6 +765,71 @@
         toast('저장 실패: ' + e.message, true);
       }
     }
+
+    /* ── 웹푸시: 이 브라우저 구독 ── */
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const raw = atob(base64);
+      return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+    }
+
+    document.getElementById('webpushSubscribeForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const status = document.getElementById('webpushStatus');
+      const recipientId = document.getElementById('wp-recipient').value;
+      if (!recipientId) { toast('수신자를 먼저 생성하세요.', true); return; }
+
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        status.textContent = '이 브라우저는 웹푸시를 지원하지 않습니다.';
+        return;
+      }
+
+      status.textContent = '구독 중...';
+      try {
+        const { publicKey } = await api('/auth/admin/notify/vapid-public-key');
+        if (!publicKey) throw new Error('서버에 VAPID_PUBLIC_KEY가 설정되어 있지 않습니다.');
+
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') throw new Error('알림 권한이 거부되었습니다.');
+
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          // 브라우저가 푸시 서비스(FCM 등)에 등록하는 과정이라 네트워크 상황에 따라 오래 걸리거나
+          // 막힐 수 있음 — 무한정 "구독 중..."으로 걸려있지 않도록 타임아웃을 둔다.
+          const subscribePromise = reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(publicKey),
+          });
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('구독 요청이 시간 초과됐습니다 (네트워크에서 푸시 서비스 접속이 막혀있을 수 있음)')), 15000)
+          );
+          sub = await Promise.race([subscribePromise, timeoutPromise]);
+        }
+        const subJson = sub.toJSON();
+
+        await api(`/auth/admin/notify/recipients/${recipientId}/channels`, {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'webpush',
+            endpoint: subJson.endpoint,
+            p256dh: subJson.keys.p256dh,
+            auth: subJson.keys.auth,
+            label: navigator.userAgent.slice(0, 60),
+          }),
+        });
+
+        status.textContent = '구독 완료 — 아래 테스트 발송에서 웹푸시로 보내보세요.';
+        toast('이 브라우저가 웹푸시 채널로 등록되었습니다.');
+        await loadNotifyRecipients();
+      } catch (err) {
+        status.textContent = '';
+        toast('구독 실패: ' + err.message, true);
+      }
+    });
 
     /* ── 테스트 발송 ── */
     document.getElementById('notifyTestForm').addEventListener('submit', async (e) => {
