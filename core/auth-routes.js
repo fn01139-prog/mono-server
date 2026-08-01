@@ -13,6 +13,7 @@ const batch        = require('./batch');
 const mailer       = require('../shared/mailer');
 const notify       = require('../shared/notify');
 const notifyDb     = require('../shared/notify/db');
+const { isValidP256PublicKey } = require('../shared/notify/channels/webpush');
 const {
   signToken, setAuthCookie, clearAuthCookie,
   attachUser, requireLogin, requireRole,
@@ -319,10 +320,15 @@ router.get('/admin/system/check', async (req, res) => {
       key: 'notify_telegram', label: '텔레그램 봇 토큰 설정', ok: !!process.env.TELEGRAM_BOT_TOKEN,
       detail: process.env.TELEGRAM_BOT_TOKEN ? '설정됨' : '미설정 (TELEGRAM_BOT_TOKEN) — 텔레그램 채널 발송 불가',
     });
-    const vapidOk = !!(process.env.VAPID_SUBJECT && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+    const vapidPresent = !!(process.env.VAPID_SUBJECT && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+    const vapidKeyValid = vapidPresent && isValidP256PublicKey(process.env.VAPID_PUBLIC_KEY);
     checks.push({
-      key: 'notify_webpush', label: '웹푸시 VAPID 키 설정', ok: vapidOk,
-      detail: vapidOk ? '설정됨' : '미설정 (VAPID_*) — 웹푸시 채널 발송 불가',
+      key: 'notify_webpush', label: '웹푸시 VAPID 키 설정', ok: vapidPresent && vapidKeyValid,
+      detail: !vapidPresent
+        ? '미설정 (VAPID_*) — 웹푸시 채널 발송 불가'
+        : vapidKeyValid
+          ? '설정됨'
+          : 'VAPID_PUBLIC_KEY가 유효한 P-256 공개키가 아님 — 복사 과정에서 손상되었을 수 있음, 재발급 필요',
     });
     const { rows: recipientRows } = await pool.query(`SELECT COUNT(*)::int c FROM notify_recipients WHERE is_active`);
     checks.push({
