@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>내 알림 설정 · Yu's App Hub</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0;
+    padding: 32px 40px 60px;
+  }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+  h1 { font-size: 1.5rem; color: #fff; }
+  a.back { color: #4a9eff; text-decoration: none; font-size: 0.85rem; }
+  a.back:hover { text-decoration: underline; }
+
+  .panel {
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
+    padding: 20px; margin-bottom: 24px;
+  }
+  .panel h2 { font-size: 1rem; color: #fff; margin-bottom: 14px; }
+  .panel p.hint { color: #888; font-size: 0.8rem; margin-bottom: 14px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; }
+  th { color: #888; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem;
+    font-weight: 600;
+  }
+  .badge-ok { background: rgba(63,185,80,.12); border: 1px solid rgba(63,185,80,.35); color: #3fb950; }
+  .badge-err { background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); color: #f85149; }
+
+  button {
+    background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+    padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;
+  }
+  button:hover { border-color: #4a9eff; color: #4a9eff; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:disabled:hover { border-color: #30363d; color: #c9d1d9; }
+  button.primary { background: #4a9eff; border-color: #4a9eff; color: #fff; }
+  button.primary:hover { background: #3a8eef; }
+  button.danger:hover { border-color: #f85149; color: #f85149; }
+
+  form.inline { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 0.75rem; color: #888; }
+  .field input, .field select {
+    padding: 7px 10px; background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 6px;
+    color: #e0e0e0; font-size: 0.85rem; min-width: 140px;
+  }
+  .field input:focus, .field select:focus { outline: none; border-color: #4a9eff; }
+
+  .channel-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px;
+  }
+  .channel-row .label { font-size: 0.82rem; color: #ccc; }
+  .channel-row .value { font-size: 0.78rem; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px; }
+
+  .category-card {
+    background: #0f0f0f; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px; margin-bottom: 10px;
+  }
+  .category-card .hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .category-card .hd strong { font-size: 0.88rem; color: #fff; }
+  .category-card .hd span.key { color: #666; font-weight: normal; font-size: 0.78rem; }
+  .category-card .channels { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .category-card label.ch-opt { font-size: 0.78rem; color: #ccc; display: flex; align-items: center; gap: 4px; }
+  .category-card label.ch-opt.disabled { color: #444; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #21262d; border: 1px solid #30363d; color: #e0e0e0;
+    padding: 10px 18px; border-radius: 8px; font-size: 0.85rem; display: none; z-index: 200;
+  }
+  .toast.err { border-color: #f85149; color: #f85149; }
+  .empty { color: #666; font-size: 0.85rem; padding: 12px 0; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>🔔 내 알림 설정</h1>
+    <a class="back" href="/">← 허브로 돌아가기</a>
+  </div>
+
+  <div class="panel">
+    <h2>내 채널</h2>
+    <p class="hint">텔레그램/디스코드/ntfy는 값을 직접 입력하고, 웹푸시는 이 브라우저를 바로 구독하면 됩니다.</p>
+    <div id="myChannelList" style="margin-bottom:14px;"></div>
+    <form class="inline" id="addChannelForm">
+      <div class="field">
+        <label>채널</label>
+        <select id="ac-type">
+          <option value="telegram">텔레그램 (chat_id)</option>
+          <option value="discord">디스코드 (webhook URL)</option>
+          <option value="ntfy">ntfy (topic)</option>
+        </select>
+      </div>
+      <div class="field" style="flex:1; min-width:220px;"><label>값</label><input id="ac-value" required placeholder="값 입력"></div>
+      <button type="submit" class="primary">추가</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>🖥️ 이 브라우저를 웹푸시로 구독</h2>
+    <p class="hint">관리자가 웹푸시를 설정해뒀다면(VAPID 키), 아래 버튼으로 이 브라우저에서 바로 알림을 받을 수 있습니다.</p>
+    <button id="subscribeBtn" class="primary">이 브라우저 구독하기</button>
+    <span id="webpushStatus" style="font-size:0.78rem; color:#888; margin-left:8px;"></span>
+  </div>
+
+  <div class="panel">
+    <h2>알림 카테고리 구독</h2>
+    <p class="hint">어떤 프로젝트가 알림을 처음 보낼 때 카테고리가 자동으로 생깁니다. 받고 싶은 채널을 체크하고 저장하세요 (연결 안 한 채널은 선택할 수 없음).</p>
+    <div id="categoryList"></div>
+    <div class="empty" id="categoryEmpty" style="display:none">아직 등록된 알림 카테고리가 없습니다. 프로젝트가 알림을 처음 보낼 때 자동으로 생깁니다.</div>
+  </div>
+
+  <div class="panel">
+    <h2>🧪 테스트 발송</h2>
+    <form class="inline" id="testForm">
+      <div class="field">
+        <label>채널</label>
+        <select id="test-channel"></select>
+      </div>
+      <div class="field"><label>제목(선택)</label><input id="test-title" placeholder="제목"></div>
+      <div class="field" style="flex:1; min-width:200px;"><label>본문</label><input id="test-body" required placeholder="테스트 메시지입니다"></div>
+      <button type="submit" class="primary">발송</button>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>최근 발송 로그</h2>
+    <table>
+      <thead><tr><th>시각</th><th>카테고리</th><th>채널</th><th>상태</th><th>오류</th></tr></thead>
+      <tbody id="logRows"></tbody>
+    </table>
+    <div class="empty" id="logEmpty" style="display:none">발송 이력이 없습니다.</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const CHANNEL_LABEL = { telegram: '텔레그램', discord: '디스코드', ntfy: 'ntfy', webpush: '웹푸시' };
+    let myRecipient = null;
+    let myChannels = {};
+    let mySubscriptions = [];
+    let categories = [];
+
+    function toast(msg, isErr) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast' + (isErr ? ' err' : '');
+      t.style.display = 'block';
+      clearTimeout(t._h);
+      t._h = setTimeout(() => { t.style.display = 'none'; }, 2500);
+    }
+
+    async function api(url, opts) {
+      const res = await fetch(url, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      return data;
+    }
+
+    function esc(s) {
+      const el = document.createElement('div');
+      el.textContent = s == null ? '' : String(s);
+      return el.innerHTML;
+    }
+    function fmtDate(v) { return v ? new Date(v).toLocaleString('ko-KR') : '-'; }
+
+    /* ── 초기 로드 ── */
+    async function loadAll() {
+      try {
+        const me = await api('/auth/notify/me');
+        myRecipient = me.recipient;
+        myChannels = me.channels;
+        mySubscriptions = me.subscriptions;
+        renderMyChannels();
+        renderTestChannelOptions();
+
+        categories = await api('/auth/notify/categories');
+        renderCategories();
+
+        await loadLogs();
+      } catch (e) {
+        toast('로드 실패: ' + e.message, true);
+      }
+    }
+
+    function connectedTypes() {
+      return Object.entries(myChannels).filter(([, rows]) => rows.length > 0).map(([type]) => type);
+    }
+
+    function renderMyChannels() {
+      const list = document.getElementById('myChannelList');
+      const items = [];
+      for (const [type, rows] of Object.entries(myChannels)) {
+        for (const c of rows) {
+          const value = type === 'telegram' ? c.chat_id : type === 'discord' ? c.webhook_url : type === 'ntfy' ? c.topic : c.endpoint;
+          items.push(`<div class="channel-row">
+            <div><span class="label">${CHANNEL_LABEL[type]}</span> <span class="value">${esc(String(value || '').slice(0, 50))}</span></div>
+            <button class="danger" onclick="deleteMyChannel('${type}', ${c.id})">삭제</button>
+          </div>`);
+        }
+      }
+      list.innerHTML = items.join('') || '<div class="empty">연결된 채널이 없습니다. 아래에서 추가하세요.</div>';
+    }
+
+    document.getElementById('addChannelForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const type = document.getElementById('ac-type').value;
+      const value = document.getElementById('ac-value').value.trim();
+      if (!value) return;
+      const config = { type };
+      if (type === 'telegram') config.chatId = value;
+      if (type === 'discord') config.webhookUrl = value;
+      if (type === 'ntfy') config.topic = value;
+      try {
+        await api('/auth/notify/channels', { method: 'POST', body: JSON.stringify(config) });
+        toast('채널이 추가되었습니다.');
+        document.getElementById('ac-value').value = '';
+        await loadAll();
+      } catch (err) {
+        toast('추가 실패: ' + err.message, true);
+      }
+    });
+
+    async function deleteMyChannel(type, id) {
+      try {
+        await api(`/auth/notify/channels/${type}/${id}`, { method: 'DELETE' });
+        toast('채널이 삭제되었습니다.');
+        await loadAll();
+      } catch (e) {
+        toast('삭제 실패: ' + e.message, true);
+      }
+    }
+
+    /* ── 웹푸시 구독 ── */
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const raw = atob(base64);
+      return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+    }
+
+    document.getElementById('subscribeBtn').addEventListener('click', async () => {
+      const status = document.getElementById('webpushStatus');
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        status.textContent = '이 브라우저는 웹푸시를 지원하지 않습니다.';
+        return;
+      }
+      status.textContent = '구독 중...';
+      try {
+        const { publicKey } = await api('/auth/notify/vapid-public-key');
+        if (!publicKey) throw new Error('관리자가 아직 웹푸시(VAPID 키)를 설정하지 않았습니다.');
+
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') throw new Error('알림 권한이 거부되었습니다.');
+
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) await existing.unsubscribe();
+
+        const subscribePromise = reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('구독 요청이 시간 초과됐습니다 (네트워크에서 푸시 서비스 접속이 막혀있을 수 있음)')), 15000)
+        );
+        const sub = await Promise.race([subscribePromise, timeoutPromise]);
+        const subJson = sub.toJSON();
+
+        await api('/auth/notify/channels', {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'webpush',
+            endpoint: subJson.endpoint,
+            p256dh: subJson.keys.p256dh,
+            auth: subJson.keys.auth,
+            label: navigator.userAgent.slice(0, 60),
+          }),
+        });
+
+        status.textContent = '구독 완료!';
+        toast('이 브라우저가 웹푸시 채널로 등록되었습니다.');
+        await loadAll();
+      } catch (err) {
+        status.textContent = '';
+        toast('구독 실패: ' + err.message, true);
+      }
+    });
+
+    /* ── 카테고리 구독 ── */
+    function renderCategories() {
+      document.getElementById('categoryEmpty').style.display = categories.length ? 'none' : 'block';
+      const connected = new Set(connectedTypes());
+      document.getElementById('categoryList').innerHTML = categories.map(cat => {
+        const sub = mySubscriptions.find(s => s.category_id === cat.id);
+        const checkedChannels = new Set(sub?.channels || []);
+        const active = sub ? sub.is_active : false;
+        const channelBoxes = Object.keys(CHANNEL_LABEL).map(ch => {
+          const has = connected.has(ch);
+          return `<label class="ch-opt${has ? '' : ' disabled'}">
+            <input type="checkbox" class="sub-ch" value="${ch}" ${checkedChannels.has(ch) ? 'checked' : ''} ${has ? '' : 'disabled'}>
+            ${CHANNEL_LABEL[ch]}${has ? '' : ' (미연결)'}
+          </label>`;
+        }).join('');
+        return `<div class="category-card" data-category-id="${cat.id}">
+          <div class="hd">
+            <strong>${esc(cat.name)} <span class="key">(${esc(cat.key)})</span></strong>
+            <label class="ch-opt"><input type="checkbox" class="sub-active" ${active ? 'checked' : ''}> 구독</label>
+          </div>
+          <div class="channels">${channelBoxes}</div>
+          <button onclick="saveSubscription(${cat.id}, this)">저장</button>
+        </div>`;
+      }).join('');
+    }
+
+    async function saveSubscription(categoryId, btn) {
+      const card = btn.closest('[data-category-id]');
+      const channels = [...card.querySelectorAll('.sub-ch:checked:not(:disabled)')].map(el => el.value);
+      const isActive = card.querySelector('.sub-active').checked;
+      try {
+        await api(`/auth/notify/subscriptions/${categoryId}`, { method: 'PUT', body: JSON.stringify({ channels, isActive }) });
+        toast('구독이 저장되었습니다.');
+        const me = await api('/auth/notify/me');
+        mySubscriptions = me.subscriptions;
+      } catch (e) {
+        toast('저장 실패: ' + e.message, true);
+      }
+    }
+
+    /* ── 테스트 발송 ── */
+    function renderTestChannelOptions() {
+      const types = connectedTypes();
+      const sel = document.getElementById('test-channel');
+      sel.innerHTML = types.length
+        ? types.map(t => `<option value="${t}">${CHANNEL_LABEL[t]}</option>`).join('')
+        : '<option value="">연결된 채널 없음</option>';
+    }
+
+    document.getElementById('testForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const channel = document.getElementById('test-channel').value;
+      const title = document.getElementById('test-title').value.trim();
+      const body = document.getElementById('test-body').value.trim();
+      if (!channel) { toast('먼저 채널을 하나 연결하세요.', true); return; }
+      try {
+        const res = await api('/auth/notify/test', { method: 'POST', body: JSON.stringify({ channel, title, body }) });
+        const detail = res.total > 1 ? ` (${res.sent}/${res.total}개 기기 성공)` : '';
+        toast('발송되었습니다.' + detail, res.failed > 0);
+        await loadLogs();
+      } catch (err) {
+        toast('발송 실패: ' + err.message, true);
+        await loadLogs();
+      }
+    });
+
+    /* ── 로그 ── */
+    async function loadLogs() {
+      const logs = await api('/auth/notify/logs?limit=30');
+      const rows = document.getElementById('logRows');
+      document.getElementById('logEmpty').style.display = logs.length ? 'none' : 'block';
+      rows.innerHTML = logs.map(l => `
+        <tr>
+          <td style="color:#888;font-size:0.78rem">${fmtDate(l.sent_at)}</td>
+          <td style="color:#888;font-size:0.78rem">${esc(l.category_key || '-')}</td>
+          <td>${CHANNEL_LABEL[l.channel] || esc(l.channel)}</td>
+          <td>${l.status === 'success' ? '<span class="badge badge-ok">성공</span>' : '<span class="badge badge-err">실패</span>'}</td>
+          <td style="color:#f85149;font-size:0.78rem">${esc(l.error_message || '')}</td>
+        </tr>
+      `).join('');
+    }
+
+    loadAll();
+  </script>
+</body>
+</html>

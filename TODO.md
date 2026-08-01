@@ -11,10 +11,25 @@
 
 - **카카오톡 미구현** — "나에게 보내기" API는 사용자별 OAuth 토큰 관리가 필요해 범위가 커서 보류.
   채널 어댑터 구조상 `shared/notify/channels/kakao.js` 하나만 추가하면 되는 구조이긴 함.
-- **가족/지인 셀프 온보딩 미구현** — 지금은 admin이 콘솔에서 수동으로 수신자를 만들고 채널(텔레그램
-  chat_id, 디스코드 webhook URL, ntfy topic)을 직접 입력해야 함. `notify_invite_tokens` 테이블은
-  만들어뒀지만 초대 링크 발급 → 텔레그램 봇 웹훅(`/start` 딥링크) 수신 → 자동 연결 플로우는 미구현.
+- **가족/지인 셀프 온보딩 미구현** (플랫폼 계정이 없는 경우만 해당) — 2026-08-01에 플랫폼 계정이 있는
+  사용자는 `/notify-settings`("내 알림 설정" 페이지)에서 본인 채널 연결·카테고리 구독을 직접 할 수
+  있게 됐음. 하지만 가족/지인이 플랫폼 로그인 계정 자체가 없는 경우(예: 부모님)는 여전히 admin이
+  콘솔에서 수동으로 수신자를 만들고 채널(텔레그램 chat_id, 디스코드 webhook URL, ntfy topic)을 직접
+  입력해야 함. `notify_invite_tokens` 테이블은 만들어뒀지만 초대 링크 발급 → 텔레그램 봇 웹훅(`/start`
+  딥링크) 수신 → 자동 연결 플로우는 미구현.
 - 첫 실사용 프로젝트에서 `registerCategory` + `send` 연동 테스트 필요 (아직 어떤 프로젝트도 호출하지 않음)
+- **참여자 대상 알림 발송 패턴 준비 완료, 미사용** — campchecklist 등이 트립 참여자에게 "내용
+  등록해주세요" 같은 알림을 보내려면 `notifyDb.getOrCreateRecipientForUser(platformUserId, name)`로
+  참여자의 platform_user_id → recipient_id를 얻어서 `notify.send({ category, recipientIds: [...],
+  title, body })`에 넘기면 됨. 이 패턴은 "내 알림 설정" 셀프서비스 기능을 만들면서 함께 준비해뒀지만
+  실제로 호출하는 프로젝트는 아직 없음.
+
+### 셀프서비스 "내 알림 설정" (`/notify-settings`, 2026-08-01 추가)
+
+로그인한 사용자라면 누구나(admin 권한 불필요) `/notify-settings`에서 본인 채널(텔레그램/디스코드/ntfy/
+웹푸시)을 직접 연결하고, 등록된 카테고리 목록에서 원하는 것만 골라 채널별로 구독을 켜고 끌 수 있음.
+허브 페이지("🔔 알림 설정" 링크)에서 진입. 라우트는 `core/auth-routes.js`의 `/auth/notify/*`, 본인
+recipient 외 데이터는 건드릴 수 없도록 소유권 체크(`deleteChannelIfOwned`)가 걸려있음.
 
 ### 채널 연결 방법 (admin 콘솔, `/admin` → 알림 탭)
 

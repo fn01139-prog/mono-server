@@ -84,6 +84,75 @@ router.get('/me', attachUser, requireLogin, async (req, res) => {
   }
 });
 
+/* ── 일반 사용자: 내 알림 설정 (본인 recipient만 조작 가능 — admin 권한 불필요) ──── */
+router.use('/notify', attachUser, requireLogin);
+
+async function myRecipient(req) {
+  return notifyDb.getOrCreateRecipientForUser(req.user.userId, req.user.name);
+}
+
+router.get('/notify/me', async (req, res) => {
+  try {
+    const recipient = await myRecipient(req);
+    const channels = await notifyDb.listChannelsForRecipient(recipient.id);
+    const subscriptions = await notifyDb.listSubscriptionsForRecipient(recipient.id);
+    res.json({ recipient, channels, subscriptions });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/notify/categories', async (req, res) => {
+  try {
+    res.json(await notifyDb.listCategories());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/notify/vapid-public-key', (req, res) => {
+  res.json({ publicKey: process.env.VAPID_PUBLIC_KEY || null });
+});
+
+router.post('/notify/channels', async (req, res) => {
+  const { type, ...config } = req.body;
+  try {
+    const recipient = await myRecipient(req);
+    res.json(await notifyDb.addChannel(recipient.id, type, config));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/notify/channels/:type/:id', async (req, res) => {
+  try {
+    const recipient = await myRecipient(req);
+    const deleted = await notifyDb.deleteChannelIfOwned(req.params.type, req.params.id, recipient.id);
+    if (!deleted) return res.status(404).json({ error: '채널을 찾을 수 없습니다' });
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.put('/notify/subscriptions/:categoryId', async (req, res) => {
+  const { channels, isActive } = req.body;
+  if (!Array.isArray(channels)) return res.status(400).json({ error: 'channels 배열이 필요합니다' });
+  try {
+    const recipient = await myRecipient(req);
+    res.json(await notifyDb.upsertSubscription(recipient.id, req.params.categoryId, channels, isActive !== false));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/notify/test', async (req, res) => {
+  const { channel, title, body } = req.body;
+  if (!channel || !body?.trim()) return res.status(400).json({ error: 'channel, body가 필요합니다' });
+  try {
+    const recipient = await myRecipient(req);
+    const result = await notify.sendTest({ recipientId: recipient.id, channel, title, body });
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/notify/logs', async (req, res) => {
+  try {
+    const recipient = await myRecipient(req);
+    res.json(await notify.getLog({ recipientId: recipient.id, limit: Number(req.query.limit) || 50 }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── admin: 사용자 관리 ───────────────────────────────────────────────── */
 router.use('/admin', attachUser, requireLogin, requireRole('admin'));
 

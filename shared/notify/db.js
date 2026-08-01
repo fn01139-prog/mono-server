@@ -130,6 +130,24 @@ async function deleteRecipient(id) {
   await pool.query('DELETE FROM notify_recipients WHERE id = $1', [id]);
 }
 
+/**
+ * "내 알림 설정" 셀프서비스용 — 로그인한 플랫폼 사용자 본인의 recipient를 가져오거나
+ * 없으면 만든다 (멱등). 이후 다른 프로젝트가 참여자에게 알림을 보낼 때도
+ * (예: campchecklist가 트립 참여자에게 등록 요청) 이 함수로 platform_user_id →
+ * recipient_id를 얻어 notify.send({ recipientIds: [...] })에 넘기면 된다.
+ */
+async function getOrCreateRecipientForUser(platformUserId, name) {
+  const { rows } = await pool.query(
+    `INSERT INTO notify_recipients (name, relation, platform_user_id)
+     VALUES ($1, 'self', $2)
+     ON CONFLICT (platform_user_id) WHERE platform_user_id IS NOT NULL
+     DO UPDATE SET name = EXCLUDED.name
+     RETURNING *`,
+    [name, platformUserId]
+  );
+  return rows[0];
+}
+
 async function listChannelsForRecipient(recipientId) {
   const result = {};
   for (const [type, table] of Object.entries(CHANNEL_TABLES)) {
@@ -180,6 +198,18 @@ async function deleteChannel(type, id) {
   await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
 }
 
+/**
+ * "내 알림 설정" 셀프서비스용 — recipientId가 실제 소유자일 때만 삭제한다 (admin 콘솔의
+ * deleteChannel과 달리, 일반 사용자가 남의 채널 id를 넣어서 지우는 걸 막아야 함).
+ * @returns {Promise<boolean>} 실제로 삭제됐으면 true, 소유자가 아니거나 없으면 false
+ */
+async function deleteChannelIfOwned(type, id, recipientId) {
+  const table = CHANNEL_TABLES[type];
+  if (!table) throw new Error(`알 수 없는 채널 타입: ${type}`);
+  const { rowCount } = await pool.query(`DELETE FROM ${table} WHERE id = $1 AND recipient_id = $2`, [id, recipientId]);
+  return rowCount > 0;
+}
+
 /** 죽은 채널(예: 404/410 응답 받은 웹푸시 구독)을 비활성화 — 다음부터 발송 대상에서 제외됨 */
 async function deactivateChannel(type, id) {
   const table = CHANNEL_TABLES[type];
@@ -217,6 +247,7 @@ module.exports = {
   CHANNEL_TABLES,
   getOrCreateCategory, getActiveSubscriptions, getChannelConfigs, logResult, getLog,
   listRecipients, createRecipient, updateRecipient, deleteRecipient,
+  getOrCreateRecipientForUser, deleteChannelIfOwned,
   listChannelsForRecipient, addChannel, deleteChannel, deactivateChannel,
   listCategories, listSubscriptionsForRecipient, upsertSubscription,
 };

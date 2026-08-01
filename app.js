@@ -41,6 +41,9 @@ app.get('/login', (req, res) => {
 app.get('/admin', requireLogin, requireRole('admin'), (req, res) => {
   res.sendFile(path.join(__dirname, 'core/views/admin.html'));
 });
+app.get('/notify-settings', requireLogin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'core/views/notify-settings.html'));
+});
 
 /* ── 공통 클라이언트 자산 (401 리다이렉트 가드 등) ── */
 app.use('/shared-assets', express.static(path.join(__dirname, 'shared/public')));
@@ -108,6 +111,7 @@ app.get('/', requireLogin, async (req, res, next) => {
     <h1>🗂 Yu's App Hub</h1>
     <div class="user">
       <span>${req.user.name} (${req.user.role === 'admin' ? '관리자' : '사용자'})</span>
+      <a href="/notify-settings">🔔 알림 설정</a>
       ${req.user.role === 'admin' ? '<a href="/admin">사용자 관리</a>' : ''}
       <button id="logoutBtn">로그아웃</button>
     </div>
