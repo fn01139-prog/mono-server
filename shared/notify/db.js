@@ -40,16 +40,19 @@ async function getActiveSubscriptions(categoryId, recipientIds) {
   return rows;
 }
 
-async function getChannelConfig(recipientId, channel) {
+/**
+ * 한 수신자가 같은 채널에 여러 개를 연결해둘 수 있다 (예: 웹푸시는 기기별로 하나씩,
+ * 여러 PC/모바일을 동시에 구독) — 활성 상태인 것 전부를 최신순으로 반환한다.
+ * 발송 코어(index.js)가 이 전부에 각각 보낸다.
+ */
+async function getChannelConfigs(recipientId, channel) {
   const table = CHANNEL_TABLES[channel];
-  if (!table) return null;
-  // 같은 채널에 채널이 여러 개(예: 웹푸시 VAPID 키 재발급 후 재구독) 있을 수 있어
-  // 가장 최근에 등록된 걸 우선한다 — 안 그러면 죽은 옛날 구독으로 계속 발송을 시도하게 됨
+  if (!table) return [];
   const { rows } = await pool.query(
-    `SELECT * FROM ${table} WHERE recipient_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 1`,
+    `SELECT * FROM ${table} WHERE recipient_id = $1 AND is_active = TRUE ORDER BY created_at DESC`,
     [recipientId]
   );
-  return rows[0] || null;
+  return rows;
 }
 
 async function logResult({ categoryId = null, recipientId = null, channel, title, body, status, error = null }) {
@@ -212,7 +215,7 @@ async function upsertSubscription(recipientId, categoryId, channels, isActive = 
 
 module.exports = {
   CHANNEL_TABLES,
-  getOrCreateCategory, getActiveSubscriptions, getChannelConfig, logResult, getLog,
+  getOrCreateCategory, getActiveSubscriptions, getChannelConfigs, logResult, getLog,
   listRecipients, createRecipient, updateRecipient, deleteRecipient,
   listChannelsForRecipient, addChannel, deleteChannel, deactivateChannel,
   listCategories, listSubscriptionsForRecipient, upsertSubscription,

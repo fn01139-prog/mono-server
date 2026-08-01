@@ -420,8 +420,8 @@ router.post('/admin/notify/test', async (req, res) => {
     return res.status(400).json({ error: 'recipientId, channel, body가 필요합니다' });
   }
   try {
-    await notify.sendTest({ recipientId, channel, title, body });
-    res.json({ ok: true });
+    const result = await notify.sendTest({ recipientId, channel, title, body });
+    res.json({ ok: true, ...result });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
