@@ -71,6 +71,10 @@ async function sendOne({ channel, categoryId, recipientId, title, body, url }) {
     await db.logResult({ categoryId, recipientId, channel, title, body, status: 'success' });
   } catch (e) {
     await db.logResult({ categoryId, recipientId, channel, title, body, status: 'fail', error: e.message });
+    // 웹푸시 구독이 만료/해지된 경우(404/410) 죽은 구독으로 계속 재시도하지 않도록 비활성화
+    if (channel === 'webpush' && (e.statusCode === 404 || e.statusCode === 410)) {
+      await db.deactivateChannel('webpush', config.id).catch(() => {});
+    }
     throw e;
   }
 }
