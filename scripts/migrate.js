@@ -315,12 +315,15 @@ CREATE INDEX IF NOT EXISTS idx_platform_batch_log_job ON platform_batch_log(job_
  * 카테고리(어느 프로젝트의 어떤 알림인지) 단위로 구독을 관리하고 발송 이력을 남긴다.
  */
 CREATE TABLE IF NOT EXISTS notify_recipients (
-  id          SERIAL       PRIMARY KEY,
-  name        VARCHAR(100) NOT NULL,
-  relation    VARCHAR(20)  NOT NULL DEFAULT 'self', -- 'self' | 'family' | 'friend'
-  is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
-  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id                SERIAL       PRIMARY KEY,
+  name              VARCHAR(100) NOT NULL,
+  relation          VARCHAR(20)  NOT NULL DEFAULT 'self', -- 'self' | 'family' | 'friend'
+  is_active         BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  platform_user_id  VARCHAR(100) REFERENCES platform_users(id) ON DELETE SET NULL -- 로그인 사용자 셀프서비스 "내 알림 설정"용 연결. admin이 수동으로 만든 가족/지인 수신자는 NULL. 사용자 삭제 시 recipient는 남고 연결만 끊음(연결 끊긴 채로 admin이 계속 관리 가능)
 );
+ALTER TABLE notify_recipients ADD COLUMN IF NOT EXISTS platform_user_id VARCHAR(100) REFERENCES platform_users(id) ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notify_recipients_platform_user ON notify_recipients(platform_user_id) WHERE platform_user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS notify_telegram_channels (
   id            SERIAL       PRIMARY KEY,

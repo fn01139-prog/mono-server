@@ -152,11 +152,18 @@ customRoutes: [
   ```
 - 채널 어댑터는 플러그인 구조: `shared/notify/channels/<name>.js`에 `{ name, send(config, {title, body, url}) }` export → `shared/notify/index.js`의 `channels` 레지스트리와 `shared/notify/db.js`의 `CHANNEL_TABLES`, DB 마이그레이션에 테이블 추가
 - 텔레그램은 `TELEGRAM_BOT_TOKEN` 환경변수(전역), 디스코드는 수신자별 webhook URL을 그대로 저장(전역 설정 불필요), ntfy는 기본 공개 서버 사용, 웹푸시는 `VAPID_SUBJECT`/`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` 필요
-- **웹푸시 구독**: `shared/public/sw.js`(서비스워커, `GET /sw.js`로 루트 경로 서빙 — 스코프가 사이트 전체를 덮으려면 필수)와 admin 콘솔 알림 탭의 "이 브라우저를 웹푸시로 구독" 버튼으로 브라우저가 직접 구독해서 `notify_push_subscriptions`에 등록됨. VAPID public key는 `GET /auth/admin/notify/vapid-public-key`로 노출(private key만 비밀)
+- **웹푸시 구독**: `shared/public/sw.js`(서비스워커, `GET /sw.js`로 루트 경로 서빙 — 스코프가 사이트 전체를 덮으려면 필수)로 브라우저가 직접 구독. 구독은 생성 시점의 VAPID 공개키에 영구적으로 묶이므로 재구독 시 기존 구독을 먼저 `unsubscribe()`해야 함(안 그러면 키를 재발급해도 예전 구독이 재사용됨). 한 수신자가 여러 기기(PC+모바일 등)를 구독하면 발송 시 전부에게 보냄(`getChannelConfigs`가 활성 상태 전부 반환 → `sendToChannel`이 `Promise.allSettled`로 병렬 발송, 하나가 죽어도 나머지는 계속 시도). 404/410 응답을 받은 구독은 자동으로 `is_active=FALSE` 처리됨
 - **카카오톡은 미구현** — "나에게 보내기" API는 사용자별 OAuth 토큰 관리가 필요해 범위가 커서 보류
-- 수신자/채널/구독 관리는 전부 admin 콘솔(알림 탭)에서 수동으로 함 — 가족/지인이 스스로 초대 링크로 연결하는 온보딩 플로우(`notify_invite_tokens` 테이블은 존재하나 딥링크/웹훅 수신 로직 미구현)는 다음 단계
 - 모든 발송 시도(성공/실패)는 `notify_log`에 기록됨
-- admin API: `GET /auth/admin/notify/recipients`(+POST/PUT/DELETE), `GET/POST /auth/admin/notify/recipients/:id/channels`, `DELETE /auth/admin/notify/channels/:type/:id`, `GET /auth/admin/notify/categories`, `GET/PUT /auth/admin/notify/recipients/:id/subscriptions(/:categoryId)`, `POST /auth/admin/notify/test`, `GET /auth/admin/notify/logs`
+
+**셀프서비스 "내 알림 설정" (`/notify-settings`, 로그인한 사용자 누구나 — admin 권한 불필요)**
+- `notify_recipients.platform_user_id`로 플랫폼 계정과 1:1 연결(NULL 허용 — admin이 수동으로 만든 가족/지인 수신자는 계속 연결 없이 존재 가능). 사용자 삭제 시 `ON DELETE SET NULL`이라 recipient 자체는 안 지워지고 연결만 끊김
+- `core/auth-routes.js`의 `myRecipient(req)` 헬퍼가 `req.user.userId`로 본인 recipient를 조회/자동생성(`notifyDb.getOrCreateRecipientForUser`) — admin 콘솔의 recipient CRUD와 달리 **자기 것만** 만지므로 채널 삭제 시 소유권 검사 필수(`notifyDb.deleteChannelIfOwned`, recipient_id 불일치면 404)
+- `GET /auth/notify/me`(내 recipient+채널+구독 한 번에), `GET /auth/notify/categories`(등록된 카테고리 전체 — 읽기 전용, admin 아니어도 됨), `POST /auth/notify/channels`, `DELETE /auth/notify/channels/:type/:id`, `PUT /auth/notify/subscriptions/:categoryId`, `POST /auth/notify/test`, `GET /auth/notify/logs`, `GET /auth/notify/vapid-public-key`
+- `core/views/notify-settings.html`: 카테고리+채널 목록에서 체크박스로 선택해 구독(연결 안 한 채널은 비활성화 표시), 이 브라우저 웹푸시 구독, 테스트 발송. 허브 페이지(`/`)에 전 사용자 대상 "🔔 알림 설정" 링크 있음
+- **다른 프로젝트가 참여자에게 알림 보낼 때 패턴**: `notifyDb.getOrCreateRecipientForUser(platformUserId, name)`로 platform_user_id → recipient_id를 얻어 `notify.send({ category, recipientIds: [...], title, body })`에 넘기면 됨 (예: campchecklist가 트립 참여자들에게 "내용 등록해주세요" 알림 — 아직 미구현, 이 패턴만 준비되어 있음)
+- 가족/지인처럼 로그인 계정이 없는 사람은 이 방식을 못 씀 — admin 콘솔(알림 탭)에서 수동으로 채널 등록해야 함. 초대 링크로 스스로 연결하는 플로우(`notify_invite_tokens` 테이블은 존재)는 여전히 미구현
+- admin API(모든 recipient 대상, admin 전용): `GET /auth/admin/notify/recipients`(+POST/PUT/DELETE), `GET/POST /auth/admin/notify/recipients/:id/channels`, `DELETE /auth/admin/notify/channels/:type/:id`, `GET /auth/admin/notify/categories`, `GET/PUT /auth/admin/notify/recipients/:id/subscriptions(/:categoryId)`, `POST /auth/admin/notify/test`, `GET /auth/admin/notify/logs`
 - 최초 부트스트랩 시 `relation='self'` 수신자 1명이 자동 생성됨(`scripts/migrate-auth.js`) — admin 콘솔에서 채널만 연결하면 바로 사용 가능
 
 **배치잡 (`core/batch.js`)**

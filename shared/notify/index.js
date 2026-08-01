@@ -46,7 +46,7 @@ async function send({ category, title, body, recipientIds, channels: forceChanne
 
   const tasks = subs.flatMap((sub) => {
     const useChannels = forceChannels || sub.channels;
-    return useChannels.map((ch) => sendOne({
+    return useChannels.map((ch) => sendToChannel({
       channel: ch, categoryId: cat.id, recipientId: sub.recipient_id, title, body, url,
     }));
   });
@@ -54,18 +54,37 @@ async function send({ category, title, body, recipientIds, channels: forceChanne
   return Promise.allSettled(tasks);
 }
 
-/** 특정 수신자의 특정 채널로 직접 발송 (구독 여부와 무관 — admin 콘솔 테스트 발송용) */
+/**
+ * 특정 수신자의 특정 채널로 직접 발송 (구독 여부와 무관 — admin 콘솔 테스트 발송용).
+ * 그 채널에 기기/연결이 여러 개(예: 웹푸시를 PC·모바일 양쪽에서 구독)면 전부에게 보낸다.
+ * @returns {Promise<{sent:number, failed:number, total:number}>}
+ */
 async function sendTest({ recipientId, channel, title, body }) {
-  return sendOne({ channel, categoryId: null, recipientId, title, body });
+  return sendToChannel({ channel, categoryId: null, recipientId, title, body });
 }
 
-async function sendOne({ channel, categoryId, recipientId, title, body, url }) {
+/** 한 채널 타입에 연결된 기기/연결 전부에 보낸다 (웹푸시 여러 기기 등) — 하나가 실패해도 나머지는 계속 시도 */
+async function sendToChannel({ channel, categoryId, recipientId, title, body, url }) {
   const adapter = channels[channel];
   if (!adapter) throw new Error(`알 수 없는 채널: ${channel}`);
 
-  const config = await db.getChannelConfig(recipientId, channel);
-  if (!config) throw new Error(`이 수신자에게 연결된 ${channel} 채널이 없습니다`);
+  const configs = await db.getChannelConfigs(recipientId, channel);
+  if (!configs.length) throw new Error(`이 수신자에게 연결된 ${channel} 채널이 없습니다`);
 
+  const results = await Promise.allSettled(
+    configs.map((config) => sendToConfig(adapter, config, { channel, categoryId, recipientId, title, body, url }))
+  );
+  const sent = results.filter((r) => r.status === 'fulfilled').length;
+  const failed = results.length - sent;
+
+  if (sent === 0) {
+    const firstError = results.find((r) => r.status === 'rejected');
+    throw new Error(failed > 1 ? `전체 ${failed}건 발송 실패 (예: ${firstError.reason.message})` : firstError.reason.message);
+  }
+  return { sent, failed, total: results.length };
+}
+
+async function sendToConfig(adapter, config, { channel, categoryId, recipientId, title, body, url }) {
   try {
     await adapter.send(config, { title, body, url });
     await db.logResult({ categoryId, recipientId, channel, title, body, status: 'success' });

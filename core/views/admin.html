@@ -843,8 +843,9 @@
       const body = document.getElementById('nt-body').value.trim();
       if (!recipientId) { toast('수신자를 먼저 생성하세요.', true); return; }
       try {
-        await api('/auth/admin/notify/test', { method: 'POST', body: JSON.stringify({ recipientId, channel, title, body }) });
-        toast('발송되었습니다.');
+        const res = await api('/auth/admin/notify/test', { method: 'POST', body: JSON.stringify({ recipientId, channel, title, body }) });
+        const detail = res.total > 1 ? ` (${res.sent}/${res.total}개 기기 성공)` : '';
+        toast('발송되었습니다.' + detail, res.failed > 0);
         await loadNotifyLogs();
       } catch (err) {
         toast('발송 실패: ' + err.message, true);

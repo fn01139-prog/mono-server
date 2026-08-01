@@ -40,16 +40,19 @@ async function getActiveSubscriptions(categoryId, recipientIds) {
   return rows;
 }
 
-async function getChannelConfig(recipientId, channel) {
+/**
+ * 한 수신자가 같은 채널에 여러 개를 연결해둘 수 있다 (예: 웹푸시는 기기별로 하나씩,
+ * 여러 PC/모바일을 동시에 구독) — 활성 상태인 것 전부를 최신순으로 반환한다.
+ * 발송 코어(index.js)가 이 전부에 각각 보낸다.
+ */
+async function getChannelConfigs(recipientId, channel) {
   const table = CHANNEL_TABLES[channel];
-  if (!table) return null;
-  // 같은 채널에 채널이 여러 개(예: 웹푸시 VAPID 키 재발급 후 재구독) 있을 수 있어
-  // 가장 최근에 등록된 걸 우선한다 — 안 그러면 죽은 옛날 구독으로 계속 발송을 시도하게 됨
+  if (!table) return [];
   const { rows } = await pool.query(
-    `SELECT * FROM ${table} WHERE recipient_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 1`,
+    `SELECT * FROM ${table} WHERE recipient_id = $1 AND is_active = TRUE ORDER BY created_at DESC`,
     [recipientId]
   );
-  return rows[0] || null;
+  return rows;
 }
 
 async function logResult({ categoryId = null, recipientId = null, channel, title, body, status, error = null }) {
@@ -127,6 +130,24 @@ async function deleteRecipient(id) {
   await pool.query('DELETE FROM notify_recipients WHERE id = $1', [id]);
 }
 
+/**
+ * "내 알림 설정" 셀프서비스용 — 로그인한 플랫폼 사용자 본인의 recipient를 가져오거나
+ * 없으면 만든다 (멱등). 이후 다른 프로젝트가 참여자에게 알림을 보낼 때도
+ * (예: campchecklist가 트립 참여자에게 등록 요청) 이 함수로 platform_user_id →
+ * recipient_id를 얻어 notify.send({ recipientIds: [...] })에 넘기면 된다.
+ */
+async function getOrCreateRecipientForUser(platformUserId, name) {
+  const { rows } = await pool.query(
+    `INSERT INTO notify_recipients (name, relation, platform_user_id)
+     VALUES ($1, 'self', $2)
+     ON CONFLICT (platform_user_id) WHERE platform_user_id IS NOT NULL
+     DO UPDATE SET name = EXCLUDED.name
+     RETURNING *`,
+    [name, platformUserId]
+  );
+  return rows[0];
+}
+
 async function listChannelsForRecipient(recipientId) {
   const result = {};
   for (const [type, table] of Object.entries(CHANNEL_TABLES)) {
@@ -177,6 +198,18 @@ async function deleteChannel(type, id) {
   await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
 }
 
+/**
+ * "내 알림 설정" 셀프서비스용 — recipientId가 실제 소유자일 때만 삭제한다 (admin 콘솔의
+ * deleteChannel과 달리, 일반 사용자가 남의 채널 id를 넣어서 지우는 걸 막아야 함).
+ * @returns {Promise<boolean>} 실제로 삭제됐으면 true, 소유자가 아니거나 없으면 false
+ */
+async function deleteChannelIfOwned(type, id, recipientId) {
+  const table = CHANNEL_TABLES[type];
+  if (!table) throw new Error(`알 수 없는 채널 타입: ${type}`);
+  const { rowCount } = await pool.query(`DELETE FROM ${table} WHERE id = $1 AND recipient_id = $2`, [id, recipientId]);
+  return rowCount > 0;
+}
+
 /** 죽은 채널(예: 404/410 응답 받은 웹푸시 구독)을 비활성화 — 다음부터 발송 대상에서 제외됨 */
 async function deactivateChannel(type, id) {
   const table = CHANNEL_TABLES[type];
@@ -212,8 +245,9 @@ async function upsertSubscription(recipientId, categoryId, channels, isActive = 
 
 module.exports = {
   CHANNEL_TABLES,
-  getOrCreateCategory, getActiveSubscriptions, getChannelConfig, logResult, getLog,
+  getOrCreateCategory, getActiveSubscriptions, getChannelConfigs, logResult, getLog,
   listRecipients, createRecipient, updateRecipient, deleteRecipient,
+  getOrCreateRecipientForUser, deleteChannelIfOwned,
   listChannelsForRecipient, addChannel, deleteChannel, deactivateChannel,
   listCategories, listSubscriptionsForRecipient, upsertSubscription,
 };
