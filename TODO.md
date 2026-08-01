@@ -9,9 +9,6 @@
 
 ### 남은 작업
 
-- **웹푸시 구독 UI 미구현** — `shared/notify/channels/webpush.js` 발송 어댑터는 있지만, 브라우저가
-  구독을 등록하는 프론트엔드(서비스워커 + 구독 버튼)가 없어 `notify_push_subscriptions`을 채울 방법이
-  아직 없음. 웹푸시를 실제로 쓰려면 이 UI부터 만들어야 함.
 - **카카오톡 미구현** — "나에게 보내기" API는 사용자별 OAuth 토큰 관리가 필요해 범위가 커서 보류.
   채널 어댑터 구조상 `shared/notify/channels/kakao.js` 하나만 추가하면 되는 구조이긴 함.
 - **가족/지인 셀프 온보딩 미구현** — 지금은 admin이 콘솔에서 수동으로 수신자를 만들고 채널(텔레그램
@@ -30,3 +27,9 @@ chat_id 입력).
 
 **ntfy**: 기본 공개 서버(`https://ntfy.sh`) 사용 시 서버 설정 불필요. 알림 탭에서 수신자에게 채널
 추가(ntfy, 원하는 topic 이름 입력) → 수신자가 ntfy 앱/웹에서 같은 topic 구독.
+
+**웹푸시** (2026-08-01 구독 UI 추가): `VAPID_SUBJECT`/`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` 환경변수
+설정(`node -e "console.log(require('web-push').generateVAPIDKeys())"`로 키 생성) → 알림 탭의
+"이 브라우저를 웹푸시로 구독" 패널에서 수신자 선택 후 구독 버튼 클릭(브라우저 알림 권한 허용 필요) →
+`GET /sw.js`(서비스워커, 루트 경로로 서빙되어야 스코프가 사이트 전체를 덮음)를 등록하고
+`notify_push_subscriptions`에 자동 등록됨. HTTPS(또는 localhost) 환경에서만 동작.
