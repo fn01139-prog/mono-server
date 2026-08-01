@@ -44,7 +44,9 @@ async function send(config, { title, body, url }) {
     // web-push의 WebPushError는 실제 원인(만료된 구독, VAPID 키 불일치 등)이 statusCode/body에
     // 담겨있는데 기본 e.message("Received unexpected response code")는 이걸 다 숨긴다.
     if (e.statusCode) {
-      throw new Error(`웹푸시 전송 실패 (HTTP ${e.statusCode}): ${String(e.body || e.message || '').slice(0, 300)}`);
+      const err = new Error(`웹푸시 전송 실패 (HTTP ${e.statusCode}): ${String(e.body || e.message || '').slice(0, 300)}`);
+      err.statusCode = e.statusCode; // 호출자가 404/410(만료된 구독)을 구분해 비활성화할 수 있도록 보존
+      throw err;
     }
     throw e;
   }

@@ -43,8 +43,10 @@ async function getActiveSubscriptions(categoryId, recipientIds) {
 async function getChannelConfig(recipientId, channel) {
   const table = CHANNEL_TABLES[channel];
   if (!table) return null;
+  // 같은 채널에 채널이 여러 개(예: 웹푸시 VAPID 키 재발급 후 재구독) 있을 수 있어
+  // 가장 최근에 등록된 걸 우선한다 — 안 그러면 죽은 옛날 구독으로 계속 발송을 시도하게 됨
   const { rows } = await pool.query(
-    `SELECT * FROM ${table} WHERE recipient_id = $1 AND is_active = TRUE LIMIT 1`,
+    `SELECT * FROM ${table} WHERE recipient_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 1`,
     [recipientId]
   );
   return rows[0] || null;
@@ -175,6 +177,13 @@ async function deleteChannel(type, id) {
   await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
 }
 
+/** 죽은 채널(예: 404/410 응답 받은 웹푸시 구독)을 비활성화 — 다음부터 발송 대상에서 제외됨 */
+async function deactivateChannel(type, id) {
+  const table = CHANNEL_TABLES[type];
+  if (!table) throw new Error(`알 수 없는 채널 타입: ${type}`);
+  await pool.query(`UPDATE ${table} SET is_active = FALSE WHERE id = $1`, [id]);
+}
+
 async function listCategories() {
   const { rows } = await pool.query('SELECT * FROM notify_categories ORDER BY key');
   return rows;
@@ -205,6 +214,6 @@ module.exports = {
   CHANNEL_TABLES,
   getOrCreateCategory, getActiveSubscriptions, getChannelConfig, logResult, getLog,
   listRecipients, createRecipient, updateRecipient, deleteRecipient,
-  listChannelsForRecipient, addChannel, deleteChannel,
+  listChannelsForRecipient, addChannel, deleteChannel, deactivateChannel,
   listCategories, listSubscriptionsForRecipient, upsertSubscription,
 };
