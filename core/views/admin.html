@@ -796,19 +796,22 @@
         const reg = await navigator.serviceWorker.register('/sw.js');
         await navigator.serviceWorker.ready;
 
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-          // 브라우저가 푸시 서비스(FCM 등)에 등록하는 과정이라 네트워크 상황에 따라 오래 걸리거나
-          // 막힐 수 있음 — 무한정 "구독 중..."으로 걸려있지 않도록 타임아웃을 둔다.
-          const subscribePromise = reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(publicKey),
-          });
-          const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('구독 요청이 시간 초과됐습니다 (네트워크에서 푸시 서비스 접속이 막혀있을 수 있음)')), 15000)
-          );
-          sub = await Promise.race([subscribePromise, timeoutPromise]);
-        }
+        // 푸시 구독은 생성 시점의 applicationServerKey에 영구적으로 묶인다 — 서버가 VAPID 키를
+        // 재발급했는데 브라우저에 예전 키로 만든 구독이 남아있으면 "credentials do not correspond
+        // to the subscription" 형태로 계속 실패한다. 재사용하지 말고 매번 해지 후 새로 구독한다.
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) await existing.unsubscribe();
+
+        // 브라우저가 푸시 서비스(FCM 등)에 등록하는 과정이라 네트워크 상황에 따라 오래 걸리거나
+        // 막힐 수 있음 — 무한정 "구독 중..."으로 걸려있지 않도록 타임아웃을 둔다.
+        const subscribePromise = reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('구독 요청이 시간 초과됐습니다 (네트워크에서 푸시 서비스 접속이 막혀있을 수 있음)')), 15000)
+        );
+        const sub = await Promise.race([subscribePromise, timeoutPromise]);
         const subJson = sub.toJSON();
 
         await api(`/auth/admin/notify/recipients/${recipientId}/channels`, {
