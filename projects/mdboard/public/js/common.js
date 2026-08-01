@@ -4,10 +4,21 @@
  */
 
 /* ── API 래퍼 (인증은 플랫폼 로그인 쿠키로 처리됨) ───────────────────────── */
+// 서버는 실패 시 { success:false, error:'설명' } 형태의 본문을 함께 내려주므로,
+// 상태코드만으로 "HTTP 409" 처럼 뭉개지 않고 실제 사유를 그대로 꺼내서 던진다.
+async function apiErrorMessage(res) {
+  try {
+    const data = await res.json();
+    return data.error || data.message || `HTTP ${res.status}`;
+  } catch {
+    return `HTTP ${res.status}`;
+  }
+}
+
 const API = {
   async get(url) {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await apiErrorMessage(res));
     return res.json();
   },
 
@@ -17,13 +28,13 @@ const API = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await apiErrorMessage(res));
     return res.json();
   },
 
   async delete(url) {
     const res = await fetch(url, { method: 'DELETE' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await apiErrorMessage(res));
     return res.json();
   },
 
@@ -31,7 +42,7 @@ const API = {
     const fd = new FormData();
     fd.append('image', file);
     const res = await fetch('/mdboard/api/upload-image', { method: 'POST', body: fd });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await apiErrorMessage(res));
     return res.json();
   },
 
@@ -39,7 +50,7 @@ const API = {
     const fd = new FormData();
     fd.append('html', file);
     const res = await fetch('/mdboard/api/upload-html', { method: 'POST', body: fd });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(await apiErrorMessage(res));
     return res.json();
   }
 };
