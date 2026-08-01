@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 
 module.exports = {
 //  port: parseInt(process.env.PORT) || 3000,
@@ -21,5 +22,5 @@ module.exports = {
 
   // 로컬 폴백
   useLocalFallback: process.env.USE_LOCAL_FALLBACK !== 'false',
-  localDataDir: process.env.LOCAL_DATA_DIR || './data',
+  localDataDir: process.env.LOCAL_DATA_DIR || path.join(__dirname, 'data'),
 };

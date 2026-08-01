@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>종합 시세</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --gold: #c9962c;
+    --accent: #2f6ea8;
+    --ink: #26221c;
+    --muted: #6b645a;
+    --bg: #faf7f2;
+    --card: #ffffff;
+    --border: #e7e0d4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    padding: 32px 20px 60px;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  header { margin-bottom: 20px; }
+  header h1 { font-size: 24px; margin: 0 0 16px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+
+  .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    appearance: none; border: none; background: none; cursor: pointer;
+    font-size: 14px; font-weight: 600; color: var(--muted);
+    padding: 10px 16px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab-btn.active { color: var(--ink); border-bottom-color: var(--gold); }
+  .tab-panel { display: none; padding-top: 24px; }
+  .tab-panel.active { display: block; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin-bottom: 32px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .stat-card h3 { margin: 0 0 10px; font-size: 15px; }
+  .stat-card h3 .unit { font-size: 11px; color: var(--muted); font-weight: 400; }
+  .stat-row { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; }
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .stat-change { font-size: 13px; margin-top: 6px; font-weight: 600; }
+  .stat-change.up { color: #b23b3b; }
+  .stat-change.down { color: #2f6ea8; }
+  section.block { margin-bottom: 32px; }
+  section.block h2 { font-size: 17px; border-left: 4px solid var(--gold); padding-left: 10px; margin-bottom: 14px; }
+  .chart-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  details { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; }
+  summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12.5px; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr:hover { background: #fbf6ec; }
+
+  /* 주식 탭 */
+  .stock-search { position: relative; margin-bottom: 20px; max-width: 360px; }
+  .stock-search input {
+    width: 100%; padding: 10px 12px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--ink);
+  }
+  .stock-search input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .suggestions {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 10;
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    max-height: 260px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,.08); display: none;
+  }
+  .suggestions.open { display: block; }
+  .suggestion-item { padding: 9px 12px; cursor: pointer; font-size: 13.5px; display: flex; justify-content: space-between; }
+  .suggestion-item:hover { background: #f2eee6; }
+  .suggestion-item .code { color: var(--muted); font-size: 12px; }
+  .suggestion-empty { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+
+  .stock-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+  .stock-title { font-size: 16px; font-weight: 700; }
+  .stock-title .code { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 6px; }
+  .mode-toggle { display: flex; gap: 4px; background: #f1ede4; border-radius: 8px; padding: 3px; }
+  .mode-btn {
+    appearance: none; border: none; background: none; cursor: pointer;
+    font-size: 13px; padding: 6px 12px; border-radius: 6px; color: var(--muted);
+  }
+  .mode-btn.active { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .empty-hint { color: var(--muted); font-size: 14px; padding: 40px 0; text-align: center; }
+  .hidden { display: none; }
+  .price-up { color: #b23b3b; }
+  .price-down { color: #2f6ea8; }
+
+  .stock-toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .btn-insight {
+    appearance: none; cursor: pointer; font-size: 13px; font-weight: 600;
+    padding: 8px 14px; border-radius: 8px; border: 1px solid var(--accent); color: var(--accent); background: var(--card);
+  }
+  .btn-insight:hover { background: #eaf1f7; }
+  .btn-insight:disabled { opacity: .6; cursor: default; }
+
+  .insight-panel {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 20px; font-size: 13.5px;
+  }
+  .insight-loading { color: var(--muted); font-size: 13.5px; }
+  .insight-error { color: #b23b3b; font-size: 13.5px; }
+  .insight-error strong { display: block; margin-bottom: 4px; }
+  .insight-error p { margin: 0 0 10px; color: var(--ink); }
+  .insight-error .btn-insight { display: inline-block; text-decoration: none; }
+  .insight-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .insight-badge { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; }
+  .insight-badge.positive { background: #fbe9e9; color: #b23b3b; }
+  .insight-badge.negative { background: #e8f0f7; color: #2f6ea8; }
+  .insight-badge.neutral { background: #f1ede4; color: var(--muted); }
+  .insight-meta { color: var(--muted); font-size: 12px; }
+  .insight-summary { margin: 0 0 16px; line-height: 1.6; }
+  .insight-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 14px; }
+  .insight-panel h4 { margin: 0 0 6px; font-size: 13px; }
+  .insight-panel ul { margin: 0; padding-left: 18px; line-height: 1.6; }
+  .insight-empty { margin: 0; color: var(--muted); }
+  .insight-disclaimer { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11.5px; }
+
+  /* AI 알림 예약 탭 */
+  .alert-form {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 8px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px 18px; align-items: end;
+  }
+  .alert-form .form-row { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .alert-form .form-row.wide { grid-column: span 2; }
+  .alert-form .form-row.hidden { display: none; }
+  .alert-form label { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .alert-form input, .alert-form select {
+    padding: 8px 10px; font-size: 13.5px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--card); color: var(--ink); width: 100%;
+  }
+  .alert-form .alert-stock-search { position: relative; }
+  .alert-form-msg { min-height: 18px; font-size: 12.5px; margin: 6px 2px 20px; }
+  .alert-form-msg.success { color: #2f6ea8; }
+  .alert-form-msg.error { color: #b23b3b; }
+  #alertListBody td { vertical-align: middle; }
+  #alertListBody .code { color: var(--muted); font-size: 11.5px; margin-left: 4px; }
+  .alert-toggle-label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; justify-content: flex-end; }
+  .alert-delete {
+    appearance: none; cursor: pointer; border: 1px solid var(--border); background: var(--card);
+    color: #b23b3b; border-radius: 6px; padding: 4px 10px; font-size: 12px;
+  }
+  .alert-delete:hover { background: #fbe9e9; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>종합 시세</h1>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="gold" type="button">🥇 금/은 시세</button>
+      <button class="tab-btn" data-tab="stocks" type="button">📈 주식 시세</button>
+      <button class="tab-btn" data-tab="alerts" type="button">🔔 AI 알림</button>
+    </div>
+  </header>
+
+  <!-- 금/은 시세 탭 -->
+  <section id="goldPanel" class="tab-panel active">
+    <div class="meta" id="meta">불러오는 중...</div>
+    <div class="stat-grid" id="statGrid"></div>
+
+    <section class="block">
+      <h2>시세 추이</h2>
+      <div class="chart-box">
+        <canvas id="priceChart" height="110"></canvas>
+      </div>
+    </section>
+
+    <section class="block">
+      <details>
+        <summary>전체 데이터 보기 (<span id="rowCount">0</span>건)</summary>
+        <table>
+          <thead>
+            <tr><th>날짜</th><th>순금(살때)</th><th>순금(팔때)</th><th>18K(살때)</th><th>14K(살때)</th><th>은(살때)</th></tr>
+          </thead>
+          <tbody id="dataTableBody"></tbody>
+        </table>
+      </details>
+    </section>
+  </section>
+
+  <!-- 주식 시세 탭 -->
+  <section id="stocksPanel" class="tab-panel">
+    <div class="stock-search">
+      <input id="stockSearchInput" type="text" placeholder="종목명 또는 코드 검색 (예: 삼성전자, 005930)" autocomplete="off" />
+      <div id="stockSuggestions" class="suggestions"></div>
+    </div>
+
+    <div id="stockEmpty" class="empty-hint">종목을 검색해서 선택하세요.</div>
+
+    <div id="stockContent" class="hidden">
+      <div class="stock-toolbar">
+        <div id="stockTitle" class="stock-title"></div>
+        <div class="stock-toolbar-actions">
+          <div class="mode-toggle">
+            <button id="modeDaily" class="mode-btn active" type="button">일별 시세</button>
+            <button id="modeIntraday" class="mode-btn" type="button">시간별 시세</button>
+          </div>
+          <button id="insightBtn" class="btn-insight" type="button">🤖 AI 참고 자료 보기</button>
+        </div>
+      </div>
+      <div id="insightPanel" class="insight-panel hidden"></div>
+      <div class="chart-box">
+        <canvas id="stockChart" height="110"></canvas>
+      </div>
+      <section class="block">
+        <details open>
+          <summary>전체 데이터 보기 (<span id="stockRowCount">0</span>건)</summary>
+          <table>
+            <thead id="stockTableHead"></thead>
+            <tbody id="stockTableBody"></tbody>
+          </table>
+        </details>
+      </section>
+    </div>
+  </section>
+
+  <!-- AI 알림 예약 탭 -->
+  <section id="alertsPanel" class="tab-panel">
+    <p class="meta">종목의 AI 참고 자료를 주기적으로 생성해서, 미리 연결해둔 알림 채널로 보내드립니다.</p>
+
+    <div class="alert-form">
+      <div class="form-row wide">
+        <label>종목</label>
+        <div class="stock-search alert-stock-search">
+          <input id="alertStockInput" type="text" placeholder="종목명 또는 코드 검색" autocomplete="off" />
+          <div id="alertStockSuggestions" class="suggestions"></div>
+        </div>
+      </div>
+      <div class="form-row wide">
+        <label>호출 API</label>
+        <select id="alertApiSelect"></select>
+      </div>
+      <div class="form-row">
+        <label>주기</label>
+        <select id="alertFrequencySelect">
+          <option value="daily">매일</option>
+          <option value="hourly">매시간</option>
+          <option value="weekly">매주</option>
+        </select>
+      </div>
+      <div class="form-row" id="weekdayRow">
+        <label>요일</label>
+        <select id="alertWeekdaySelect">
+          <option value="1">월요일</option>
+          <option value="2">화요일</option>
+          <option value="3">수요일</option>
+          <option value="4">목요일</option>
+          <option value="5">금요일</option>
+          <option value="6">토요일</option>
+          <option value="0">일요일</option>
+        </select>
+      </div>
+      <div class="form-row" id="timeRow">
+        <label>시간</label>
+        <input id="alertTimeInput" type="time" value="09:00" />
+      </div>
+      <div class="form-row" id="minuteRow">
+        <label>분</label>
+        <select id="alertMinuteSelect">
+          <option value="0">정각(00분)</option>
+          <option value="10">10분</option>
+          <option value="20">20분</option>
+          <option value="30">30분</option>
+          <option value="40">40분</option>
+          <option value="50">50분</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>알림 받을 방법</label>
+        <select id="alertChannelSelect"></select>
+      </div>
+      <div class="form-row">
+        <label>&nbsp;</label>
+        <button id="alertSubmitBtn" class="btn-insight" type="button">알림 등록</button>
+      </div>
+    </div>
+    <p id="alertFormMsg" class="alert-form-msg"></p>
+
+    <section class="block">
+      <h2>등록된 알림</h2>
+      <table>
+        <thead>
+          <tr><th>종목</th><th>API</th><th>예약</th><th>알림방법</th><th>상태</th><th>마지막 실행</th><th></th></tr>
+        </thead>
+        <tbody id="alertListBody"></tbody>
+      </table>
+    </section>
+  </section>
+</div>
+
+<script src="js/gold.js"></script>
+<script src="js/stocks.js"></script>
+<script src="js/alerts.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

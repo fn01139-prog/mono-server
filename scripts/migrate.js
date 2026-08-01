@@ -276,6 +276,55 @@ CREATE INDEX IF NOT EXISTS idx_mindmap_relations_parent ON mindmap_relations(par
 CREATE INDEX IF NOT EXISTS idx_mindmap_relations_child  ON mindmap_relations(child_id);
 CREATE INDEX IF NOT EXISTS idx_mindmap_memos_object     ON mindmap_memos(object_id);
 
+/* ── totalprice (금/은 시세 캐시 — 비공식 외부 API 실패 시 폴백용 마지막 성공 응답)
+ * 예전엔 로컬 파일(data/cache.json)에 저장했는데, Railway 같은 호스팅은 배포마다
+ * 컨테이너가 새로 뜨는 임시 파일시스템이라 재배포 직후엔 캐시가 사라져 폴백이 무력화됐다 → DB로 이전.
+ */
+CREATE TABLE IF NOT EXISTS totalprice_gold_cache (
+  cache_key       VARCHAR(50) PRIMARY KEY, -- 'type:startDate:endDate' 조회 조합별로 하나씩
+  type            VARCHAR(10),
+  data_date_start VARCHAR(20),
+  data_date_end   VARCHAR(20),
+  list            JSONB        NOT NULL,
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+/* ── totalprice (주식 종목 마스터 목록 — code+name, 배치잡이 주기적으로 갱신) ── */
+CREATE TABLE IF NOT EXISTS totalprice_stocks (
+  code        VARCHAR(10)  PRIMARY KEY,
+  name        VARCHAR(200) NOT NULL,
+  market      VARCHAR(10)  NOT NULL,
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_totalprice_stocks_name ON totalprice_stocks(name);
+
+/* ── totalprice (사용자별 AI 참고자료 알림 예약 — totalprice-alert-runner 배치잡이 소비) ── */
+CREATE TABLE IF NOT EXISTS totalprice_alerts (
+  id             SERIAL       PRIMARY KEY,
+  user_id        VARCHAR(100) NOT NULL REFERENCES platform_users(id) ON DELETE CASCADE,
+  api_key        VARCHAR(50)  NOT NULL DEFAULT 'stock-insight',
+  code           VARCHAR(10)  NOT NULL,
+  stock_name     VARCHAR(200),
+  frequency      VARCHAR(20)  NOT NULL DEFAULT 'daily', -- 'daily' | 'hourly' | 'weekly'
+  run_time       VARCHAR(5),                            -- 'HH:MM' (KST) — daily/weekly에서 사용
+  run_minute     SMALLINT,                               -- 0~59 — hourly에서 사용(매시 이 분에 실행)
+  run_weekday    SMALLINT,                               -- 0(일)~6(토) — weekly에서 사용
+  notify_channel VARCHAR(20)  NOT NULL,                 -- 'telegram' | 'discord' | 'ntfy' | 'webpush'
+  is_active      BOOLEAN      NOT NULL DEFAULT TRUE,
+  last_run_at    TIMESTAMPTZ,
+  last_run_bucket VARCHAR(20),                           -- 중복 실행 방지 키: daily/weekly='YYYY-MM-DD', hourly='YYYY-MM-DDTHH'
+  last_status    VARCHAR(20),
+  last_error     TEXT,
+  created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+-- 기존(daily만 지원하던 시절) 스키마에서 넘어오는 경우를 위한 보정
+ALTER TABLE totalprice_alerts ALTER COLUMN run_time DROP NOT NULL;
+ALTER TABLE totalprice_alerts ADD COLUMN IF NOT EXISTS run_minute SMALLINT;
+ALTER TABLE totalprice_alerts ADD COLUMN IF NOT EXISTS run_weekday SMALLINT;
+ALTER TABLE totalprice_alerts ADD COLUMN IF NOT EXISTS last_run_bucket VARCHAR(20);
+ALTER TABLE totalprice_alerts DROP COLUMN IF EXISTS last_run_date;
+CREATE INDEX IF NOT EXISTS idx_totalprice_alerts_user ON totalprice_alerts(user_id);
+
 /* ── platform 공통 인프라: 메일 발송 / 배치잡 (core/batch.js, shared/mailer.js) ── */
 CREATE TABLE IF NOT EXISTS platform_mail_log (
   id          SERIAL       PRIMARY KEY,

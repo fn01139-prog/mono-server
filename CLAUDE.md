@@ -88,6 +88,7 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 | `/travellog` | 여행 계획 및 기록 관리 | SPA mode; **PostgreSQL** (`travel_*`); `owner_id` 격리; 사진 파일은 Google Drive |
 | `/campchecklist` | 캠핑 체크리스트 | **PostgreSQL** (`camp_*`); 생성자가 참여자를 초대하는 방식 — 본인이 만들었거나 초대된 일정만 조회 |
 | `/mindmap` | 마인드맵 | **PostgreSQL** (`mindmap_boards` 등); `owner_id` 격리 |
+| `/totalprice` | 종합 시세: 금/은 시세 + 국내 주식 시세 | 금/은: 비공식 외부 API(`koreagoldx.co.kr`) 프록시, 메모리 캐시(10분 TTL)+**PostgreSQL**(`totalprice_gold_cache`) 폴백(파일 캐시 아님 — 배포마다 컨테이너가 새로 뜨는 호스팅에서도 유지); 주식: Npay 증권(`finance.naver.com`) 크롤링(일별/시간별 시세, 현재가 스냅샷, 종목뉴스), **PostgreSQL**(`totalprice_stocks` — 종목코드+명칭 마스터, `totalprice-stocklist-refresh` 배치잡이 주 1회 갱신); `/stocks/:code/insight`는 시세+뉴스를 Claude Haiku 4.5로 요약해 매수/매도 참고 자료 생성(투자자문 아님, `ANTHROPIC_API_KEY` 필요, 종목별 30분 캐시, `lib/insightService.js`); **PostgreSQL**(`totalprice_alerts` — 사용자별 AI 알림 예약: 종목/주기/시간/알림채널, `totalprice-alert-runner` 배치잡이 10분마다 스캔해 `shared/notify`로 발송) |
 
 모든 앱은 인증을 자체 구현하지 않는다 — `core/loader.js`가 마운트 시점에 로그인·앱 권한 가드를 자동으로 앞단에 삽입한다. 자세한 내용은 아래 "Authentication" 섹션 참고.
 
@@ -221,6 +222,7 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `GDRIVE_CLIENT_SECRET` | (없음) | mdboard/campchecklist Drive OAuth2 시크릿 |
 | `GDRIVE_REFRESH_TOKEN` | (없음) | mdboard/campchecklist Drive OAuth2 리프레시 토큰 |
 | `GDRIVE_FOLDER_ID` | (없음) | mdboard/campchecklist Drive 폴더 ID |
+| `ANTHROPIC_API_KEY` | (없음) | Claude API 키. travellog(장소 추천), totalprice(종목 AI 참고 자료 생성)에서 사용. 미설정 시 해당 AI 기능만 에러 응답 |
 | `BREVO_API_KEY` | (없음) | 플랫폼 공통 메일 발송(`shared/mailer.js`)용 Brevo API 키. 미설정 시 발송 시도는 실패로 로그만 남음 |
 | `SMTP_FROM` | `SMTP_USER` 값 | 발신자 주소 — Brevo Senders에 인증된 주소여야 함 (변수명은 과거 SMTP 시절 그대로 유지) |
 | `TELEGRAM_BOT_TOKEN` | (없음) | 플랫폼 공통 메신저 알림(`shared/notify/`)용 텔레그램 봇 토큰. 미설정 시 텔레그램 채널만 발송 실패 |
