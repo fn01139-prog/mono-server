@@ -1,10 +1,7 @@
 /**
  * shared/notify/channels/webpush.js
  * config: { endpoint, p256dh, auth }. VAPID_SUBJECT/VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY 환경변수 필요.
- *
- * 참고: 이 어댑터는 발송 로직만 구현되어 있고, 브라우저가 구독을 등록하는
- * 프론트엔드 플로우(서비스워커 + 구독 버튼)는 아직 없다 — notify_push_subscriptions에
- * 구독을 채워 넣는 별도 작업이 필요하다.
+ * 구독 등록은 admin 콘솔 알림 탭의 "이 브라우저를 웹푸시로 구독" 버튼(shared/public/sw.js) 참고.
  */
 const webpush = require('web-push');
 
@@ -22,7 +19,16 @@ function ensureConfigured() {
 async function send(config, { title, body, url }) {
   ensureConfigured();
   const sub = { endpoint: config.endpoint, keys: { p256dh: config.p256dh, auth: config.auth } };
-  await webpush.sendNotification(sub, JSON.stringify({ title, body, url }));
+  try {
+    await webpush.sendNotification(sub, JSON.stringify({ title, body, url }));
+  } catch (e) {
+    // web-push의 WebPushError는 실제 원인(만료된 구독, VAPID 키 불일치 등)이 statusCode/body에
+    // 담겨있는데 기본 e.message("Received unexpected response code")는 이걸 다 숨긴다.
+    if (e.statusCode) {
+      throw new Error(`웹푸시 전송 실패 (HTTP ${e.statusCode}): ${String(e.body || e.message || '').slice(0, 300)}`);
+    }
+    throw e;
+  }
 }
 
 module.exports = { name: 'webpush', send };
