@@ -220,9 +220,10 @@ router.get('/files', async (req, res) => {
     const isReadable = (p) => readable === null || readable.has(p);
 
     const rootFiles = rootFilesAll.filter(f => isReadable(f.path)).sort((a, b) => new Date(b.modified) - new Date(a.modified));
+    // 빈 폴더도 그대로 노출 — 폴더는 소유 개념 없는 공유 구조라 파일이 0개라고 숨기면
+    // 방금 만든 폴더가 사이드바/이동 다이얼로그 어디에도 안 보이는 문제가 생김
     const folders = foldersAll
-      .map(fld => ({ name: fld.name, files: fld.files.filter(f => isReadable(f.path)).sort((a, b) => new Date(b.modified) - new Date(a.modified)) }))
-      .filter(fld => fld.files.length > 0);
+      .map(fld => ({ name: fld.name, files: fld.files.filter(f => isReadable(f.path)).sort((a, b) => new Date(b.modified) - new Date(a.modified)) }));
     const htmlFiles = htmlFilesAll.filter(f => isReadable(f.path)).sort((a, b) => new Date(b.modified) - new Date(a.modified));
     const allFiles = [...rootFiles, ...folders.flatMap(f => f.files)];
 
