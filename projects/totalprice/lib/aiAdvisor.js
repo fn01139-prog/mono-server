@@ -21,12 +21,24 @@ class InsightError extends Error {
  * type 목록(SDK resources/shared.d.ts 기준): invalid_request_error, authentication_error,
  * permission_error, not_found_error, rate_limit_error, timeout_error, overloaded_error,
  * api_error, billing_error(크레딧/요금 부족).
+ *
+ * ⚠️ 실측 확인: 크레딧 부족이 항상 billing_error 타입으로 오는 게 아니라, 실제로는
+ * status 400 + type 'invalid_request_error' + 메시지에 "credit balance is too low"가
+ * 담겨서 오는 경우가 있었다 → 타입만 보지 말고 메시지 문구도 함께 검사한다.
  */
 function mapAnthropicError(e) {
   const type = e?.type;
   const status = e?.status;
+  // e.error는 SDK가 파싱해둔 응답 바디({type:'error', error:{type, message}, request_id}).
+  // e.message는 기본적으로 "status {원본 JSON 전체}" 형태라 그대로 보여주면 지저분하므로,
+  // 가능하면 안쪽의 실제 메시지 문구만 뽑아 쓴다.
+  const apiMessage = e?.error?.error?.message || e?.message || '';
+  const isBillingIssue =
+    type === 'billing_error' ||
+    e?.error?.error?.type === 'billing_error' ||
+    /credit balance|purchase credits|plans\s*&\s*billing/i.test(apiMessage);
 
-  if (type === 'billing_error') {
+  if (isBillingIssue) {
     return new InsightError(
       'Anthropic API 호출 요금이 부족합니다. console.anthropic.com에서 크레딧을 충전한 뒤 다시 시도해주세요.',
       'billing_error', 402
@@ -45,7 +57,7 @@ function mapAnthropicError(e) {
     return new InsightError('Anthropic 서버가 일시적으로 과부하 상태입니다. 잠시 후 다시 시도해주세요.', 'overloaded_error', 503);
   }
   if (type === 'invalid_request_error' || status === 400) {
-    return new InsightError(`AI 요청이 올바르지 않습니다: ${e.message}`, 'invalid_request', 400);
+    return new InsightError(`AI 요청이 올바르지 않습니다: ${apiMessage}`, 'invalid_request', 400);
   }
   if (typeof status === 'number' && status >= 500) {
     return new InsightError('Anthropic 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', 'server_error', 502);
@@ -53,7 +65,7 @@ function mapAnthropicError(e) {
   if (e?.name === 'APIConnectionError') {
     return new InsightError('Anthropic API에 연결하지 못했습니다. 네트워크 상태를 확인해주세요.', 'connection_error', 502);
   }
-  return new InsightError(e?.message || 'AI 분석 중 알 수 없는 오류가 발생했습니다.', 'unknown_error', 502);
+  return new InsightError(apiMessage || 'AI 분석 중 알 수 없는 오류가 발생했습니다.', 'unknown_error', 502);
 }
 
 function fmtSigned(n, unit = '') {
