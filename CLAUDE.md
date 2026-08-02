@@ -174,6 +174,7 @@ customRoutes: [
 - **Claude 배치 처리용 API** (로그인 없이 `x-api-key` 헤더로 접근, `FEEDBACK_API_KEY` 필요 — `MDBOARD_API_KEY`/`/publish`와 동일 패턴): `GET /auth/feedback/batch/pending`(처리 대기 중인 개선 리스트 조회), `PUT /auth/feedback/batch/:id`(`{ status: 'done', resolutionNote, resolvedBy? }`로 처리 완료 반영 — `resolvedBy` 생략 시 `'claude-batch'`로 기록)
 - admin 전용 수동 관리: `PUT /auth/admin/feedback/:id`(`{ status?, resolutionNote?, category?, type? }`), `DELETE /auth/admin/feedback/:id` — admin 콘솔 "버그/개선" 탭에서 완료 처리/되돌리기/삭제 가능
 - 처리구분 표시 규칙: `resolved_by === 'claude-batch'`면 "🤖 Claude 자동처리", 그 외 `platform_users.id`면 LEFT JOIN으로 이름을 가져와 "🙋 이름 (수동)"으로 표시(`GET /auth/feedback`/`/auth/feedback/batch/pending` 응답에 `resolved_by_name` 포함)
+- **Claude Code 스킬**: `.claude/skills/mono-feedback-batch.md` — "피드백 처리해줘" 등을 요청하면 조회(`scripts/feedback-batch.js list`) → 코드 수정 → 테스트 → GitHub push → 완료 처리(`scripts/feedback-batch.js resolve <id> "<처리내용>"`)까지 수행. 배치잡(자동 스케줄)이 아니라 수동 실행 워크플로다. `scripts/feedback-batch.js`는 `scripts/mdboard-push.js`와 동일한 스타일의 무의존성 CLI(`FEEDBACK_URL`/`FEEDBACK_API_KEY` 환경변수 사용)
 
 **배치잡 (`core/batch.js`)**
 - `core/jobs/*.js`를 자동 스캔해 `node-cron`으로 등록 (projects/ 자동 로딩과 동일한 패턴). 각 파일은 `{ id, name, schedule, description, run(pool) }`을 export
