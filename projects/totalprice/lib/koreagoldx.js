@@ -22,12 +22,13 @@ function defaultDateRange() {
   return { start: formatDate(start), end: formatDate(end) };
 }
 
-async function fetchGoldPrice({ type = 'Au', startDate, endDate } = {}) {
-  if (!VALID_TYPES.has(type)) type = 'Au';
-  const defaults = defaultDateRange();
-  const dataDateStart = startDate || defaults.start;
-  const dataDateEnd = endDate || defaults.end;
+const REQUEST_TIMEOUT_MS = 8000;
+const MAX_ATTEMPTS = 2; // 비공식 API라 순간적인 타임아웃/네트워크 오류가 잦아 1회 재시도로 흡수
+const RETRY_DELAY_MS = 700;
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function requestOnce({ type, dataDateStart, dataDateEnd }) {
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
@@ -40,6 +41,7 @@ async function fetchGoldPrice({ type = 'Au', startDate, endDate } = {}) {
       Accept: 'application/json, text/plain, */*',
     },
     body: JSON.stringify({ srchDt: 'SEARCH', type, dataDateStart, dataDateEnd }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   const text = await res.text();
@@ -54,7 +56,28 @@ async function fetchGoldPrice({ type = 'Au', startDate, endDate } = {}) {
     throw new Error(`koreagoldx API 응답이 JSON이 아닙니다: ${text.slice(0, 200)}`);
   }
 
-  return { type, dataDateStart, dataDateEnd, list: json.list || [] };
+  return json.list || [];
+}
+
+async function fetchGoldPrice({ type = 'Au', startDate, endDate } = {}) {
+  if (!VALID_TYPES.has(type)) type = 'Au';
+  const defaults = defaultDateRange();
+  const dataDateStart = startDate || defaults.start;
+  const dataDateEnd = endDate || defaults.end;
+
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const list = await requestOnce({ type, dataDateStart, dataDateEnd });
+      return { type, dataDateStart, dataDateEnd, list };
+    } catch (e) {
+      lastErr = e.name === 'TimeoutError' || e.name === 'AbortError'
+        ? new Error(`koreagoldx API 응답 시간 초과 (${REQUEST_TIMEOUT_MS}ms)`)
+        : e;
+      if (attempt < MAX_ATTEMPTS) await sleep(RETRY_DELAY_MS);
+    }
+  }
+  throw lastErr;
 }
 
 module.exports = { fetchGoldPrice, defaultDateRange };
