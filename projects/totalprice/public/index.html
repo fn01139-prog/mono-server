@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+<script src="/shared-assets/auth-guard.js"></script>
+<script src="/shared-assets/feedback-widget.js"></script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>종합 시세</title>
@@ -90,6 +92,21 @@
   .suggestion-item:hover { background: #f2eee6; }
   .suggestion-item .code { color: var(--muted); font-size: 12px; }
   .suggestion-empty { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+
+  .stock-favorites { display: flex; flex-wrap: wrap; gap: 6px; margin: -12px 0 20px; max-width: 480px; }
+  .stock-favorites.hidden { display: none; }
+  .favorite-chip {
+    display: inline-flex; align-items: center; gap: 5px; padding: 5px 6px 5px 10px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--card);
+    font-size: 12.5px; color: var(--ink); cursor: pointer;
+  }
+  .favorite-chip:hover { border-color: var(--gold); }
+  .favorite-chip .code { color: var(--muted); font-size: 11px; }
+  .favorite-chip .remove {
+    border: none; background: none; color: var(--muted); cursor: pointer; font-size: 13px;
+    line-height: 1; padding: 2px 4px; border-radius: 50%;
+  }
+  .favorite-chip .remove:hover { background: #f2eee6; color: var(--ink); }
 
   .stock-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
   .stock-title { font-size: 16px; font-weight: 700; }
@@ -205,6 +222,7 @@
       <input id="stockSearchInput" type="text" placeholder="종목명 또는 코드 검색 (예: 삼성전자, 005930)" autocomplete="off" />
       <div id="stockSuggestions" class="suggestions"></div>
     </div>
+    <div id="stockFavorites" class="stock-favorites hidden"></div>
 
     <div id="stockEmpty" class="empty-hint">종목을 검색해서 선택하세요.</div>
 

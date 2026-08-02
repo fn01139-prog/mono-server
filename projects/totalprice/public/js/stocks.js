@@ -7,6 +7,44 @@
   let mode = 'daily'; // 'daily' | 'intraday'
   let searchTimer = null;
 
+  // 즐겨찾기(최근 검색한 종목) — 브라우저별 localStorage에 최대 10개, 최신순으로 보관
+  const FAVORITES_KEY = 'totalprice_recent_stocks';
+  const MAX_FAVORITES = 10;
+
+  function loadFavorites() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveFavorite(code, name) {
+    const list = loadFavorites().filter(f => f.code !== code);
+    list.unshift({ code, name });
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(list.slice(0, MAX_FAVORITES)));
+    renderFavorites();
+  }
+
+  function removeFavorite(code) {
+    const list = loadFavorites().filter(f => f.code !== code);
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(list));
+    renderFavorites();
+  }
+
+  function renderFavorites() {
+    const box = document.getElementById('stockFavorites');
+    const list = loadFavorites();
+    box.classList.toggle('hidden', list.length === 0);
+    box.innerHTML = list
+      .map(f => `<span class="favorite-chip" data-code="${f.code}" data-name="${f.name}">
+        ${f.name} <span class="code">${f.code}</span>
+        <button type="button" class="remove" data-remove="${f.code}" title="즐겨찾기 제거">×</button>
+      </span>`)
+      .join('');
+  }
+
   const fmtNum = n => (n === null || n === undefined ? '-' : n.toLocaleString('ko-KR'));
   const fmtWon = n => (n === null || n === undefined ? '-' : n.toLocaleString('ko-KR') + '원');
 
@@ -216,6 +254,7 @@
     const panel = document.getElementById('insightPanel');
     panel.classList.add('hidden');
     panel.innerHTML = '';
+    saveFavorite(code, name);
     loadAndRender();
   }
 
@@ -239,6 +278,17 @@
       if (!item || !item.dataset.code) return;
       selectStock(item.dataset.code, item.dataset.name);
     });
+
+    document.getElementById('stockFavorites').addEventListener('click', e => {
+      const removeBtn = e.target.closest('[data-remove]');
+      if (removeBtn) {
+        removeFavorite(removeBtn.dataset.remove);
+        return;
+      }
+      const chip = e.target.closest('.favorite-chip');
+      if (chip) selectStock(chip.dataset.code, chip.dataset.name);
+    });
+    renderFavorites();
 
     document.getElementById('modeDaily').addEventListener('click', () => setMode('daily'));
     document.getElementById('modeIntraday').addEventListener('click', () => setMode('intraday'));

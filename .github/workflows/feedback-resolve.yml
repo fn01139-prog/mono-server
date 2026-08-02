@@ -1,0 +1,30 @@
+name: Resolve feedback on issue close
+
+# feedback-sync.yml이 미러링한 이슈가 닫히면(Close), 닫기 직전 마지막 댓글을
+# 처리내용으로 삼아 mono-server의 platform_feedback을 처리완료로 갱신한다.
+# 자세한 흐름: .claude/skills/mono-feedback-batch.md
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Reflect resolution to mono-server
+        env:
+          FEEDBACK_URL: ${{ vars.FEEDBACK_URL || 'https://fn0113.up.railway.app' }}
+          FEEDBACK_API_KEY: ${{ secrets.FEEDBACK_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/feedback-sync-resolve.js
