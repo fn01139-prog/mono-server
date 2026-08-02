@@ -85,6 +85,15 @@ app.get('/', requireLogin, async (req, res, next) => {
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 40px; }
+    table.fb-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 32px; }
+    .fb-table th, .fb-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; }
+    .fb-table th { color: #888; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; }
+    .fb-section h2 { font-size: 1.1rem; color: #fff; margin-top: 40px; }
+    .fb-section p.sub { color: #888; font-size: 0.82rem; margin-bottom: 0; }
+    .fb-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; font-weight: 600; }
+    .fb-badge-pending { background: rgba(227,179,65,.15); border: 1px solid rgba(227,179,65,.4); color: #e3b341; }
+    .fb-badge-done { background: rgba(63,185,80,.12); border: 1px solid rgba(63,185,80,.35); color: #3fb950; }
+    .fb-empty { color: #666; font-size: 0.85rem; padding: 16px 0; }
     .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .user   { font-size: 0.85rem; color: #aaa; display: flex; align-items: center; gap: 12px; }
     .user a { color: #4a9eff; text-decoration: none; }
@@ -105,6 +114,7 @@ app.get('/', requireLogin, async (req, res, next) => {
     .card p    { font-size: 0.85rem; color: #888; margin-top: 8px; margin-bottom: 0; }
     .empty { color: #666; }
   </style>
+  <script src="/shared-assets/feedback-widget.js"></script>
 </head>
 <body>
   <div class="topbar">
@@ -126,11 +136,63 @@ app.get('/', requireLogin, async (req, res, next) => {
     </a>`).join('')}
     ${projects.length === 0 ? '<p class="empty">접근 권한이 있는 앱이 없습니다. 관리자에게 문의하세요.</p>' : ''}
   </div>
+
+  <div class="fb-section">
+    <h2>💬 버그 · 개선 요청 현황</h2>
+    <p class="sub">모든 프로젝트 화면에서 <code>Ctrl+H</code>로 신고할 수 있습니다. 처리 이력은 추후 우수 신고자 베네핏에 활용될 예정입니다.</p>
+    <table class="fb-table">
+      <thead>
+        <tr><th>프로젝트</th><th>처리구분</th><th>요청내용</th><th>요청자</th><th>요청일시</th><th>완료여부</th><th>처리내용</th><th>완료시간</th></tr>
+      </thead>
+      <tbody id="fbRows"></tbody>
+    </table>
+    <div class="fb-empty" id="fbEmpty" style="display:none">등록된 신고가 없습니다.</div>
+  </div>
+
   <script>
     document.getElementById('logoutBtn').addEventListener('click', async () => {
       await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
       location.href = '/login';
     });
+
+    const FB_CATEGORY = { bug: '🐛 버그', improvement: '✨ 기능개선' };
+    const FB_TYPE = { ui: '화면구성', error: '시스템 오류', feature: '추가기능' };
+
+    function fbEsc(s) {
+      const el = document.createElement('div');
+      el.textContent = s == null ? '' : String(s);
+      return el.innerHTML;
+    }
+    function fbDate(v) { return v ? new Date(v).toLocaleString('ko-KR') : '-'; }
+    function fbResolver(f) {
+      if (f.status !== 'done') return '-';
+      if (f.resolved_by === 'claude-batch') return '🤖 Claude 자동처리';
+      if (f.resolved_by_name) return '🙋 ' + fbEsc(f.resolved_by_name) + ' (수동)';
+      return '-';
+    }
+
+    (async function loadFeedback() {
+      try {
+        const res = await fetch('/auth/feedback?limit=100', { credentials: 'include' });
+        const list = await res.json();
+        document.getElementById('fbEmpty').style.display = list.length ? 'none' : 'block';
+        document.getElementById('fbRows').innerHTML = list.map(f => \`
+          <tr>
+            <td>\${fbEsc(f.app_prefix)}</td>
+            <td>\${FB_CATEGORY[f.category] || fbEsc(f.category)} · \${FB_TYPE[f.type] || fbEsc(f.type)}</td>
+            <td style="max-width:280px;">\${fbEsc(f.content)}</td>
+            <td>\${fbEsc(f.requester_name)}</td>
+            <td style="color:#888;font-size:0.78rem">\${fbDate(f.created_at)}</td>
+            <td>\${f.status === 'done' ? '<span class="fb-badge fb-badge-done">완료</span>' : '<span class="fb-badge fb-badge-pending">대기</span>'}</td>
+            <td style="max-width:240px;color:#aaa;">\${fbEsc(f.resolution_note) || '-'}</td>
+            <td style="color:#888;font-size:0.78rem">\${fbDate(f.resolved_at)}</td>
+          </tr>
+        \`).join('');
+      } catch (e) {
+        document.getElementById('fbEmpty').textContent = '신고 목록을 불러오지 못했습니다: ' + e.message;
+        document.getElementById('fbEmpty').style.display = 'block';
+      }
+    })();
   </script>
 </body>
 </html>`;

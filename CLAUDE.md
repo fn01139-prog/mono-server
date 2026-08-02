@@ -111,7 +111,7 @@ customRoutes: [
 - `core/auth.js` — JWT 서명/검증, `attachUser`(모든 요청에 `req.user` 주입), `requireLogin`, `requireApp(prefix)`, `requireRole(role)`, `matchesPublicPath`
 - `core/auth-routes.js` — `/auth/login`, `/auth/logout`, `/auth/me`, `/auth/admin/*`(사용자·권한 관리, admin 전용)
 - `core/loader.js` — 각 앱을 마운트할 때 `requireLogin` + `requireApp(prefix)` 가드를 정적 파일/API/customRoutes/SPA catch-all 앞에 자동 삽입. 앱 코드는 가드를 신경 쓸 필요 없음
-- `core/views/login.html`, `core/views/admin.html` — 로그인 페이지, **관리자 콘솔**(`/admin`, admin 전용, 탭형 단일 페이지: 사용자 관리 / 메일 발송 / 배치잡 / 시스템 점검)
+- `core/views/login.html`, `core/views/admin.html` — 로그인 페이지, **관리자 콘솔**(`/admin`, admin 전용, 탭형 단일 페이지: 사용자 관리 / 메일 발송 / 알림 / 버그·개선 / 배치잡 / 시스템 점검)
 
 **DB 테이블**
 - `platform_users` / `platform_accounts` — 사용자·계정(로그인ID, bcrypt 해시, role: `admin`|`member`)
@@ -130,9 +130,9 @@ customRoutes: [
 - `campchecklist`는 트립 생성자가 참여자를 초대하는 방식 (`camp_trips.owner_id` + `participants` JSONB)
 - `floorplan`은 조회는 로그인 사용자 전원, 수정/삭제만 소유자 제한
 
-### 플랫폼 공통 인프라: 메일 발송 / 메신저 알림 / 배치잡 / 관리자 콘솔
+### 플랫폼 공통 인프라: 메일 발송 / 메신저 알림 / 버그·개선요청 / 배치잡 / 관리자 콘솔
 
-`/admin`(admin 전용)은 5개 탭으로 구성된 탭형 단일 페이지다: 사용자 관리, 메일 발송, 알림, 배치잡, 시스템 점검. API는 모두 `core/auth-routes.js`의 `/auth/admin/*` 아래 있다(기존 `requireRole('admin')` 가드 재사용).
+`/admin`(admin 전용)은 6개 탭으로 구성된 탭형 단일 페이지다: 사용자 관리, 메일 발송, 알림, 버그/개선, 배치잡, 시스템 점검. 사용자 관리/메일/알림/배치잡/시스템 점검 API는 모두 `core/auth-routes.js`의 `/auth/admin/*` 아래 있다(기존 `requireRole('admin')` 가드 재사용). 버그/개선요청은 등록·조회가 admin 전용이 아니라서 예외적으로 `/auth/feedback`(로그인 사용자 전체)과 `/auth/admin/feedback/:id`(admin 전용 상태 변경/삭제)로 나뉜다 — 아래 참고.
 
 **메일 발송 (`shared/mailer.js`)**
 - 모든 앱/배치잡이 재사용하는 공통 발송 함수: `sendMail({ to, subject, text, html, appPrefix, sentBy })`
@@ -166,6 +166,14 @@ customRoutes: [
 - 가족/지인처럼 로그인 계정이 없는 사람은 이 방식을 못 씀 — admin 콘솔(알림 탭)에서 수동으로 채널 등록해야 함. 초대 링크로 스스로 연결하는 플로우(`notify_invite_tokens` 테이블은 존재)는 여전히 미구현
 - admin API(모든 recipient 대상, admin 전용): `GET /auth/admin/notify/recipients`(+POST/PUT/DELETE), `GET/POST /auth/admin/notify/recipients/:id/channels`, `DELETE /auth/admin/notify/channels/:type/:id`, `GET /auth/admin/notify/categories`, `GET/PUT /auth/admin/notify/recipients/:id/subscriptions(/:categoryId)`, `POST /auth/admin/notify/test`, `GET /auth/admin/notify/logs`
 - 최초 부트스트랩 시 `relation='self'` 수신자 1명이 자동 생성됨(`scripts/migrate-auth.js`) — admin 콘솔에서 채널만 연결하면 바로 사용 가능
+
+**버그/개선요청 신고 (`shared/public/feedback-widget.js`, `platform_feedback`)**
+- 모든 프로젝트 화면(허브 페이지 포함)에서 `Ctrl+H`(또는 우하단 플로팅 버튼 — 브라우저에 따라 `Ctrl+H`가 예약 단축키라 가로채지지 않을 수 있어 항상 병행 제공)를 누르면 신고 모달이 뜬다. 각 프로젝트 진입 HTML에 `<script src="/shared-assets/feedback-widget.js">`를 `auth-guard.js`와 나란히 추가해서 활성화한다 — 새 프로젝트를 만들 때도 잊지 말 것
+- 등록 항목: 분류(`category`: `bug` 버그 / `improvement` 기능개선), 종류(`type`: `ui` 화면구성 / `error` 시스템 오류 / `feature` 추가기능), 내용(`content`), 요청자·요청일시는 로그인 사용자 정보로 자동 기록(`requester_id`/`requester_name`/`created_at`), 신고 당시 URL(`page_url`)과 프로젝트(`app_prefix`)도 함께 저장
+- `POST /auth/feedback`(등록)·`GET /auth/feedback`(전체 목록, `?limit=`)는 admin 여부와 무관하게 **로그인 사용자 누구나** 호출 가능 — 허브 페이지(`/`)가 이 API로 전체 신고 현황(요청내용/처리내용/요청시간/요청자/완료여부/완료시간/처리구분)을 공개 표시해서 추후 우수 신고자 베네핏 산정에 활용할 예정이기 때문
+- **Claude 배치 처리용 API** (로그인 없이 `x-api-key` 헤더로 접근, `FEEDBACK_API_KEY` 필요 — `MDBOARD_API_KEY`/`/publish`와 동일 패턴): `GET /auth/feedback/batch/pending`(처리 대기 중인 개선 리스트 조회), `PUT /auth/feedback/batch/:id`(`{ status: 'done', resolutionNote, resolvedBy? }`로 처리 완료 반영 — `resolvedBy` 생략 시 `'claude-batch'`로 기록)
+- admin 전용 수동 관리: `PUT /auth/admin/feedback/:id`(`{ status?, resolutionNote?, category?, type? }`), `DELETE /auth/admin/feedback/:id` — admin 콘솔 "버그/개선" 탭에서 완료 처리/되돌리기/삭제 가능
+- 처리구분 표시 규칙: `resolved_by === 'claude-batch'`면 "🤖 Claude 자동처리", 그 외 `platform_users.id`면 LEFT JOIN으로 이름을 가져와 "🙋 이름 (수동)"으로 표시(`GET /auth/feedback`/`/auth/feedback/batch/pending` 응답에 `resolved_by_name` 포함)
 
 **배치잡 (`core/batch.js`)**
 - `core/jobs/*.js`를 자동 스캔해 `node-cron`으로 등록 (projects/ 자동 로딩과 동일한 패턴). 각 파일은 `{ id, name, schedule, description, run(pool) }`을 export
@@ -227,6 +235,7 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `SMTP_FROM` | `SMTP_USER` 값 | 발신자 주소 — Brevo Senders에 인증된 주소여야 함 (변수명은 과거 SMTP 시절 그대로 유지) |
 | `TELEGRAM_BOT_TOKEN` | (없음) | 플랫폼 공통 메신저 알림(`shared/notify/`)용 텔레그램 봇 토큰. 미설정 시 텔레그램 채널만 발송 실패 |
 | `VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | (없음) | 웹푸시 채널용 VAPID 키 (`node -e "console.log(require('web-push').generateVAPIDKeys())"`로 생성). admin 콘솔 알림 탭에서 브라우저 구독 가능 |
+| `FEEDBACK_API_KEY` | (없음) | 버그/개선요청 신고(`platform_feedback`) 배치 처리 API 키. `GET/PUT /auth/feedback/batch/*`에 `x-api-key` 헤더로 접근할 때 필요 (Claude 배치 등 programmatic 접근용, `MDBOARD_API_KEY`와 동일한 패턴) |
 
 ### Deployment
 

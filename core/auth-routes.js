@@ -153,6 +153,85 @@ router.get('/notify/logs', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/* ── 버그/개선요청 신고 (플랫폼 공통, 모든 프로젝트에서 Ctrl+H → shared/public/feedback-widget.js) ──
+ * 등록: 로그인 사용자 누구나 자기 화면에서 신고 가능. 조회: 로그인 사용자 누구나 전체 목록을 볼 수 있음
+ * (허브 페이지에 요청자·처리 현황을 공개해 우수 신고자 베네핏에 활용할 예정이므로 admin 전용이 아님).
+ * 상태 변경은 관리자 콘솔(수동) 또는 /feedback/batch/*(x-api-key, Claude 배치 자동 처리) 둘 중 하나로만 가능.
+ */
+const FEEDBACK_CATEGORIES = new Set(['bug', 'improvement']);
+const FEEDBACK_TYPES = new Set(['ui', 'error', 'feature']);
+const FEEDBACK_SELECT = `
+  SELECT f.*, u.name AS resolved_by_name
+  FROM platform_feedback f
+  LEFT JOIN platform_users u ON u.id = f.resolved_by
+`;
+
+router.post('/feedback', attachUser, requireLogin, async (req, res) => {
+  const { appPrefix, category, type, content, pageUrl } = req.body;
+  if (!FEEDBACK_CATEGORIES.has(category)) return res.status(400).json({ error: '분류가 올바르지 않습니다' });
+  if (!FEEDBACK_TYPES.has(type)) return res.status(400).json({ error: '종류가 올바르지 않습니다' });
+  if (!content?.trim()) return res.status(400).json({ error: '내용을 입력하세요' });
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO platform_feedback (app_prefix, category, type, content, page_url, requester_id, requester_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [appPrefix?.trim() || '-', category, type, content.trim(), pageUrl || null, req.user.userId, req.user.name]
+    );
+    res.json({ ok: true, feedback: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.get('/feedback', attachUser, requireLogin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `${FEEDBACK_SELECT} ORDER BY f.created_at DESC LIMIT $1`,
+      [Math.min(Number(req.query.limit) || 200, 500)]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── Claude 배치 처리용 (x-api-key 전용, 로그인 불필요 — mdboard /publish와 동일 패턴) ── */
+function requireFeedbackApiKey(req, res, next) {
+  const apiKey = process.env.FEEDBACK_API_KEY || '';
+  if (!apiKey || req.headers['x-api-key'] !== apiKey) {
+    return res.status(401).json({ error: 'API 키가 필요합니다' });
+  }
+  next();
+}
+
+// GET /feedback/batch/pending — 처리 대기 중인 개선 리스트 (Claude 배치가 소비)
+router.get('/feedback/batch/pending', requireFeedbackApiKey, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `${FEEDBACK_SELECT} WHERE f.status = 'pending' ORDER BY f.created_at ASC`
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /feedback/batch/:id  { status, resolutionNote?, resolvedBy? } — 처리 완료 시 상태값 업데이트
+router.put('/feedback/batch/:id', requireFeedbackApiKey, async (req, res) => {
+  const { status, resolutionNote, resolvedBy } = req.body;
+  if (!['pending', 'done'].includes(status)) {
+    return res.status(400).json({ error: 'status는 pending 또는 done 이어야 합니다' });
+  }
+  const isDone = status === 'done';
+  try {
+    const { rows } = await pool.query(
+      `UPDATE platform_feedback
+         SET status = $1,
+             resolution_note = COALESCE($2, resolution_note),
+             resolved_by = $3,
+             resolved_at = $4
+       WHERE id = $5 RETURNING *`,
+      [status, resolutionNote ?? null, isDone ? (resolvedBy || 'claude-batch') : null, isDone ? new Date() : null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: '요청을 찾을 수 없습니다' });
+    res.json({ ok: true, feedback: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 /* ── admin: 사용자 관리 ───────────────────────────────────────────────── */
 router.use('/admin', attachUser, requireLogin, requireRole('admin'));
 
@@ -263,6 +342,50 @@ router.delete('/admin/users/:id', async (req, res) => {
     }
     await pool.query('DELETE FROM platform_users WHERE id = $1', [req.params.id]);
     await pool.query('DELETE FROM platform_app_grants WHERE user_id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/* ── admin: 버그/개선요청 신고 관리 (관리자 콘솔 통합 모니터링 탭) ──────────── */
+router.put('/admin/feedback/:id', async (req, res) => {
+  const { status, resolutionNote, category, type } = req.body;
+  if (status !== undefined && !['pending', 'done'].includes(status)) {
+    return res.status(400).json({ error: 'status가 올바르지 않습니다' });
+  }
+  if (category !== undefined && !FEEDBACK_CATEGORIES.has(category)) {
+    return res.status(400).json({ error: '분류가 올바르지 않습니다' });
+  }
+  if (type !== undefined && !FEEDBACK_TYPES.has(type)) {
+    return res.status(400).json({ error: '종류가 올바르지 않습니다' });
+  }
+  try {
+    const { rows: existingRows } = await pool.query('SELECT * FROM platform_feedback WHERE id = $1', [req.params.id]);
+    if (!existingRows.length) return res.status(404).json({ error: '요청을 찾을 수 없습니다' });
+    const cur = existingRows[0];
+    const nextStatus = status !== undefined ? status : cur.status;
+    const { rows } = await pool.query(
+      `UPDATE platform_feedback
+         SET status = $1, resolution_note = $2, category = $3, type = $4,
+             resolved_by = $5, resolved_at = $6
+       WHERE id = $7 RETURNING *`,
+      [
+        nextStatus,
+        resolutionNote !== undefined ? resolutionNote : cur.resolution_note,
+        category || cur.category,
+        type || cur.type,
+        nextStatus === 'done' ? req.user.userId : null,
+        nextStatus === 'done' ? (cur.status === 'done' ? cur.resolved_at : new Date()) : null,
+        req.params.id,
+      ]
+    );
+    res.json({ ok: true, feedback: rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.delete('/admin/feedback/:id', async (req, res) => {
+  try {
+    const { rowCount } = await pool.query('DELETE FROM platform_feedback WHERE id = $1', [req.params.id]);
+    if (!rowCount) return res.status(404).json({ error: '요청을 찾을 수 없습니다' });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -403,6 +526,16 @@ router.get('/admin/system/check', async (req, res) => {
     checks.push({
       key: 'notify_recipients', label: '알림 수신자 등록 수', ok: recipientRows[0].c > 0,
       detail: `${recipientRows[0].c}명`,
+    });
+
+    checks.push({
+      key: 'feedback_api_key', label: '버그/개선요청 배치 API 키 (FEEDBACK_API_KEY)', ok: !!process.env.FEEDBACK_API_KEY,
+      detail: process.env.FEEDBACK_API_KEY ? '설정됨 — Claude 배치가 /auth/feedback/batch/* 호출 가능' : '미설정 — 배치 처리 API 접근 불가',
+    });
+    const { rows: pendingFeedbackRows } = await pool.query(`SELECT COUNT(*)::int c FROM platform_feedback WHERE status = 'pending'`);
+    checks.push({
+      key: 'feedback_pending', label: '처리 대기 중인 버그/개선요청', ok: true,
+      detail: `${pendingFeedbackRows[0].c}건`,
     });
 
     res.json({ checks, env: process.env.NODE_ENV || 'development' });
