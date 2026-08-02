@@ -10,6 +10,7 @@ const CHANNEL_TABLES = {
   discord: 'notify_discord_channels',
   ntfy: 'notify_ntfy_channels',
   webpush: 'notify_push_subscriptions',
+  fcm: 'notify_fcm_channels',
 };
 
 /* ── 발송 코어가 쓰는 헬퍼 ─────────────────────────────────────────────── */
@@ -186,6 +187,14 @@ async function addChannel(recipientId, type, config) {
       `INSERT INTO notify_push_subscriptions (recipient_id, endpoint, p256dh, auth, label) VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (endpoint) DO UPDATE SET recipient_id = $1, p256dh = $3, auth = $4, is_active = TRUE RETURNING *`,
       [recipientId, config.endpoint, config.p256dh, config.auth, config.label || null]
+    );
+    return rows[0];
+  }
+  if (type === 'fcm') {
+    const { rows } = await pool.query(
+      `INSERT INTO notify_fcm_channels (recipient_id, fcm_token, platform, device_label) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (fcm_token) DO UPDATE SET recipient_id = $1, platform = $3, device_label = $4, is_active = TRUE RETURNING *`,
+      [recipientId, config.fcmToken, config.platform || null, config.deviceLabel || null]
     );
     return rows[0];
   }

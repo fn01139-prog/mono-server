@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS platform_app_grants (
   PRIMARY KEY (user_id, app_prefix)
 );
 
+-- 모바일 앱 기기 기반 자동로그인: 계정당 활성 기기 1개 (새 기기에서 로그인하면 이전 값을 덮어써 자동 이관)
+ALTER TABLE platform_accounts ADD COLUMN IF NOT EXISTS device_id VARCHAR(200);
+ALTER TABLE platform_accounts ADD COLUMN IF NOT EXISTS device_bound_at TIMESTAMPTZ;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_accounts_device_id
+  ON platform_accounts(device_id) WHERE device_id IS NOT NULL;
+
 /* ── portfolio ─────────────────────────────────────────────────────── */
 CREATE TABLE IF NOT EXISTS portfolio_pages (
   id          VARCHAR(100) PRIMARY KEY,
@@ -410,6 +416,16 @@ CREATE TABLE IF NOT EXISTS notify_push_subscriptions (
   created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   last_sent_at  TIMESTAMPTZ,
   last_error    TEXT
+);
+
+CREATE TABLE IF NOT EXISTS notify_fcm_channels (
+  id            SERIAL       PRIMARY KEY,
+  recipient_id  INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,
+  fcm_token     TEXT         NOT NULL UNIQUE,
+  platform      VARCHAR(10),           -- 'ios' | 'android'
+  device_label  VARCHAR(100),
+  is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS notify_categories (

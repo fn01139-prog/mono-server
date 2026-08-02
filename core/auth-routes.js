@@ -6,6 +6,7 @@
 const express      = require('express');
 const bcrypt       = require('bcryptjs');
 const crypto       = require('crypto');
+const jwt          = require('jsonwebtoken');
 const rateLimit    = require('express-rate-limit');
 const pool         = require('../shared/db');
 const loader       = require('./loader');
@@ -16,7 +17,7 @@ const notifyDb     = require('../shared/notify/db');
 const { isValidP256PublicKey } = require('../shared/notify/channels/webpush');
 const {
   signToken, setAuthCookie, clearAuthCookie,
-  attachUser, requireLogin, requireRole,
+  attachUser, requireLogin, requireRole, JWT_SECRET,
 } = require('./auth');
 
 const router = express.Router();
@@ -39,9 +40,15 @@ async function getUserApps(userId, role) {
   return [...new Set(rows.map(r => r.app_prefix))];
 }
 
+/** 모바일 앱 드로어 메뉴용 — 접근 가능한 프로젝트의 아이콘/설명까지 포함한 전체 정보 */
+function getUserAppDetails(apps) {
+  const allowed = new Set(apps);
+  return loader.getList().filter(p => allowed.has(p.prefix));
+}
+
 /* ── 로그인 / 로그아웃 / 내 정보 ─────────────────────────────────────── */
 router.post('/login', loginLimiter, async (req, res) => {
-  const { loginId, password } = req.body;
+  const { loginId, password, deviceId } = req.body;
   if (!loginId?.trim() || !password) {
     return res.status(400).json({ error: '아이디와 비밀번호를 입력하세요' });
   }
@@ -61,12 +68,71 @@ router.post('/login', loginLimiter, async (req, res) => {
 
     await pool.query('UPDATE platform_accounts SET last_login_at = NOW() WHERE user_id = $1', [account.user_id]);
 
+    // 모바일 앱이 deviceId를 보내면 이 기기로 자동로그인 바인딩(계정당 1개 — 다른 기기가 바인딩돼 있었으면 자동 이관됨)
+    if (deviceId?.trim()) {
+      try {
+        await pool.query(
+          'UPDATE platform_accounts SET device_id = $1, device_bound_at = NOW() WHERE user_id = $2',
+          [deviceId.trim(), account.user_id]
+        );
+      } catch (e) {
+        if (e.code !== '23505') throw e; // 극히 드문 UUID 충돌 — 바인딩만 건너뛰고 로그인은 계속 진행
+      }
+    }
+
     const payload = { userId: user.id, loginId: account.login_id, name: user.name, role: account.role };
     const token = signToken(payload);
     setAuthCookie(res, token);
     res.json({ token, user: payload });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+/** 모바일 앱 부팅 시 — 비밀번호 없이 기기에 저장된 deviceId만으로 자동로그인 */
+router.post('/device-login', loginLimiter, async (req, res) => {
+  const { deviceId } = req.body;
+  if (!deviceId?.trim()) return res.status(400).json({ error: 'deviceId가 필요합니다' });
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM platform_accounts WHERE device_id = $1', [deviceId.trim()]
+    );
+    const account = rows[0];
+    const genericError = () => res.status(401).json({ error: '등록된 기기가 아닙니다' });
+    if (!account || !account.is_active) return genericError();
+
+    const { rows: userRows } = await pool.query('SELECT * FROM platform_users WHERE id = $1', [account.user_id]);
+    const user = userRows[0];
+    if (!user) return genericError();
+
+    await pool.query('UPDATE platform_accounts SET last_login_at = NOW() WHERE user_id = $1', [account.user_id]);
+
+    const payload = { userId: user.id, loginId: account.login_id, name: user.name, role: account.role };
+    const token = signToken(payload);
+    setAuthCookie(res, token);
+    res.json({ token, user: payload });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * 모바일 앱 웹뷰 진입점 — 이미 발급받은 JWT를 웹뷰 자체의 쿠키 저장소에 심어준다.
+ * RN fetch로 로그인해서 받은 토큰은 앱의 네트워크 스택에만 있고 웹뷰 엔진의 쿠키 저장소와는
+ * 분리되어 있어서, 웹뷰가 mono-server 페이지를 열기 전에 이 경로를 먼저 거쳐야 인증된 상태로
+ * 탐색할 수 있다 (Set-Cookie 응답 헤더는 그 요청을 실행한 웹뷰 엔진에 직접 저장되므로 네이티브
+ * 쿠키 라이브러리 없이도 동작).
+ */
+router.get('/webview-bridge', (req, res) => {
+  const { token, next } = req.query;
+  const safeNext = typeof next === 'string' && next.startsWith('/') ? next : '/';
+  if (!token) return res.redirect('/login');
+  try {
+    jwt.verify(token, JWT_SECRET);
+    setAuthCookie(res, token);
+    res.redirect(safeNext);
+  } catch {
+    res.redirect('/login');
   }
 });
 
@@ -78,7 +144,7 @@ router.post('/logout', (req, res) => {
 router.get('/me', attachUser, requireLogin, async (req, res) => {
   try {
     const apps = await getUserApps(req.user.userId, req.user.role);
-    res.json({ ...req.user, apps });
+    res.json({ ...req.user, apps, appDetails: getUserAppDetails(apps) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

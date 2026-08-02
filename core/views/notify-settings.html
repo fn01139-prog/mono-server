@@ -142,7 +142,7 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    const CHANNEL_LABEL = { telegram: '텔레그램', discord: '디스코드', ntfy: 'ntfy', webpush: '웹푸시' };
+    const CHANNEL_LABEL = { telegram: '텔레그램', discord: '디스코드', ntfy: 'ntfy', webpush: '웹푸시', fcm: '모바일 앱 푸시' };
     let myRecipient = null;
     let myChannels = {};
     let mySubscriptions = [];
@@ -199,7 +199,7 @@
       const items = [];
       for (const [type, rows] of Object.entries(myChannels)) {
         for (const c of rows) {
-          const value = type === 'telegram' ? c.chat_id : type === 'discord' ? c.webhook_url : type === 'ntfy' ? c.topic : c.endpoint;
+          const value = type === 'telegram' ? c.chat_id : type === 'discord' ? c.webhook_url : type === 'ntfy' ? c.topic : type === 'fcm' ? (c.device_label || c.platform || c.fcm_token) : c.endpoint;
           items.push(`<div class="channel-row">
             <div><span class="label">${CHANNEL_LABEL[type]}</span> <span class="value">${esc(String(value || '').slice(0, 50))}</span></div>
             <button class="danger" onclick="deleteMyChannel('${type}', ${c.id})">삭제</button>

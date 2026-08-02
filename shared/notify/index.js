@@ -20,6 +20,7 @@ const channels = {
   discord: require('./channels/discord'),
   ntfy: require('./channels/ntfy'),
   webpush: require('./channels/webpush'),
+  fcm: require('./channels/fcm'),
 };
 
 const DEFAULT_CHANNELS = Object.keys(channels);
@@ -90,9 +91,9 @@ async function sendToConfig(adapter, config, { channel, categoryId, recipientId,
     await db.logResult({ categoryId, recipientId, channel, title, body, status: 'success' });
   } catch (e) {
     await db.logResult({ categoryId, recipientId, channel, title, body, status: 'fail', error: e.message });
-    // 웹푸시 구독이 만료/해지된 경우(404/410) 죽은 구독으로 계속 재시도하지 않도록 비활성화
-    if (channel === 'webpush' && (e.statusCode === 404 || e.statusCode === 410)) {
-      await db.deactivateChannel('webpush', config.id).catch(() => {});
+    // 웹푸시/FCM 구독이 만료/해지된 경우(404/410) 죽은 구독으로 계속 재시도하지 않도록 비활성화
+    if ((channel === 'webpush' || channel === 'fcm') && (e.statusCode === 404 || e.statusCode === 410)) {
+      await db.deactivateChannel(channel, config.id).catch(() => {});
     }
     throw e;
   }
