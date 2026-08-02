@@ -4,6 +4,7 @@
  * 토큰 발급/등록은 모바일 앱(mobileweb)이 로그인 후 POST /auth/notify/channels {type:'fcm', fcmToken, platform, deviceLabel}로 처리.
  */
 const admin = require('firebase-admin');
+const { getMessaging } = require('firebase-admin/messaging');
 
 let initialized = false;
 function ensureInitialized() {
@@ -11,14 +12,14 @@ function ensureInitialized() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw) throw new Error('FIREBASE_SERVICE_ACCOUNT가 설정되지 않았습니다');
   const serviceAccount = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  admin.initializeApp({ credential: admin.cert(serviceAccount) });
   initialized = true;
 }
 
 async function send(config, { title, body, url }) {
   ensureInitialized();
   try {
-    await admin.messaging().send({
+    await getMessaging().send({
       token: config.fcm_token,
       notification: { title, body },
       data: url ? { url } : undefined,
