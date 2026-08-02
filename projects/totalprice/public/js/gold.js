@@ -31,7 +31,9 @@
 
   function render(data) {
     const generatedAt = new Date(data.generatedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-    const staleNote = data.stale ? ' · ⚠️ 실시간 조회 실패, 마지막 캐시 표시 중' : '';
+    const staleNote = data.stale
+      ? ` · ⚠️ 실시간 조회 실패, 마지막 캐시 표시 중 (사유: ${data.error || '알 수 없음'})`
+      : '';
     document.getElementById('meta').textContent =
       `조회 기간: ${data.periodStart} ~ ${data.periodEnd} · 생성 시각: ${generatedAt} · 출처: 한국금거래소(비공식 내부 API)${staleNote}`;
 
