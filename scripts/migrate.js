@@ -451,6 +451,30 @@ CREATE TABLE IF NOT EXISTS notify_invite_tokens (
   expires_at    TIMESTAMPTZ  NOT NULL,
   used_at       TIMESTAMPTZ
 );
+
+/* ── platform 공통 인프라: 버그/개선요청 신고 (Ctrl+H 위젯 → 관리자 콘솔/허브 모니터링)
+ * shared/public/feedback-widget.js가 모든 프로젝트 화면에서 Ctrl+H로 띄우는 신고 폼의 저장소.
+ * resolved_by = 'claude-batch'면 /auth/feedback/batch/:id(x-api-key)로 Claude가 자동 처리한 건,
+ * 그 외 값이면 platform_users.id를 참조하는 관리자 수동 처리 건 (조회 시 LEFT JOIN으로 이름 표시).
+ */
+CREATE TABLE IF NOT EXISTS platform_feedback (
+  id              SERIAL       PRIMARY KEY,
+  app_prefix      VARCHAR(100) NOT NULL,
+  category        VARCHAR(20)  NOT NULL,  -- 'bug' | 'improvement'
+  type            VARCHAR(20)  NOT NULL,  -- 'ui' | 'error' | 'feature'
+  content         TEXT         NOT NULL,
+  page_url        VARCHAR(500),
+  requester_id    VARCHAR(100) REFERENCES platform_users(id) ON DELETE SET NULL,
+  requester_name  VARCHAR(200) NOT NULL,
+  status          VARCHAR(20)  NOT NULL DEFAULT 'pending', -- 'pending' | 'done'
+  resolution_note TEXT,
+  resolved_by     VARCHAR(100),
+  resolved_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_platform_feedback_status    ON platform_feedback(status);
+CREATE INDEX IF NOT EXISTS idx_platform_feedback_created   ON platform_feedback(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_platform_feedback_requester ON platform_feedback(requester_id);
 `;
 
 async function run(pool) {

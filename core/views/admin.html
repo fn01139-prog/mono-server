@@ -142,6 +142,7 @@
     <button class="tab active" data-tab="users">👤 사용자 관리</button>
     <button class="tab" data-tab="mail">✉️ 메일 발송</button>
     <button class="tab" data-tab="notify">🔔 알림</button>
+    <button class="tab" data-tab="feedback">💬 버그/개선</button>
     <button class="tab" data-tab="batch">⏱ 배치잡</button>
     <button class="tab" data-tab="system">🩺 시스템 점검</button>
   </div>
@@ -301,6 +302,56 @@
     </div>
   </div>
 
+  <!-- ══════════════════ 버그/개선 요청 통합 모니터링 ══════════════════ -->
+  <section class="tab-panel" id="tab-feedback">
+    <div class="panel">
+      <h2>💬 버그 · 개선 요청 통합 모니터링</h2>
+      <p class="hint">모든 프로젝트 화면에서 <code class="mono">Ctrl+H</code>로 신고된 내용입니다. "완료 처리"는 관리자가 직접 처리하거나,
+        Claude 배치가 <code class="mono">x-api-key</code>(<code class="mono">FEEDBACK_API_KEY</code>)로
+        <code class="mono">GET /auth/feedback/batch/pending</code> / <code class="mono">PUT /auth/feedback/batch/:id</code>를 호출해 자동으로 처리할 수 있습니다.</p>
+      <form class="inline" id="fbFilterForm" style="margin-bottom:14px;">
+        <div class="field">
+          <label>상태</label>
+          <select id="fb-filter-status" style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem;">
+            <option value="">전체</option>
+            <option value="pending">대기</option>
+            <option value="done">완료</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>분류</label>
+          <select id="fb-filter-category" style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem;">
+            <option value="">전체</option>
+            <option value="bug">🐛 버그</option>
+            <option value="improvement">✨ 기능개선</option>
+          </select>
+        </div>
+        <button type="button" onclick="loadFeedback()">새로고침</button>
+      </form>
+      <table>
+        <thead>
+          <tr><th>프로젝트</th><th>분류</th><th>종류</th><th>내용</th><th>요청자</th><th>요청일시</th><th>상태</th><th>처리내용</th><th>처리구분</th><th>완료시간</th><th>작업</th></tr>
+        </thead>
+        <tbody id="feedbackRows"></tbody>
+      </table>
+      <div class="empty" id="feedbackEmpty" style="display:none">등록된 신고가 없습니다.</div>
+    </div>
+  </section>
+
+  <!-- 완료 처리 모달 -->
+  <div class="modal-overlay" id="fbResolveModal">
+    <div class="modal">
+      <h3>완료 처리</h3>
+      <div class="field"><label>처리내용</label>
+        <textarea id="fb-resolution-note" rows="4" style="padding:7px 10px; background:#0f0f0f; border:1px solid #2a2a2a; border-radius:6px; color:#e0e0e0; font-size:0.85rem; resize:vertical;"></textarea>
+      </div>
+      <div class="modal-btns">
+        <button onclick="closeFbResolveModal()">취소</button>
+        <button class="primary" onclick="saveFbResolve()">완료 처리</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════════ 배치잡 ══════════════════ -->
   <section class="tab-panel" id="tab-batch">
     <div class="panel">
@@ -402,6 +453,7 @@
           loadedTabs.add(key);
           if (key === 'mail') loadMail();
           if (key === 'notify') loadNotify();
+          if (key === 'feedback') loadFeedback();
           if (key === 'batch') loadBatch();
           if (key === 'system') loadSystem();
         }
@@ -870,6 +922,109 @@
         `).join('');
       } catch (e) {
         toast('알림 로그 로드 실패: ' + e.message, true);
+      }
+    }
+
+    /* ══════════════════ 버그/개선 요청 통합 모니터링 ══════════════════ */
+    const FB_CATEGORY_LABEL = { bug: '🐛 버그', improvement: '✨ 기능개선' };
+    const FB_TYPE_LABEL = { ui: '화면구성', error: '시스템 오류', feature: '추가기능' };
+    let feedbackList = [];
+    let resolvingFeedbackId = null;
+
+    async function loadFeedback() {
+      try {
+        feedbackList = await api('/auth/feedback?limit=300');
+        renderFeedback();
+      } catch (e) {
+        toast('신고 목록 로드 실패: ' + e.message, true);
+      }
+    }
+
+    function renderFeedback() {
+      const statusFilter = document.getElementById('fb-filter-status').value;
+      const categoryFilter = document.getElementById('fb-filter-category').value;
+      const filtered = feedbackList.filter(f =>
+        (!statusFilter || f.status === statusFilter) &&
+        (!categoryFilter || f.category === categoryFilter)
+      );
+      const rows = document.getElementById('feedbackRows');
+      document.getElementById('feedbackEmpty').style.display = filtered.length ? 'none' : 'block';
+      rows.innerHTML = filtered.map(f => {
+        const statusBadge = f.status === 'done'
+          ? '<span class="badge badge-ok">완료</span>'
+          : '<span class="badge badge-warn">대기</span>';
+        const resolver = f.status !== 'done' ? '-'
+          : f.resolved_by === 'claude-batch' ? '🤖 Claude 자동처리'
+          : f.resolved_by_name ? '🙋 ' + esc(f.resolved_by_name) + ' (수동)'
+          : '-';
+        const actions = f.status === 'done'
+          ? `<button onclick="reopenFeedback(${f.id})">대기로 되돌리기</button>`
+          : `<button class="primary" onclick="openFbResolveModal(${f.id})">완료 처리</button>`;
+        return `<tr>
+          <td>${esc(f.app_prefix)}</td>
+          <td>${FB_CATEGORY_LABEL[f.category] || esc(f.category)}</td>
+          <td>${FB_TYPE_LABEL[f.type] || esc(f.type)}</td>
+          <td style="max-width:260px;">${esc(f.content)}</td>
+          <td>${esc(f.requester_name)}</td>
+          <td style="color:#888;font-size:0.78rem">${fmtDate(f.created_at)}</td>
+          <td>${statusBadge}</td>
+          <td style="max-width:220px;color:#aaa;">${esc(f.resolution_note) || '-'}</td>
+          <td style="font-size:0.78rem;color:#aaa;">${resolver}</td>
+          <td style="color:#888;font-size:0.78rem">${fmtDate(f.resolved_at)}</td>
+          <td>
+            <div class="row-actions">
+              ${actions}
+              <button class="danger" onclick="deleteFeedback(${f.id})">삭제</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.getElementById('fb-filter-status').addEventListener('change', renderFeedback);
+    document.getElementById('fb-filter-category').addEventListener('change', renderFeedback);
+
+    function openFbResolveModal(id) {
+      resolvingFeedbackId = id;
+      document.getElementById('fb-resolution-note').value = '';
+      document.getElementById('fbResolveModal').classList.add('open');
+    }
+    function closeFbResolveModal() {
+      document.getElementById('fbResolveModal').classList.remove('open');
+      resolvingFeedbackId = null;
+    }
+    async function saveFbResolve() {
+      const resolutionNote = document.getElementById('fb-resolution-note').value.trim();
+      try {
+        await api(`/auth/admin/feedback/${resolvingFeedbackId}`, {
+          method: 'PUT', body: JSON.stringify({ status: 'done', resolutionNote }),
+        });
+        toast('완료 처리되었습니다.');
+        closeFbResolveModal();
+        await loadFeedback();
+      } catch (e) {
+        toast('처리 실패: ' + e.message, true);
+      }
+    }
+
+    async function reopenFeedback(id) {
+      try {
+        await api(`/auth/admin/feedback/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'pending' }) });
+        toast('대기 상태로 되돌렸습니다.');
+        await loadFeedback();
+      } catch (e) {
+        toast('변경 실패: ' + e.message, true);
+      }
+    }
+
+    async function deleteFeedback(id) {
+      if (!confirm('이 신고를 삭제할까요? 이 작업은 되돌릴 수 없습니다.')) return;
+      try {
+        await api(`/auth/admin/feedback/${id}`, { method: 'DELETE' });
+        toast('삭제되었습니다.');
+        await loadFeedback();
+      } catch (e) {
+        toast('삭제 실패: ' + e.message, true);
       }
     }
 
