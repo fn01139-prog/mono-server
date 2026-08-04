@@ -12,6 +12,7 @@ const { buildReport } = require('./lib/report');
 const { fetchDaily, fetchIntraday, fetchSnapshot } = require('./lib/naverStock');
 const insightService = require('./lib/insightService');
 const notifyDb = require('../../shared/notify/db');
+const { nowInKst, currentBucket, isDue } = require('../../core/jobs/totalprice-alert-runner');
 
 // 전부 동적 데이터(시세/뉴스/사용자별 알림)라 HTTP 캐시가 붙으면 안 됨 —
 // Express 기본 ETag가 304를 돌려줬을 때 클라이언트가 캐시된 본문을 못 채우는 경우가 있어 아예 끈다.
@@ -213,10 +214,18 @@ router.post('/alerts', asyncHandler(async (req, res) => {
     return fail(res, `연결된 ${NOTIFY_CHANNEL_LABELS[notifyChannel]} 채널이 없습니다. /notify-settings에서 먼저 연결하세요.`, 400);
   }
 
+  // 예약 시각이 오늘 중 이미 지난 시각(예: 지금 14시인데 09:00 daily로 등록)이면
+  // totalprice-alert-runner의 배치 tick 로직상 "아직 이번 주기에 실행 안 함" 상태라
+  // 다음 10분 tick에 바로 발송돼버린다. 등록 시점에 이미 지난 주기라면 이번 주기는
+  // 건너뛰도록 last_run_bucket을 선점해서, 다음 정상 주기(내일/다음 시간 등)부터 발송되게 한다.
+  const kst = nowInKst();
+  const stub = { frequency, run_time: dbRunTime, run_minute: dbRunMinute, run_weekday: dbRunWeekday, last_run_bucket: null };
+  const initialBucket = isDue(stub, kst) ? currentBucket(frequency, kst) : null;
+
   const { rows } = await pool.query(
-    `INSERT INTO totalprice_alerts (user_id, api_key, code, stock_name, frequency, run_time, run_minute, run_weekday, notify_channel)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [req.user.userId, apiKey, code, stockName || code, frequency, dbRunTime, dbRunMinute, dbRunWeekday, notifyChannel]
+    `INSERT INTO totalprice_alerts (user_id, api_key, code, stock_name, frequency, run_time, run_minute, run_weekday, notify_channel, last_run_bucket)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+    [req.user.userId, apiKey, code, stockName || code, frequency, dbRunTime, dbRunMinute, dbRunWeekday, notifyChannel, initialBucket]
   );
   ok(res, rows[0]);
 }));

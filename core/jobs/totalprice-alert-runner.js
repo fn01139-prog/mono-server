@@ -51,8 +51,10 @@ async function markResult(pool, alert, bucket, status, errorMsg) {
 
 function buildMessage(insight) {
   const s = insight.snapshot;
-  const priceLine = s
-    ? `현재가 ${s.price?.toLocaleString('ko-KR')}원 (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)`
+  // 네이버 시세 페이지 스크래핑이 부분적으로 실패하면 snapshot 객체 자체는 오지만
+  // price/changePct가 null일 수 있다 — 그 경우 "현재가 undefined원"이 찍히지 않도록 가드.
+  const priceLine = (s && s.price != null)
+    ? `현재가 ${s.price.toLocaleString('ko-KR')}원 (${s.changePct >= 0 ? '+' : ''}${s.changePct}%)`
     : '';
   const sentimentLabel = { positive: '긍정적', neutral: '중립적', negative: '부정적' }[insight.analysis.sentiment] || '중립적';
   const body = [
@@ -73,6 +75,12 @@ module.exports = {
   name: '종목 AI 참고자료 알림 발송',
   schedule: '*/10 * * * *', // 10분마다
   description: '사용자가 등록한 totalprice AI 알림 예약(종목/주기/시간/알림채널)을 확인해 시각이 된 항목을 발송합니다.',
+  // 알림 등록 API(projects/totalprice/index.js)가 "생성 시점에 이미 지난 시각으로 예약된
+  // 알림이 다음 tick에 바로 발송되는" 것을 막기 위해 재사용 — isDue()로 즉시 발송 대상인지
+  // 미리 판별해 last_run_bucket을 선점시킨다.
+  nowInKst,
+  currentBucket,
+  isDue,
   run: async (pool) => {
     const kst = nowInKst();
     const { rows: alerts } = await pool.query(`SELECT * FROM totalprice_alerts WHERE is_active = TRUE`);
