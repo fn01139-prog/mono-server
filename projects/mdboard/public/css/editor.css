@@ -329,9 +329,10 @@ html, body {
   content:"•"; color:var(--v-tag-bar,#c8a87a); font-weight:700;
   display:inline-block; width:1em; margin-left:-1em;
 }
+/* 폭이 넓은 표가 미리보기 폭을 넘기면 화면 밖으로 넘치는 대신 표 자체에 가로 스크롤이 생기게 함 */
 .md-body table {
-  border-collapse:collapse; width:100%; margin:1em 0; font-size:0.93em;
-  border-radius:6px; border:1px solid var(--v-border,#e5d9c8); overflow:hidden;
+  display:block; border-collapse:collapse; width:100%; max-width:100%; margin:1em 0; font-size:0.93em;
+  border-radius:6px; border:1px solid var(--v-border,#e5d9c8); overflow-x:auto; -webkit-overflow-scrolling:touch;
 }
 .md-body th {
   background:var(--v-table-head,#f0e8d8); color:var(--v-heading,#2a2018);

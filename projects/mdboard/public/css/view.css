@@ -293,13 +293,17 @@ html, body {
   margin-left: -1em;
 }
 
-/* 테이블 */
+/* 테이블 — 폭이 넓은 표(컬럼이 많거나 줄바꿈 안 되는 값)는 뷰어 폭(820px)을 넘길 수 있어
+   화면 크기와 무관하게 항상 표 자체에 가로 스크롤을 둔다(화면 밖으로 넘치지 않도록). */
 .md-body table {
+  display: block;
   border-collapse: collapse;
   width: 100%;
+  max-width: 100%;
   margin: 1em 0;
   font-size: 0.93em;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: 6px;
   border: 1px solid var(--v-border);
 }
@@ -374,13 +378,6 @@ html, body {
 
   /* 툴바 */
   .view-toolbar { padding: 7px 16px; gap: 8px; }
-
-  /* 테이블: 가로 스크롤 */
-  .md-body table {
-    display: block;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
 
   /* 코드 블록 */
   .md-body pre { padding: 12px 14px; }
