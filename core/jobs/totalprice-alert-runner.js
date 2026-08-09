@@ -14,6 +14,18 @@ const insightService = require('../../projects/totalprice/lib/insightService');
 const notify = require('../../shared/notify');
 const notifyDb = require('../../shared/notify/db');
 
+// notify_log에 이 카테고리로 기록해두면 발송 이력을 조회할 수 있다(GET /totalprice/api/alerts/history).
+// 구독 여부와 무관하게 항상 발송해야 해서 notify.send()가 아니라 sendTest()를 그대로 쓰고,
+// 이력 조회용으로만 카테고리를 붙인다 — 최초 1회 조회 후 메모이즈.
+const ALERT_CATEGORY_KEY = 'totalprice-ai-alert';
+let alertCategoryId = null;
+async function ensureAlertCategoryId() {
+  if (alertCategoryId) return alertCategoryId;
+  const cat = await notifyDb.getOrCreateCategory(ALERT_CATEGORY_KEY, '종목 AI 참고자료 알림', '/totalprice');
+  alertCategoryId = cat.id;
+  return alertCategoryId;
+}
+
 function nowInKst() {
   return new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
 }
@@ -81,6 +93,7 @@ module.exports = {
   nowInKst,
   currentBucket,
   isDue,
+  ALERT_CATEGORY_KEY,
   run: async (pool) => {
     const kst = nowInKst();
     const { rows: alerts } = await pool.query(`SELECT * FROM totalprice_alerts WHERE is_active = TRUE`);
@@ -99,7 +112,8 @@ module.exports = {
         const recipient = await notifyDb.getOrCreateRecipientForUser(alert.user_id, userRows[0]?.name || alert.user_id);
 
         const { title, body } = buildMessage(insight);
-        await notify.sendTest({ recipientId: recipient.id, channel: alert.notify_channel, title, body });
+        const categoryId = await ensureAlertCategoryId();
+        await notify.sendTest({ recipientId: recipient.id, channel: alert.notify_channel, title, body, categoryId });
 
         await markResult(pool, alert, bucket, 'success', null);
         sent++;

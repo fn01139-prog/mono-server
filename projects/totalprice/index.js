@@ -12,7 +12,7 @@ const { buildReport } = require('./lib/report');
 const { fetchDaily, fetchIntraday, fetchSnapshot } = require('./lib/naverStock');
 const insightService = require('./lib/insightService');
 const notifyDb = require('../../shared/notify/db');
-const { nowInKst, currentBucket, isDue } = require('../../core/jobs/totalprice-alert-runner');
+const { nowInKst, currentBucket, isDue, ALERT_CATEGORY_KEY } = require('../../core/jobs/totalprice-alert-runner');
 
 // 전부 동적 데이터(시세/뉴스/사용자별 알림)라 HTTP 캐시가 붙으면 안 됨 —
 // Express 기본 ETag가 304를 돌려줬을 때 클라이언트가 캐시된 본문을 못 채우는 경우가 있어 아예 끈다.
@@ -177,6 +177,18 @@ router.get('/alerts', asyncHandler(async (req, res) => {
     [req.user.userId]
   );
   ok(res, rows);
+}));
+
+// 실제로 발송됐던 AI 알림 이력(일자/시간/종목/내용) — 본인에게 온 것만 조회 가능.
+// core/jobs/totalprice-alert-runner.js가 notify_log에 ALERT_CATEGORY_KEY로 남겨둔 기록을 그대로 사용.
+router.get('/alerts/history', asyncHandler(async (req, res) => {
+  const recipient = await notifyDb.getOrCreateRecipientForUser(req.user.userId, req.user.name);
+  const logs = await notifyDb.getLog({
+    recipientId: recipient.id,
+    category: ALERT_CATEGORY_KEY,
+    limit: Number(req.query.limit) || 50,
+  });
+  ok(res, logs);
 }));
 
 router.post('/alerts', asyncHandler(async (req, res) => {

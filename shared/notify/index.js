@@ -56,12 +56,14 @@ async function send({ category, title, body, recipientIds, channels: forceChanne
 }
 
 /**
- * 특정 수신자의 특정 채널로 직접 발송 (구독 여부와 무관 — admin 콘솔 테스트 발송용).
+ * 특정 수신자의 특정 채널로 직접 발송 (구독 여부와 무관 — admin 콘솔 테스트 발송, 예약 알림 등).
  * 그 채널에 기기/연결이 여러 개(예: 웹푸시를 PC·모바일 양쪽에서 구독)면 전부에게 보낸다.
+ * categoryId를 넘기면 notify_log에 카테고리가 함께 기록되어 나중에 getLog({ category })로
+ * 조회할 수 있다(예: totalprice AI 알림의 발송 이력) — 구독 여부와는 무관하게 항상 발송된다.
  * @returns {Promise<{sent:number, failed:number, total:number}>}
  */
-async function sendTest({ recipientId, channel, title, body }) {
-  return sendToChannel({ channel, categoryId: null, recipientId, title, body });
+async function sendTest({ recipientId, channel, title, body, categoryId = null }) {
+  return sendToChannel({ channel, categoryId, recipientId, title, body });
 }
 
 /** 한 채널 타입에 연결된 기기/연결 전부에 보낸다 (웹푸시 여러 기기 등) — 하나가 실패해도 나머지는 계속 시도 */
