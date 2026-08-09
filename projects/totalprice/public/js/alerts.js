@@ -15,6 +15,15 @@
     return s ? new Date(s).toLocaleString('ko-KR') : '-';
   }
 
+  // AI가 생성한 요약/리스크 요인은 뉴스 등 외부 텍스트의 영향을 받을 수 있어 innerHTML에
+  // 넣기 전에 이스케이프한다 (다른 필드도 innerHTML로 조립하는 기존 패턴과 일관되게, 신규로
+  // 추가하는 발송 이력 영역에는 안전하게 적용).
+  function esc(s) {
+    const el = document.createElement('div');
+    el.textContent = s == null ? '' : String(s);
+    return el.innerHTML;
+  }
+
   function scheduleLabel(a) {
     if (a.frequency === 'hourly') return `매시간 ${String(a.run_minute).padStart(2, '0')}분`;
     if (a.frequency === 'weekly') return `매주 ${WEEKDAY_LABEL[a.run_weekday]} ${a.run_time}`;
@@ -55,6 +64,32 @@
         </div>`).join('')
       : `<div class="suggestion-empty">검색 결과가 없습니다.</div>`;
     box.classList.add('open');
+  }
+
+  // title은 core/jobs/totalprice-alert-runner.js의 buildMessage()가
+  // "[종합시세] 종목명(코드) AI 참고 자료" 형식으로 만든다 — 종목명/코드만 뽑아 보여준다.
+  function parseStockFromTitle(title) {
+    const m = /\[종합시세\]\s*(.+?)\((\d{6})\)/.exec(title || '');
+    return m ? `${esc(m[1])} <span class="code">${esc(m[2])}</span>` : esc(title || '-');
+  }
+
+  async function loadAlertHistory() {
+    const tbody = document.getElementById('alertHistoryBody');
+    try {
+      const json = await fetch('/totalprice/api/alerts/history?limit=50').then(r => r.json());
+      const rows = json.data || [];
+      tbody.innerHTML = rows.length
+        ? rows.map(l => `<tr>
+            <td class="history-date">${fmtDate(l.sent_at)}</td>
+            <td>${parseStockFromTitle(l.title)}</td>
+            <td>${CHANNEL_LABEL[l.channel] || l.channel}</td>
+            <td>${l.status === 'success' ? '성공' : `<span class="price-down">실패${l.error_message ? `: ${esc(l.error_message)}` : ''}</span>`}</td>
+            <td class="history-body">${esc(l.body) || '-'}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="5" class="insight-empty">발송 이력이 없습니다.</td></tr>`;
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="5" class="insight-empty">발송 이력을 불러오지 못했습니다: ${esc(err.message)}</td></tr>`;
+    }
   }
 
   async function loadAlerts() {
@@ -140,6 +175,7 @@
   function initAlertsTab() {
     if (window.__alertsWired) {
       loadAlerts();
+      loadAlertHistory();
       return;
     }
     window.__alertsWired = true;
@@ -147,6 +183,7 @@
     loadApis();
     loadChannels();
     loadAlerts();
+    loadAlertHistory();
     applyFrequencyVisibility();
 
     document.getElementById('alertFrequencySelect').addEventListener('change', applyFrequencyVisibility);
