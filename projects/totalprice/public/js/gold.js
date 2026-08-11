@@ -40,7 +40,9 @@
     document.getElementById('statGrid').innerHTML = data.series.map(statCardHtml).join('\n');
 
     document.getElementById('rowCount').textContent = data.count;
-    document.getElementById('dataTableBody').innerHTML = data.rows.map(rowHtml).join('\n');
+    // data.rows는 차트 labels/series와 짝을 맞추려고 날짜 오름차순인데, "전체 데이터 보기" 표는
+    // 최신 날짜가 먼저 보이는 게 더 유용하므로 표에만 뒤집은 사본을 쓴다(차트는 원본 순서 그대로).
+    document.getElementById('dataTableBody').innerHTML = [...data.rows].reverse().map(rowHtml).join('\n');
 
     const ctx = document.getElementById('priceChart');
     if (window.__goldChart) window.__goldChart.destroy();

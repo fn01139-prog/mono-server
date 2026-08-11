@@ -159,7 +159,9 @@
         if (!json.success) throw new Error(json.error);
         const rows = json.data.rows;
         document.getElementById('stockRowCount').textContent = rows.length;
-        renderDailyTable(rows);
+        // 차트는 시간순(과거→최근)이 맞아야 왼쪽에서 오른쪽으로 자연스럽게 그려지므로 rows를
+        // 그대로 쓰고, "전체 데이터 보기" 표는 최신 날짜가 먼저 보이도록 뒤집은 사본을 쓴다.
+        renderDailyTable([...rows].reverse());
         renderChart(rows.map(r => r.date), rows.map(r => r.close), '종가');
       } else {
         const res = await fetch(`/totalprice/api/stocks/${selected.code}/intraday?pages=5`);
@@ -167,7 +169,7 @@
         if (!json.success) throw new Error(json.error);
         const rows = json.data.rows;
         document.getElementById('stockRowCount').textContent = rows.length;
-        renderIntradayTable(rows);
+        renderIntradayTable([...rows].reverse());
         renderChart(rows.map(r => r.time), rows.map(r => r.price), '체결가');
       }
     } catch (err) {

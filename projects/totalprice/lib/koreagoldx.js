@@ -46,14 +46,24 @@ async function requestOnce({ type, dataDateStart, dataDateEnd }) {
 
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`koreagoldx API 요청 실패 (HTTP ${res.status}): ${text.slice(0, 200)}`);
+    // 404/410/403은 "요청은 도달했는데 그 주소를 더 이상 안 받아준다"는 뜻이라 대부분
+    // 사이트 개편으로 엔드포인트가 바뀌었을 때 나는 상태코드다 — 원인을 바로 알 수 있게 명시.
+    const urlHint = [404, 410, 403].includes(res.status)
+      ? ` — koreagoldx.co.kr가 API 주소를 변경했을 가능성이 있습니다. ${API_URL} 가 여전히 유효한지 확인이 필요합니다.`
+      : '';
+    throw new Error(`koreagoldx API 요청 실패 (HTTP ${res.status})${urlHint}: ${text.slice(0, 200)}`);
   }
 
   let json;
   try {
     json = JSON.parse(text);
   } catch (e) {
-    throw new Error(`koreagoldx API 응답이 JSON이 아닙니다: ${text.slice(0, 200)}`);
+    // 비공식 API가 JSON 대신 HTML(에러 페이지 등)을 돌려주는 경우도 사이트 개편으로 엔드포인트
+    // 구조가 바뀌었을 때 흔히 나는 증상이다.
+    throw new Error(
+      `koreagoldx API 응답이 JSON이 아닙니다 — koreagoldx.co.kr가 API 형식을 변경했을 가능성이 있습니다. `
+      + `${API_URL} 가 여전히 유효한지 확인이 필요합니다: ${text.slice(0, 200)}`
+    );
   }
 
   return json.list || [];

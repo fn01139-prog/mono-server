@@ -457,30 +457,43 @@
   }
 
   // ── 폼 이벤트 바인딩 ──────────────────────────────────────
+  // renderCaseDetail()은 케이스 전환/배우자 포함 토글 등으로 여러 번 호출되는데, #caseDetail
+  // 컨테이너 자체는 매번 innerHTML만 교체될 뿐 재생성되지 않는다. bindFormEvents가 호출될
+  // 때마다 새 리스너를 addEventListener로 추가하면 이전 리스너가 제거되지 않고 계속 쌓여서
+  // 클릭 한 번에 핸들러가 여러 번(리렌더 횟수만큼) 실행된다 — "버튼 누르면 두 번씩 뜸" 버그.
+  // 그래서 리스너는 #caseDetail에 최초 1회만 붙이고, 클릭/입력 시점에 항상 최신 케이스를
+  // activeCase에서 읽어오게 한다(각 렌더마다 activeCase만 갱신).
+  let activeCase = null;
+
   function bindFormEvents(c) {
+    activeCase = c;
+
     const detail = document.getElementById('caseDetail');
+    if (detail.dataset.bound === '1') return;
+    detail.dataset.bound = '1';
 
     detail.addEventListener('input', (e) => {
       const t = e.target;
       if (!t.dataset.path) return;
-      applyFieldChange(c, t);
+      applyFieldChange(activeCase, t);
       if (t.dataset.role === 'term-slider') {
         document.getElementById('termYearsLabel').textContent = t.value;
       }
-      scheduleSave(c);
-      renderResults(c);
+      scheduleSave(activeCase);
+      renderResults(activeCase);
     });
 
     detail.addEventListener('change', (e) => {
       const t = e.target;
       if (!t.dataset.path) return;
-      applyFieldChange(c, t);
-      scheduleSave(c);
-      if (t.dataset.path === 'spouse.included') renderCaseDetail(c);
-      else renderResults(c);
+      applyFieldChange(activeCase, t);
+      scheduleSave(activeCase);
+      if (t.dataset.path === 'spouse.included') renderCaseDetail(activeCase);
+      else renderResults(activeCase);
     });
 
     detail.addEventListener('click', (e) => {
+      const c = activeCase;
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const action = btn.dataset.action;
