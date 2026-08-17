@@ -87,7 +87,7 @@
 
   <div class="panel">
     <h2>내 채널</h2>
-    <p class="hint">텔레그램/디스코드/ntfy는 값을 직접 입력하고, 웹푸시는 이 브라우저를 바로 구독하면 됩니다.</p>
+    <p class="hint">텔레그램/디스코드/디스코드 DM/ntfy는 값을 직접 입력하고, 웹푸시는 이 브라우저를 바로 구독하면 됩니다.</p>
     <div id="myChannelList" style="margin-bottom:14px;"></div>
     <form class="inline" id="addChannelForm">
       <div class="field">
@@ -95,6 +95,7 @@
         <select id="ac-type">
           <option value="telegram">텔레그램 (chat_id)</option>
           <option value="discord">디스코드 (webhook URL)</option>
+          <option value="discord_dm">디스코드 DM (User ID)</option>
           <option value="ntfy">ntfy (topic)</option>
         </select>
       </div>
@@ -142,7 +143,7 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    const CHANNEL_LABEL = { telegram: '텔레그램', discord: '디스코드', ntfy: 'ntfy', webpush: '웹푸시', fcm: '모바일 앱 푸시' };
+    const CHANNEL_LABEL = { telegram: '텔레그램', discord: '디스코드', discord_dm: '디스코드 DM', ntfy: 'ntfy', webpush: '웹푸시', fcm: '모바일 앱 푸시' };
     let myRecipient = null;
     let myChannels = {};
     let mySubscriptions = [];
@@ -199,7 +200,7 @@
       const items = [];
       for (const [type, rows] of Object.entries(myChannels)) {
         for (const c of rows) {
-          const value = type === 'telegram' ? c.chat_id : type === 'discord' ? c.webhook_url : type === 'ntfy' ? c.topic : type === 'fcm' ? (c.device_label || c.platform || c.fcm_token) : c.endpoint;
+          const value = type === 'telegram' ? c.chat_id : type === 'discord' ? c.webhook_url : type === 'discord_dm' ? c.discord_user_id : type === 'ntfy' ? c.topic : type === 'fcm' ? (c.device_label || c.platform || c.fcm_token) : c.endpoint;
           items.push(`<div class="channel-row">
             <div><span class="label">${CHANNEL_LABEL[type]}</span> <span class="value">${esc(String(value || '').slice(0, 50))}</span></div>
             <button class="danger" onclick="deleteMyChannel('${type}', ${c.id})">삭제</button>
@@ -217,6 +218,7 @@
       const config = { type };
       if (type === 'telegram') config.chatId = value;
       if (type === 'discord') config.webhookUrl = value;
+      if (type === 'discord_dm') config.discordUserId = value;
       if (type === 'ntfy') config.topic = value;
       try {
         await api('/auth/notify/channels', { method: 'POST', body: JSON.stringify(config) });

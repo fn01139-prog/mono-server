@@ -5,7 +5,7 @@
  * 실제 발송은 core/jobs/totalprice-alert-runner.js(플랫폼 공통 배치잡)가 담당한다.
  */
 (function () {
-  const CHANNEL_LABEL = { telegram: '텔레그램', discord: '디스코드', ntfy: 'ntfy', webpush: '웹푸시' };
+  const CHANNEL_LABEL = { telegram: '텔레그램', discord: '디스코드', discord_dm: '디스코드 DM', ntfy: 'ntfy', webpush: '웹푸시' };
   const WEEKDAY_LABEL = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
 
   let selectedStock = null; // { code, name }

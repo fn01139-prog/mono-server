@@ -396,6 +396,16 @@ CREATE TABLE IF NOT EXISTS notify_discord_channels (
   created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+-- 디스코드 봇 DM(개인 메시지) 채널. 위 notify_discord_channels(webhook, 채널 게시용)와는 별개 —
+-- 봇 토큰(DISCORD_BOT_TOKEN, 전역)으로 특정 유저 ID에게 다이렉트 메시지를 보낸다.
+CREATE TABLE IF NOT EXISTS notify_discord_dm_channels (
+  id                SERIAL       PRIMARY KEY,
+  recipient_id      INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,
+  discord_user_id   VARCHAR(32)  NOT NULL UNIQUE,
+  is_active         BOOLEAN      NOT NULL DEFAULT TRUE,
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS notify_ntfy_channels (
   id            SERIAL       PRIMARY KEY,
   recipient_id  INTEGER      NOT NULL REFERENCES notify_recipients(id) ON DELETE CASCADE,

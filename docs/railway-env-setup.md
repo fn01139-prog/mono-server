@@ -37,9 +37,10 @@ BREVO_API_KEY=xkeysib-발급받은_API_키
 SMTP_FROM=noreply@your-domain.com
 
 # ── 플랫폼 공통 메신저 알림 (선택 — 알림 기능 쓸 때만) ─────────────
-# 수신자별 chat_id/webhook URL/topic은 env가 아니라 admin 콘솔(알림 탭)에서 등록한다.
-# 텔레그램만 봇 토큰이 전역으로 필요하고, 디스코드/ntfy는 전역 설정 불필요.
+# 수신자별 chat_id/webhook URL/Discord User ID/topic은 env가 아니라 admin 콘솔(알림 탭)에서 등록한다.
+# 텔레그램/디스코드 DM만 봇 토큰이 전역으로 필요하고, 디스코드(웹훅)/ntfy는 전역 설정 불필요.
 TELEGRAM_BOT_TOKEN=123456:ABC-your-bot-token
+# DISCORD_BOT_TOKEN=your-bot-token
 # 웹푸시는 브라우저 구독 UI가 아직 없어 당장은 설정 안 해도 됨
 # VAPID_SUBJECT=mailto:you@example.com
 # VAPID_PUBLIC_KEY=
@@ -72,6 +73,11 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 `TELEGRAM_BOT_TOKEN`은 텔레그램에서 **@BotFather**와 대화해 `/newbot`으로 봇을 만들면 발급된다.
 채널 연결(수신자의 chat_id 등록)은 배포 후 admin 콘솔 → **알림** 탭에서 한다.
 
+`DISCORD_BOT_TOKEN`은 `https://discord.com/developers/applications`에서 애플리케이션 생성 → Bot 탭에서
+봇을 추가하면 발급된다. 봇으로 DM을 보내려면 봇과 수신자가 같은 서버(길드)에 있어야 하므로, 본인 전용
+비공개 서버를 하나 만들어 봇과 알림 받을 사람들을 함께 초대해둔다(자세한 절차는 `TODO.md` 참고).
+채널 연결(수신자의 Discord User ID 등록)은 배포 후 admin 콘솔 → **알림** 탭에서 한다.
+
 ## 체크리스트
 
 | 변수 | 없으면 어떻게 되나 |
@@ -80,6 +86,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 | `JWT_SECRET` | 기본값(`campcheck-dev-secret-change-in-prod`)으로 기동되고 시작 로그에 경고 출력, admin 콘솔 "시스템 점검" 탭에도 경고로 표시됨 — 프로덕션에서 반드시 교체 |
 | `BREVO_API_KEY` / `SMTP_FROM` | 메일 발송 기능이 항상 실패로 끝나고 `platform_mail_log`에 실패 기록만 쌓임 (서버는 정상 동작) |
 | `TELEGRAM_BOT_TOKEN` | 텔레그램 채널 발송만 항상 실패 (디스코드/ntfy는 무관) |
+| `DISCORD_BOT_TOKEN` | 디스코드 DM 채널 발송만 항상 실패 (기존 웹훅 방식 디스코드/텔레그램/ntfy는 무관) |
 | `VAPID_*` | 웹푸시 채널만 발송 불가 (브라우저 구독 UI 자체가 아직 없어서 현재는 영향 없음) |
 | `MDBOARD_API_KEY` / `GOOGLE_SERVICE_ACCOUNT` / `GDRIVE_*` | 해당 기능(Claude 연동, Drive 백업)만 비활성 — 나머지 앱엔 영향 없음 |
 
@@ -89,3 +96,4 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 2. `admin` 계정으로 로그인 → `/admin` → **시스템 점검** 탭에서 JWT_SECRET/메일/알림 설정 상태 확인
 3. `BREVO_API_KEY`를 설정했다면 **메일 발송** 탭에서 본인 이메일로 테스트 발송해서 실제 도착 확인
 4. `TELEGRAM_BOT_TOKEN`을 설정했다면 **알림** 탭에서 본인(self) 수신자에게 텔레그램 chat_id를 연결하고 테스트 발송
+5. `DISCORD_BOT_TOKEN`을 설정했다면 **알림** 탭에서 본인(self) 수신자에게 디스코드 DM User ID를 연결하고 테스트 발송

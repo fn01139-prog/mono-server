@@ -18,6 +18,7 @@ const db = require('./db');
 const channels = {
   telegram: require('./channels/telegram'),
   discord: require('./channels/discord'),
+  discord_dm: require('./channels/discord_dm'),
   ntfy: require('./channels/ntfy'),
   webpush: require('./channels/webpush'),
   fcm: require('./channels/fcm'),

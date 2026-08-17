@@ -143,8 +143,8 @@ customRoutes: [
 - admin API(전체 이력, admin 전용): `GET /auth/admin/mail/config`(설정 상태), `POST /auth/admin/mail/test`(테스트 발송), `GET /auth/admin/mail/logs`
 
 **메신저 알림 (`shared/notify/`)**
-- 텔레그램/디스코드/ntfy/웹푸시로 다중 수신자(본인·가족·지인)에게 알림 발송. `shared/mailer.js`와 같은 철학(공통 발송 함수 + 항상 로그 기록)이지만 **다중 수신자 + 카테고리 기반 구독**이 추가된 구조
-- 핵심 개념: **Recipient**(수신자, `relation`: self/family/friend) → **Channel**(텔레그램/디스코드/ntfy/웹푸시, 수신자 1명당 여러 개 연결 가능) → **Category**(어느 프로젝트의 어떤 알림인지 구분하는 키) → **Subscription**(수신자가 특정 카테고리를 어떤 채널로 받을지)
+- 텔레그램/디스코드(웹훅)/디스코드 DM(봇)/ntfy/웹푸시로 다중 수신자(본인·가족·지인)에게 알림 발송. `shared/mailer.js`와 같은 철학(공통 발송 함수 + 항상 로그 기록)이지만 **다중 수신자 + 카테고리 기반 구독**이 추가된 구조
+- 핵심 개념: **Recipient**(수신자, `relation`: self/family/friend) → **Channel**(텔레그램/디스코드/디스코드 DM/ntfy/웹푸시, 수신자 1명당 여러 개 연결 가능) → **Category**(어느 프로젝트의 어떤 알림인지 구분하는 키) → **Subscription**(수신자가 특정 카테고리를 어떤 채널로 받을지)
 - 프로젝트 사용법:
   ```js
   const notify = require('../../shared/notify');
@@ -152,7 +152,7 @@ customRoutes: [
   await notify.send({ category: 'camp-check', title: '캠핑 3일 전!', body: '텐트 챙기셨나요?' }); // 카테고리 구독자 전체에게
   ```
 - 채널 어댑터는 플러그인 구조: `shared/notify/channels/<name>.js`에 `{ name, send(config, {title, body, url}) }` export → `shared/notify/index.js`의 `channels` 레지스트리와 `shared/notify/db.js`의 `CHANNEL_TABLES`, DB 마이그레이션에 테이블 추가
-- 텔레그램은 `TELEGRAM_BOT_TOKEN` 환경변수(전역), 디스코드는 수신자별 webhook URL을 그대로 저장(전역 설정 불필요), ntfy는 기본 공개 서버 사용, 웹푸시는 `VAPID_SUBJECT`/`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` 필요
+- 텔레그램은 `TELEGRAM_BOT_TOKEN` 환경변수(전역), 디스코드(웹훅, `discord` 채널)는 수신자별 webhook URL을 그대로 저장(전역 설정 불필요), 디스코드 DM(봇, `discord_dm` 채널)은 `DISCORD_BOT_TOKEN` 환경변수(전역)로 수신자별 Discord User ID에게 직접 DM 발송 — 봇이 초대된 서버(길드)에 수신자도 함께 있어야 발송 가능(Discord 정책), Gateway 연결 없이 REST(`POST /users/@me/channels` → `POST /channels/:id/messages`)만으로 구현, ntfy는 기본 공개 서버 사용, 웹푸시는 `VAPID_SUBJECT`/`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` 필요
 - **웹푸시 구독**: `shared/public/sw.js`(서비스워커, `GET /sw.js`로 루트 경로 서빙 — 스코프가 사이트 전체를 덮으려면 필수)로 브라우저가 직접 구독. 구독은 생성 시점의 VAPID 공개키에 영구적으로 묶이므로 재구독 시 기존 구독을 먼저 `unsubscribe()`해야 함(안 그러면 키를 재발급해도 예전 구독이 재사용됨). 한 수신자가 여러 기기(PC+모바일 등)를 구독하면 발송 시 전부에게 보냄(`getChannelConfigs`가 활성 상태 전부 반환 → `sendToChannel`이 `Promise.allSettled`로 병렬 발송, 하나가 죽어도 나머지는 계속 시도). 404/410 응답을 받은 구독은 자동으로 `is_active=FALSE` 처리됨
 - **카카오톡은 미구현** — "나에게 보내기" API는 사용자별 OAuth 토큰 관리가 필요해 범위가 커서 보류
 - 모든 발송 시도(성공/실패)는 `notify_log`에 기록됨
@@ -236,6 +236,7 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `BREVO_API_KEY` | (없음) | 플랫폼 공통 메일 발송(`shared/mailer.js`)용 Brevo API 키. 미설정 시 발송 시도는 실패로 로그만 남음 |
 | `SMTP_FROM` | `SMTP_USER` 값 | 발신자 주소 — Brevo Senders에 인증된 주소여야 함 (변수명은 과거 SMTP 시절 그대로 유지) |
 | `TELEGRAM_BOT_TOKEN` | (없음) | 플랫폼 공통 메신저 알림(`shared/notify/`)용 텔레그램 봇 토큰. 미설정 시 텔레그램 채널만 발송 실패 |
+| `DISCORD_BOT_TOKEN` | (없음) | 플랫폼 공통 메신저 알림(`shared/notify/`)용 디스코드 봇 토큰(`discord_dm` 채널 — 개인 DM 발송). `https://discord.com/developers/applications`에서 발급. 미설정 시 디스코드 DM 채널만 발송 실패(기존 웹훅 방식 `discord` 채널은 무관) |
 | `VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | (없음) | 웹푸시 채널용 VAPID 키 (`node -e "console.log(require('web-push').generateVAPIDKeys())"`로 생성). admin 콘솔 알림 탭에서 브라우저 구독 가능 |
 | `FEEDBACK_API_KEY` | (없음) | 버그/개선요청 신고(`platform_feedback`) 배치 처리 API 키. `GET/PUT /auth/feedback/batch/*`에 `x-api-key` 헤더로 접근할 때 필요 (Claude 배치 등 programmatic 접근용, `MDBOARD_API_KEY`와 동일한 패턴) |
 

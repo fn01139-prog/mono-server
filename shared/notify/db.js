@@ -8,6 +8,7 @@ const pool = require('../db');
 const CHANNEL_TABLES = {
   telegram: 'notify_telegram_channels',
   discord: 'notify_discord_channels',
+  discord_dm: 'notify_discord_dm_channels',
   ntfy: 'notify_ntfy_channels',
   webpush: 'notify_push_subscriptions',
   fcm: 'notify_fcm_channels',
@@ -171,6 +172,14 @@ async function addChannel(recipientId, type, config) {
     const { rows } = await pool.query(
       `INSERT INTO notify_discord_channels (recipient_id, webhook_url) VALUES ($1, $2) RETURNING *`,
       [recipientId, config.webhookUrl]
+    );
+    return rows[0];
+  }
+  if (type === 'discord_dm') {
+    const { rows } = await pool.query(
+      `INSERT INTO notify_discord_dm_channels (recipient_id, discord_user_id) VALUES ($1, $2)
+       ON CONFLICT (discord_user_id) DO UPDATE SET recipient_id = $1, is_active = TRUE RETURNING *`,
+      [recipientId, config.discordUserId]
     );
     return rows[0];
   }
