@@ -155,7 +155,7 @@ router.get('/stocks/:code/insight', asyncHandler(async (req, res) => {
 const ALERT_APIS = [
   { key: 'stock-insight', label: '종목 AI 참고 자료 (매수/매도 판단 참고)' },
 ];
-const NOTIFY_CHANNEL_LABELS = { telegram: '텔레그램', discord: '디스코드', ntfy: 'ntfy', webpush: '웹푸시' };
+const NOTIFY_CHANNEL_LABELS = { telegram: '텔레그램', discord: '디스코드', discord_dm: '디스코드 DM', ntfy: 'ntfy', webpush: '웹푸시' };
 
 router.get('/alerts/apis', asyncHandler(async (req, res) => {
   ok(res, ALERT_APIS);

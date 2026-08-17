@@ -578,6 +578,10 @@ router.get('/admin/system/check', async (req, res) => {
       key: 'notify_telegram', label: '텔레그램 봇 토큰 설정', ok: !!process.env.TELEGRAM_BOT_TOKEN,
       detail: process.env.TELEGRAM_BOT_TOKEN ? '설정됨' : '미설정 (TELEGRAM_BOT_TOKEN) — 텔레그램 채널 발송 불가',
     });
+    checks.push({
+      key: 'notify_discord_dm', label: '디스코드 DM 봇 토큰 설정', ok: !!process.env.DISCORD_BOT_TOKEN,
+      detail: process.env.DISCORD_BOT_TOKEN ? '설정됨' : '미설정 (DISCORD_BOT_TOKEN) — 디스코드 DM 채널 발송 불가',
+    });
     const vapidPresent = !!(process.env.VAPID_SUBJECT && process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
     const vapidKeyValid = vapidPresent && isValidP256PublicKey(process.env.VAPID_PUBLIC_KEY);
     checks.push({

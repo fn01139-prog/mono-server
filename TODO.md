@@ -36,6 +36,15 @@ recipient 외 데이터는 건드릴 수 없도록 소유권 체크(`deleteChann
 **Discord**: 채널 우클릭 → `채널 편집` → `연동` → `웹훅` → `새 웹훅` 생성 → URL 복사 → 알림 탭에서
 수신자에게 채널 추가(디스코드, webhook URL 붙여넣기). 서버 환경변수는 필요 없음(수신자별로 DB에 저장).
 
+**Discord DM** (봇이 개인에게 직접 DM — 채널 게시가 아니라 특정 사람에게 알림을 보내고 싶을 때):
+1. `https://discord.com/developers/applications`에서 애플리케이션 생성 → Bot 탭에서 봇 추가 → 토큰 발급
+2. OAuth2 → URL Generator에서 `bot` scope만 선택 → 초대 링크 생성 → 본인 전용 비공개 서버를 새로 만들어 그 링크로 봇 초대
+3. 알림 받을 사람(친구/가족)도 그 서버에 초대(활동 불필요 — "같은 서버에 있다"는 자격 조건만 충족하면 됨)
+4. 각자 개발자 모드 활성화 후 자신을 우클릭 → ID 복사로 Discord User ID 확인
+5. 발급받은 봇 토큰을 서버 환경변수 `DISCORD_BOT_TOKEN`에 설정 → 알림 탭에서 수신자에게 채널 추가(디스코드 DM, User ID 입력)
+
+셀프봇(개인 계정 자동화)은 ToS 위반(계정 정지 위험)이라 사용하지 않음 — 항상 봇 계정으로만 발송.
+
 **Telegram**: `@BotFather`에서 봇 토큰 발급 → 서버 환경변수 `TELEGRAM_BOT_TOKEN`에 설정 → 알림 받을
 사람이 봇과 대화해서 `@userinfobot`으로 자기 chat_id 확인 → 알림 탭에서 수신자에게 채널 추가(텔레그램,
 chat_id 입력).
