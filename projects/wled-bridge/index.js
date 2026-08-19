@@ -1,130 +1,139 @@
-require('dotenv').config();
-const WebSocket = require('ws');
+// projects/wled-bridge/index.js
+//
+// 기존 mono-server의 projects/ 오토디스커버리 로더에 맞춰 통합하세요.
+// 이 모듈은 두 가지를 제공합니다.
+//   1. router              - Express 라우터 (IFTTT 웹훅 수신용, /wled-bridge 아래에 mount)
+//   2. attachWss(server)   - 기존 HTTP 서버 인스턴스에 WebSocket 업그레이드를 붙이는 함수
+//
+// 로더가 다른 형태의 export를 기대한다면 맨 아래 module.exports만 맞춰 조정하면 됩니다.
+// 필요한 환경변수: IFTTT_SECRET, WLED_AGENT_SECRET
 
-const {
-  RAILWAY_WS_URL,
-  AGENT_SECRET,
-  DEVICE_ID,
-  WLED_HOST,
-} = process.env;
+const express = require('express');
+const { WebSocketServer } = require('ws');
+const crypto = require('crypto');
 
-if (!RAILWAY_WS_URL || !AGENT_SECRET || !DEVICE_ID || !WLED_HOST) {
-  console.error('[agent] .env 설정이 누락되었습니다. .env.example을 참고해 .env를 채워주세요.');
-  process.exit(1);
-}
+const IFTTT_SECRET = process.env.IFTTT_SECRET;
+const AGENT_SECRET = process.env.WLED_AGENT_SECRET;
+const ACK_TIMEOUT_MS = 5000;
 
-let ws = null;
-let reconnectDelay = 1000;
-const MAX_RECONNECT_DELAY = 30000;
+const router = express.Router();
 
-function connect() {
-  const url = `${RAILWAY_WS_URL}?token=${encodeURIComponent(AGENT_SECRET)}&deviceId=${encodeURIComponent(DEVICE_ID)}`;
-  console.log(`[agent] connecting to ${RAILWAY_WS_URL} as "${DEVICE_ID}"`);
-  ws = new WebSocket(url);
+// deviceId -> { ws, lastSeen }
+const agents = new Map();
+// requestId -> { resolve }
+const pending = new Map();
 
-  ws.on('open', () => {
-    console.log('[agent] connected');
-    reconnectDelay = 1000; // 연결 성공 시 백오프 초기화
+const ALLOWED_ACTIONS = new Set(['on', 'off', 'brightness', 'color', 'preset']);
+
+router.use(express.json());
+
+// IFTTT Webhooks가 호출하는 엔드포인트
+router.post('/webhook', (req, res) => {
+  const auth = req.headers.authorization || '';
+  if (auth !== `Bearer ${IFTTT_SECRET}`) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  const { action, deviceId, value } = req.body || {};
+
+  if (!ALLOWED_ACTIONS.has(action)) {
+    return res.status(400).json({ error: `invalid action: ${action}` });
+  }
+  if (typeof deviceId !== 'string' || !deviceId) {
+    return res.status(400).json({ error: 'deviceId required' });
+  }
+
+  const agent = agents.get(deviceId);
+  if (!agent || agent.ws.readyState !== agent.ws.OPEN) {
+    return res.status(503).json({ error: 'device offline' });
+  }
+
+  const requestId = crypto.randomUUID();
+
+  const timeout = setTimeout(() => {
+    pending.delete(requestId);
+    res.status(504).json({ error: 'agent timeout' });
+  }, ACK_TIMEOUT_MS);
+
+  pending.set(requestId, {
+    resolve: (result) => {
+      clearTimeout(timeout);
+      pending.delete(requestId);
+      if (result.success) {
+        res.status(200).json({ ok: true });
+      } else {
+        res.status(502).json({ error: result.error || 'agent reported failure' });
+      }
+    },
   });
 
-  ws.on('message', async (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(raw.toString());
-    } catch (err) {
-      console.error('[agent] invalid message from server:', err.message);
+  agent.ws.send(JSON.stringify({ type: 'command', requestId, action, value }));
+});
+
+// 상태 확인용 (디버깅/모니터링, 필요 없으면 삭제해도 무방)
+router.get('/status', (_req, res) => {
+  const list = Array.from(agents.entries()).map(([deviceId, a]) => ({
+    deviceId,
+    connected: a.ws.readyState === a.ws.OPEN,
+    lastSeen: a.lastSeen,
+  }));
+  res.json(list);
+});
+
+function attachWss(server) {
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (req, socket, head) => {
+    if (!req.url.startsWith('/wled-bridge/agent')) return; // 다른 경로는 다른 모듈이 처리하도록 무시
+
+    const url = new URL(req.url, 'http://localhost');
+    const token = url.searchParams.get('token');
+    const deviceId = url.searchParams.get('deviceId');
+
+    if (token !== AGENT_SECRET || !deviceId) {
+      socket.destroy();
       return;
     }
 
-    if (msg.type === 'command') {
-      const result = await executeWledCommand(msg.action, msg.value);
-      safeSend({
-        type: 'ack',
-        requestId: msg.requestId,
-        success: result.ok,
-        error: result.error,
-      });
-    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit('connection', ws, deviceId);
+    });
   });
 
-  ws.on('close', (code) => {
-    console.warn(`[agent] disconnected (code ${code}), retrying in ${reconnectDelay}ms`);
-    scheduleReconnect();
-  });
+  wss.on('connection', (ws, deviceId) => {
+    console.log(`[wled-bridge] agent connected: ${deviceId}`);
+    agents.set(deviceId, { ws, lastSeen: new Date() });
 
-  ws.on('error', (err) => {
-    console.error('[agent] socket error:', err.message);
-  });
-}
+    ws.on('message', (raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
 
-function scheduleReconnect() {
-  setTimeout(connect, reconnectDelay);
-  reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-}
+      const entry = agents.get(deviceId);
+      if (entry) entry.lastSeen = new Date();
 
-function safeSend(obj) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
-  }
-}
-
-async function executeWledCommand(action, value = {}) {
-  const payload = buildWledPayload(action, value);
-  if (!payload) {
-    return { ok: false, error: `unknown action: ${action}` };
-  }
-
-  try {
-    const res = await fetch(`http://${WLED_HOST}/json/state`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(5000),
+      if (msg.type === 'ack' && pending.has(msg.requestId)) {
+        pending.get(msg.requestId).resolve(msg);
+      }
     });
 
-    if (!res.ok) {
-      return { ok: false, error: `WLED responded with ${res.status}` };
+    ws.on('close', () => {
+      console.log(`[wled-bridge] agent disconnected: ${deviceId}`);
+      agents.delete(deviceId);
+    });
+  });
+
+  // 30초마다 죽은 연결 정리
+  setInterval(() => {
+    for (const [deviceId, agent] of agents.entries()) {
+      if (agent.ws.readyState !== agent.ws.OPEN) {
+        agents.delete(deviceId);
+      }
     }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  }, 30000);
 }
 
-function buildWledPayload(action, value) {
-  switch (action) {
-    case 'on':
-      return { on: true };
-    case 'off':
-      return { on: false };
-    case 'brightness':
-      // value.level: 0-255
-      return { on: true, bri: clamp(value.level, 0, 255) };
-    case 'color':
-      // value: { r, g, b }
-      return {
-        on: true,
-        seg: [{ col: [[clamp(value.r, 0, 255), clamp(value.g, 0, 255), clamp(value.b, 0, 255)]] }],
-      };
-    case 'preset':
-      // value.id: WLED에 저장된 프리셋 번호
-      return { ps: value.id };
-    default:
-      return null;
-  }
-}
-
-function clamp(n, min, max) {
-  n = Number(n);
-  if (Number.isNaN(n)) return min;
-  return Math.max(min, Math.min(max, n));
-}
-
-connect();
-
-process.on('SIGINT', () => {
-  console.log('[agent] shutting down');
-  if (ws) ws.close();
-  process.exit(0);
-});
-
+module.exports = { router, attachWss };
