@@ -1,8 +1,10 @@
 // projects/whiteboard/public/js/app.js
 //
 // 여러 명이 함께 쓰는 공유 화이트보드. 보드(채널) 안에 참여자별 레이어가 있고,
-// 레이어 안에 펜 드로잉(stroke)/스티키노트(note)가 쌓인다. 실시간 협업은
-// 짧은 주기 폴링(REFRESH_MS)으로 구현한다 (서버에 WebSocket 인프라가 없음).
+// 레이어 안에 펜 드로잉(stroke)/스티키노트(note)가 쌓인다. 서버에 WebSocket
+// 인프라가 없어 실시간 반영 대신 배치 동기화를 쓴다 — 내가 그리거나 수정한 내용은
+// 로컬에만 쌓이다가 자동(REFRESH_MS, 1분 주기) 또는 새로고침 버튼 클릭 시점에
+// syncNow()가 한꺼번에 push한 뒤 서버 최신 상태를 pull한다.
 
 const BASE = (() => {
   const parts = location.pathname.split('/').filter(Boolean);
@@ -11,7 +13,7 @@ const BASE = (() => {
 
 const CANVAS_W = 4000;
 const CANVAS_H = 2500;
-const REFRESH_MS = 2500;
+const REFRESH_MS = 60000; // 자동 동기화 주기 — 1분. 그 전에 확인하고 싶으면 새로고침 버튼으로 즉시 동기화.
 
 const el = id => document.getElementById(id);
 
@@ -25,6 +27,7 @@ const state = {
   tool: 'pen',
   hiddenLayers: new Set(),
   pollTimer: null,
+  syncing: false,
   drawing: null,
   draggingNote: null,
   editingNoteId: null,
@@ -32,6 +35,14 @@ const state = {
   activePointers: new Map(),            // pointerId -> {x,y} (client 좌표) — 동시에 몇 손가락이 닿아있는지 추적
   pinch: null,                          // 2손가락 이상 제스처 시작 시점 기준값
   panning: null,                        // '이동' 툴로 한 손가락/마우스 드래그 중인 시작 기준값
+
+  // ── 배치 동기화 ──────────────────────────────────────────────────────
+  // 내가 그리거나 수정한 내용은 서버에 즉시 보내지 않고 로컬 state.elements에만
+  // 반영한 뒤, 자동(1분)/수동(새로고침 버튼) 동기화 시점에 한꺼번에 push한다.
+  // 아직 서버에 없는 요소는 임시로 음수 id를 붙여 구분한다(서버 id는 항상 양수).
+  nextLocalId: -1,
+  pendingUpdates: new Set(),  // 이미 서버에 있는(id>0) 요소 중 로컬 수정만 되고 아직 push 안 된 id
+  pendingDeletes: new Set(),  // 이미 서버에 있는 요소 중 로컬 삭제만 되고 아직 push 안 된 id
 };
 
 const canvas = el('strokeCanvas');
@@ -108,7 +119,13 @@ function navigate(path) {
 }
 
 async function route() {
-  stopPolling();
+  stopAutoSync();
+  // 다른 보드로 넘어가거나 목록으로 돌아가기 전, 아직 push 안 된 변경사항이 있으면
+  // 먼저 동기화한다 — 안 그러면 새 보드를 열 때 state.elements가 통째로 교체되면서
+  // 이전 보드에서 그린(아직 서버에 없는) 내용이 조용히 사라진다.
+  if (state.board && pendingCount() > 0) {
+    await syncNow();
+  }
   const r = currentRoute();
   if (r.view === 'board') {
     el('viewList').classList.add('hidden');
@@ -189,6 +206,13 @@ async function openBoard(id) {
   state.activePointers.clear();
   state.pinch = null;
   state.panning = null;
+  // 새 보드로 이동 — 이전 보드의 미동기화 항목이 섞여 들어가지 않도록 초기화
+  // (route()가 이미 가능한 경우 flush를 시도했지만, 실패했더라도 다른 보드로 잘못
+  // 들어가는 것보다는 초기화하는 편이 안전하다)
+  state.elements = [];
+  state.nextLocalId = -1;
+  state.pendingUpdates.clear();
+  state.pendingDeletes.clear();
   resetViewport();
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'pen'));
 
@@ -218,29 +242,16 @@ async function openBoard(id) {
     toast(e.message);
   }
   renderAll();
-  startPolling(id);
+  startAutoSync();
 }
 
-function startPolling(id) {
-  stopPolling();
-  state.pollTimer = setInterval(() => pollTick(id), REFRESH_MS);
+function startAutoSync() {
+  stopAutoSync();
+  state.pollTimer = setInterval(syncNow, REFRESH_MS);
 }
-function stopPolling() {
+function stopAutoSync() {
   if (state.pollTimer) clearInterval(state.pollTimer);
   state.pollTimer = null;
-}
-async function pollTick(id) {
-  const badge = el('syncBadge');
-  badge.classList.add('syncing');
-  try {
-    await refreshLayers();
-    await refreshElements();
-    renderAll();
-    badge.classList.remove('syncing', 'error');
-  } catch (e) {
-    badge.classList.remove('syncing');
-    badge.classList.add('error');
-  }
 }
 
 async function refreshLayers() {
@@ -248,7 +259,78 @@ async function refreshLayers() {
   state.layerById = new Map(state.layers.map(l => [l.id, l]));
 }
 async function refreshElements() {
+  // 아직 push 안 된(id<0) 로컬 요소는 서버 응답에 없으므로, 통째로 덮어써도
+  // 사라지지 않도록 다시 붙여준다.
+  const pending = state.elements.filter(e => e.id < 0);
   state.elements = await api('GET', `/boards/${state.board.id}/elements`);
+  if (pending.length) state.elements.push(...pending);
+}
+
+/** 아직 push 안 된 로컬 변경사항 개수 (생성 대기 + 수정 대기 + 삭제 대기) */
+function pendingCount() {
+  return state.elements.filter(e => e.id < 0).length + state.pendingUpdates.size + state.pendingDeletes.size;
+}
+
+function updateSyncBadge() {
+  const badge = el('syncBadge');
+  if (!badge) return;
+  const n = pendingCount();
+  if (state.syncing) {
+    badge.textContent = '동기화 중…';
+    badge.title = '서버와 동기화하는 중입니다';
+  } else if (n > 0) {
+    badge.textContent = `저장 대기 ${n}개`;
+    badge.title = '아직 서버에 반영되지 않은 변경사항이 있습니다 — 1분 내 자동 반영되거나, 새로고침 버튼으로 즉시 반영할 수 있습니다';
+  } else {
+    badge.textContent = '';
+    badge.title = '자동 동기화 (1분 주기)';
+  }
+  badge.classList.toggle('pending', n > 0 && !state.syncing);
+}
+
+/** 로컬 변경사항을 서버에 push하고, 서버의 최신 상태를 pull한다 (자동 1분 주기 + 새로고침 버튼 공용) */
+async function syncNow() {
+  if (!state.board || state.syncing) return;
+  state.syncing = true;
+  const badge = el('syncBadge');
+  badge.classList.add('syncing');
+  updateSyncBadge();
+  try {
+    // 1) 아직 서버에 없는 요소 생성
+    for (const elem of state.elements.filter(e => e.id < 0)) {
+      const created = await api('POST', `/boards/${state.board.id}/elements`, { type: elem.type, data: elem.data });
+      const idx = state.elements.indexOf(elem);
+      if (idx !== -1) state.elements[idx] = created;
+      if (elem.type === 'note') {
+        // 진행 중인 DOM 요소도 실제 id로 맞춰서 다음 렌더에서 재생성/깜빡임 없이 이어지게 한다
+        const node = document.getElementById('note-' + elem.id);
+        if (node) { node.id = 'note-' + created.id; node.dataset.id = created.id; }
+      }
+    }
+    // 2) 기존 요소 중 수정된 것 반영
+    for (const id of [...state.pendingUpdates]) {
+      const elem = state.elements.find(x => x.id === id);
+      if (elem) await api('PUT', `/elements/${id}`, { data: elem.data });
+      state.pendingUpdates.delete(id);
+    }
+    // 3) 삭제 반영
+    for (const id of [...state.pendingDeletes]) {
+      await api('DELETE', `/elements/${id}`);
+      state.pendingDeletes.delete(id);
+    }
+    // 4) 최신 상태 pull (다른 참여자 변경사항 포함)
+    await refreshLayers();
+    await refreshElements();
+    renderAll();
+    badge.classList.remove('syncing', 'error');
+  } catch (e) {
+    badge.classList.remove('syncing');
+    badge.classList.add('error');
+    toast('동기화 실패: ' + e.message);
+  } finally {
+    state.syncing = false;
+    updateSyncBadge();
+  }
 }
 
 function renderAll() {
@@ -359,6 +441,40 @@ function canEditElement(elem) {
   return !!state.me && (state.me.role === 'admin' || elem.author_id === state.me.userId || !!state.board.canManage);
 }
 
+/** 새 요소를 로컬에만 추가 (서버 push는 다음 동기화 시점에) — 임시 음수 id 부여 */
+function addLocalElement(type, data) {
+  const layer = state.layers.find(l => l.isMine);
+  const now = new Date().toISOString();
+  const elem = {
+    id: state.nextLocalId--,
+    board_id: state.board.id,
+    layer_id: layer ? layer.id : null,
+    author_id: state.me.userId,
+    type, data,
+    created_at: now, updated_at: now,
+  };
+  state.elements.push(elem);
+  updateSyncBadge();
+  return elem;
+}
+
+/** 기존 요소의 data를 로컬에서 수정 표시 — 이미 서버에 있는(id>0) 요소만 push 대상으로 등록 */
+function markEdited(elem) {
+  elem.updated_at = new Date().toISOString();
+  if (elem.id > 0) state.pendingUpdates.add(elem.id);
+  updateSyncBadge();
+}
+
+/** 요소를 로컬에서 제거 — 서버에 없던 요소(id<0)는 그냥 사라지고, 있던 요소는 삭제 대기로 등록 */
+function removeLocalElement(id) {
+  state.elements = state.elements.filter(x => x.id !== id);
+  if (id > 0) {
+    state.pendingUpdates.delete(id);
+    state.pendingDeletes.add(id);
+  }
+  updateSyncBadge();
+}
+
 function renderNotes() {
   const seen = new Set();
   for (const elem of state.elements) {
@@ -429,7 +545,7 @@ function attachNoteHandlers(node) {
   });
 
   textEl.addEventListener('focus', () => { state.editingNoteId = Number(node.dataset.id); });
-  textEl.addEventListener('blur', async () => {
+  textEl.addEventListener('blur', () => {
     const id = Number(node.dataset.id);
     state.editingNoteId = null;
     const elem = state.elements.find(x => x.id === id);
@@ -437,8 +553,7 @@ function attachNoteHandlers(node) {
     const text = textEl.textContent;
     if (text === (elem.data.text || '')) return;
     elem.data = { ...elem.data, text };
-    try { await api('PUT', `/elements/${id}`, { data: elem.data }); }
-    catch (err) { toast(err.message); }
+    markEdited(elem);
   });
   textEl.addEventListener('keydown', (e) => {
     e.stopPropagation();
@@ -469,7 +584,7 @@ function attachNoteHandlers(node) {
     node.style.left = x + 'px';
     node.style.top = y + 'px';
   });
-  node.addEventListener('pointerup', async (e) => {
+  node.addEventListener('pointerup', (e) => {
     if (!state.draggingNote || state.draggingNote.node !== node) return;
     node.classList.remove('dragging');
     const { id } = state.draggingNote;
@@ -477,8 +592,7 @@ function attachNoteHandlers(node) {
     const elem = state.elements.find(x => x.id === id);
     if (!elem) return;
     elem.data = { ...elem.data, x: parseFloat(node.style.left), y: parseFloat(node.style.top) };
-    try { await api('PUT', `/elements/${id}`, { data: elem.data }); }
-    catch (err) { toast(err.message); }
+    markEdited(elem);
   });
 
   node.addEventListener('click', () => {
@@ -488,28 +602,21 @@ function attachNoteHandlers(node) {
   });
 }
 
-async function deleteElement(id, node) {
-  try {
-    await api('DELETE', `/elements/${id}`);
-    node?.remove();
-    state.elements = state.elements.filter(x => x.id !== id);
-  } catch (err) { toast(err.message); }
+function deleteElement(id, node) {
+  node?.remove();
+  removeLocalElement(id);
 }
 
-async function createNoteAt(p) {
+function createNoteAt(p) {
   const w = 180;
   const data = { x: Math.round(p.x - w / 2), y: Math.round(Math.max(0, p.y - 40)), w, text: '더블클릭해서 내용을 입력하세요' };
-  try {
-    const created = await api('POST', `/boards/${state.board.id}/elements`, { type: 'note', data });
-    if (!state.layerById.has(created.layer_id)) await refreshLayers();
-    state.elements.push(created);
-    renderNotes();
-    setTimeout(() => {
-      const node = document.getElementById('note-' + created.id);
-      const t = node?.querySelector('.note-text');
-      if (t) { t.focus(); selectAllText(t); }
-    }, 30);
-  } catch (e) { toast(e.message); }
+  const elem = addLocalElement('note', data);
+  renderNotes();
+  setTimeout(() => {
+    const node = document.getElementById('note-' + elem.id);
+    const t = node?.querySelector('.note-text');
+    if (t) { t.focus(); selectAllText(t); }
+  }, 30);
 }
 
 /* ============================================================
@@ -565,20 +672,11 @@ canvas.addEventListener('pointermove', (e) => {
   ctx.stroke();
 });
 
-window.addEventListener('pointerup', async () => {
+window.addEventListener('pointerup', () => {
   if (state.tool !== 'pen' || !state.drawing || !state.board) return;
   const stroke = state.drawing;
   state.drawing = null;
-  try {
-    const created = await api('POST', `/boards/${state.board.id}/elements`, {
-      type: 'stroke', data: { points: stroke.points, width: stroke.width },
-    });
-    if (!state.layerById.has(created.layer_id)) await refreshLayers();
-    state.elements.push(created);
-  } catch (e) {
-    toast(e.message);
-    renderStrokes();
-  }
+  addLocalElement('stroke', { points: stroke.points, width: stroke.width });
 });
 
 function distToSegment(p, a, b) {
@@ -599,17 +697,14 @@ function hitStroke(elem, p) {
   return false;
 }
 
-async function eraseAt(p) {
+function eraseAt(p) {
   const strokes = state.elements.filter(e => e.type === 'stroke' && !state.hiddenLayers.has(e.layer_id));
   for (let i = strokes.length - 1; i >= 0; i--) {
     if (!hitStroke(strokes[i], p)) continue;
     const s = strokes[i];
     if (!canEditElement(s)) { toast('다른 사람이 그린 내용은 지울 수 없어요'); return; }
-    try {
-      await api('DELETE', `/elements/${s.id}`);
-      state.elements = state.elements.filter(x => x.id !== s.id);
-      renderStrokes();
-    } catch (e) { toast(e.message); }
+    removeLocalElement(s.id);
+    renderStrokes();
     return;
   }
 }
@@ -732,6 +827,15 @@ wrap.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 el('btnResetView').addEventListener('click', resetViewport);
+el('btnSyncNow').addEventListener('click', () => { startAutoSync(); syncNow(); });
+
+// 아직 서버에 반영 안 된 변경사항이 있는 채로 탭을 닫거나 새로고침하면 그 내용이
+// 사라질 수 있다는 걸 브라우저 기본 확인창으로 알려준다 (SPA 내 이동은 route()에서 flush).
+window.addEventListener('beforeunload', (e) => {
+  if (pendingCount() === 0) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 // 창 크기/화면 회전이 바뀌면(모바일 세로↔가로 등) 뷰포트 경계도 다시 계산해야
 // 캔버스 밖 여백이 드러나지 않는다. 보드를 보고 있을 때만 의미가 있다.
