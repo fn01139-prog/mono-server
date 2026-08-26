@@ -31,6 +31,7 @@ const state = {
   viewport: { scale: 1, x: 0, y: 0 },   // 화면 확대/이동 — 뷰어(브라우저)별 로컬 상태, 서버에 저장/공유되지 않음
   activePointers: new Map(),            // pointerId -> {x,y} (client 좌표) — 동시에 몇 손가락이 닿아있는지 추적
   pinch: null,                          // 2손가락 이상 제스처 시작 시점 기준값
+  panning: null,                        // '이동' 툴로 한 손가락/마우스 드래그 중인 시작 기준값
 };
 
 const canvas = el('strokeCanvas');
@@ -187,8 +188,13 @@ async function openBoard(id) {
   state.tool = 'pen';
   state.activePointers.clear();
   state.pinch = null;
+  state.panning = null;
   resetViewport();
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'pen'));
+
+  // 좁은 화면에서는 참여자 패널이 캔버스 위에 겹쳐 뜨므로(모바일 CSS), 그리기 영역을
+  // 가리지 않도록 기본적으로 접어둔다 — '참여자' 버튼으로 언제든 펼칠 수 있다.
+  el('layersPanel').classList.toggle('collapsed', window.matchMedia('(max-width: 720px)').matches);
 
   try {
     state.board = await api('GET', `/boards/${id}`);
@@ -440,7 +446,7 @@ function attachNoteHandlers(node) {
   });
 
   node.addEventListener('pointerdown', (e) => {
-    if (state.activePointers.size >= 2) return;
+    if (state.activePointers.size >= 2 || state.tool === 'pan') return;
     if (node.classList.contains('readonly') || state.tool === 'eraser' || e.target === textEl || e.target === delBtn) return;
     e.stopPropagation();
     const id = Number(node.dataset.id);
@@ -609,13 +615,16 @@ async function eraseAt(p) {
 }
 
 /* ============================================================
-   화면 확대/이동 (모바일 핀치 줌 + 2손가락 이동, 데스크톱 휠 이동)
+   화면 확대/이동
    ─────────────────────────────────────────────────────────────
    canvasWrap에서 캡처링 단계로 모든 포인터를 추적한다 — 캔버스/스티키노트
-   각각의 pointerdown 핸들러보다 먼저 실행되므로, 손가락이 2개 이상이 되는
-   순간 진행 중이던 펜 드로잉/노트 드래그를 취소하고 화면 이동/확대 모드로
-   전환할 수 있다. (기존 버그: 펜 툴에서 두 손가락으로 드래그하면 각 손가락의
-   좌표가 하나의 stroke에 섞여 들어가 직선이 그려졌음)
+   각각의 pointerdown 핸들러보다 먼저 실행되므로, (1) 손가락이 2개 이상이
+   되는 순간 진행 중이던 펜 드로잉/노트 드래그를 취소하고 핀치 확대/이동으로
+   전환하거나, (2) '이동' 툴이 선택된 상태에서 캔버스든 스티키노트든 어디를
+   눌러도 항상 화면 이동으로 처리할 수 있다.
+   손가락 2개 핀치는 기기별 터치 처리 차이로 신뢰도가 떨어질 수 있어,
+   펜/노트/지우개와 별도인 명시적 '이동' 툴(한 손가락/마우스 드래그)을
+   기본 이동 수단으로 둔다.
    ============================================================ */
 
 function applyViewportTransform() {
@@ -637,6 +646,7 @@ function cancelActiveDrawing() {
     state.draggingNote = null;
     renderNotes(); // 진행 중이던 이동은 취소하고 마지막 저장 위치로 되돌린다
   }
+  state.panning = null;
 }
 
 function startPinch() {
@@ -657,6 +667,12 @@ wrap.addEventListener('pointerdown', (e) => {
     startPinch();
   } else if (state.activePointers.size > 2 && !state.pinch) {
     startPinch();
+  } else if (state.activePointers.size === 1 && state.tool === 'pan') {
+    state.panning = {
+      pointerId: e.pointerId,
+      startClientX: e.clientX, startClientY: e.clientY,
+      startX: state.viewport.x, startY: state.viewport.y,
+    };
   }
 }, true);
 
@@ -671,12 +687,19 @@ wrap.addEventListener('pointermove', (e) => {
     state.viewport.x = state.pinch.startX + (mid.x - state.pinch.startMid.x);
     state.viewport.y = state.pinch.startY + (mid.y - state.pinch.startMid.y);
     applyViewportTransform();
+    return;
+  }
+  if (state.panning && state.panning.pointerId === e.pointerId) {
+    state.viewport.x = state.panning.startX + (e.clientX - state.panning.startClientX);
+    state.viewport.y = state.panning.startY + (e.clientY - state.panning.startClientY);
+    applyViewportTransform();
   }
 }, true);
 
 function releasePointer(e) {
   state.activePointers.delete(e.pointerId);
   if (state.activePointers.size < 2) state.pinch = null;
+  if (state.panning && state.panning.pointerId === e.pointerId) state.panning = null;
 }
 wrap.addEventListener('pointerup', releasePointer, true);
 wrap.addEventListener('pointercancel', releasePointer, true);
@@ -700,7 +723,7 @@ document.querySelectorAll('.tool-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     state.tool = btn.dataset.tool;
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b === btn));
-    canvas.style.cursor = state.tool === 'note' ? 'copy' : 'crosshair';
+    canvas.style.cursor = state.tool === 'note' ? 'copy' : state.tool === 'pan' ? 'grab' : 'crosshair';
   });
 });
 
