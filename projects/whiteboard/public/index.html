@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <script src="/shared-assets/auth-guard.js"></script>
+  <script src="/shared-assets/feedback-widget.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>🖊️ 화이트보드</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/whiteboard/css/style.css">
+</head>
+<body>
+
+  <!-- ══════════════ 목록 뷰: 보드(채널) 리스트 ══════════════ -->
+  <section id="viewList" class="view">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="logo-mark">🖊️</span>
+        <h1 class="app-title">화이트보드</h1>
+      </div>
+      <div class="topbar-right">
+        <span id="meLabel" class="me-label"></span>
+        <a class="btn btn-ghost btn-small" href="/">← 허브</a>
+        <button id="btnNewBoard" class="btn btn-primary" type="button">+ 새 보드</button>
+      </div>
+    </header>
+    <main class="list-main">
+      <p class="list-sub">채널처럼 원하는 보드에 들어가 자유롭게 그리고 메모를 남기세요. 누가 그렸는지는 참여자별 색상 레이어로 구분됩니다.</p>
+      <div id="boardGrid" class="board-grid"></div>
+      <div id="listEmpty" class="list-empty hidden">아직 생성된 보드가 없습니다. <b>+ 새 보드</b>로 첫 채널을 만들어보세요.</div>
+    </main>
+  </section>
+
+  <!-- ══════════════ 보드 뷰: 캔버스 + 레이어 패널 ══════════════ -->
+  <section id="viewBoard" class="view hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button id="btnBack" class="btn btn-ghost btn-icon" type="button" title="목록으로">←</button>
+        <input id="boardTitleInput" class="board-title-input" disabled placeholder="보드 제목" />
+      </div>
+      <div class="topbar-center">
+        <div class="tool-group">
+          <button id="toolPen"    class="tool-btn active" data-tool="pen"    type="button" title="펜으로 그리기">✏️</button>
+          <button id="toolNote"   class="tool-btn"        data-tool="note"   type="button" title="스티키노트 추가">🗒️</button>
+          <button id="toolEraser" class="tool-btn"        data-tool="eraser" type="button" title="지우개 (내가 작성한 내용만)">🧹</button>
+        </div>
+        <input id="penWidth" type="range" min="1" max="20" value="3" class="pen-width" title="펜 굵기" />
+        <label class="my-color-label" title="내 레이어 색상 변경 (기존에 그린 내용에도 함께 적용됩니다)">
+          내 색상 <input id="myColorInput" type="color" class="my-color-input" />
+        </label>
+      </div>
+      <div class="topbar-right">
+        <span id="syncBadge" class="sync-badge" title="자동 동기화"></span>
+        <button id="btnLayersToggle" class="btn btn-ghost btn-small" type="button">👥 참여자</button>
+        <button id="btnBoardManage" class="btn btn-ghost btn-small hidden" type="button">⚙ 보드 관리</button>
+        <button id="btnBoardDelete" class="btn btn-danger btn-small hidden" type="button">🗑 삭제</button>
+      </div>
+    </header>
+
+    <main class="board-main">
+      <div id="canvasWrap" class="canvas-wrap">
+        <div id="canvasInner" class="canvas-inner">
+          <canvas id="strokeCanvas"></canvas>
+          <div id="noteLayer" class="note-layer"></div>
+        </div>
+      </div>
+
+      <aside id="layersPanel" class="layers-panel">
+        <div class="panel-heading" id="layersHeading">참여자 레이어</div>
+        <ul id="layersList" class="layers-list"></ul>
+        <p class="panel-hint">체크 해제는 내 화면에서만 숨깁니다 (다른 사람에게는 그대로 보여요). 삭제는 실제로 지워집니다.</p>
+      </aside>
+    </main>
+  </section>
+
+  <div id="toast"></div>
+
+  <script src="/whiteboard/js/app.js"></script>
+</body>
+</html>
