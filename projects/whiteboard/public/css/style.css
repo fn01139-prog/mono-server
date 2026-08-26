@@ -114,6 +114,7 @@ input { font-family: inherit; }
 }
 .sync-badge.syncing::before { background: #e3b341; }
 .sync-badge.error::before { background: var(--danger); }
+.sync-badge.pending::before { background: #e3b341; }
 
 .board-main { flex: 1; display: flex; overflow: hidden; position: relative; }
 
