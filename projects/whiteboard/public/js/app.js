@@ -28,14 +28,19 @@ const state = {
   drawing: null,
   draggingNote: null,
   editingNoteId: null,
+  viewport: { scale: 1, x: 0, y: 0 },   // 화면 확대/이동 — 뷰어(브라우저)별 로컬 상태, 서버에 저장/공유되지 않음
+  activePointers: new Map(),            // pointerId -> {x,y} (client 좌표) — 동시에 몇 손가락이 닿아있는지 추적
+  pinch: null,                          // 2손가락 이상 제스처 시작 시점 기준값
 };
 
 const canvas = el('strokeCanvas');
 const ctx = canvas.getContext('2d');
+const wrap = el('canvasWrap');
+const inner = el('canvasInner');
 canvas.width = CANVAS_W;
 canvas.height = CANVAS_H;
-el('canvasInner').style.width = CANVAS_W + 'px';
-el('canvasInner').style.height = CANVAS_H + 'px';
+inner.style.width = CANVAS_W + 'px';
+inner.style.height = CANVAS_H + 'px';
 
 /* ============================================================
    유틸
@@ -180,6 +185,9 @@ async function openBoard(id) {
   state.draggingNote = null;
   state.editingNoteId = null;
   state.tool = 'pen';
+  state.activePointers.clear();
+  state.pinch = null;
+  resetViewport();
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.toggle('active', b.dataset.tool === 'pen'));
 
   try {
@@ -432,25 +440,26 @@ function attachNoteHandlers(node) {
   });
 
   node.addEventListener('pointerdown', (e) => {
-    if (node.classList.contains('readonly') || state.tool === 'eraser' || e.target === textEl) return;
+    if (state.activePointers.size >= 2) return;
+    if (node.classList.contains('readonly') || state.tool === 'eraser' || e.target === textEl || e.target === delBtn) return;
     e.stopPropagation();
     const id = Number(node.dataset.id);
     const elem = state.elements.find(x => x.id === id);
     if (!elem) return;
-    const rect = el('canvasInner').getBoundingClientRect();
+    const p = canvasPos(e);
     node.setPointerCapture(e.pointerId);
     state.draggingNote = {
       id, node,
-      offsetX: (e.clientX - rect.left) - elem.data.x,
-      offsetY: (e.clientY - rect.top) - elem.data.y,
+      offsetX: p.x - elem.data.x,
+      offsetY: p.y - elem.data.y,
     };
     node.classList.add('dragging');
   });
   node.addEventListener('pointermove', (e) => {
     if (!state.draggingNote || state.draggingNote.node !== node) return;
-    const rect = el('canvasInner').getBoundingClientRect();
-    const x = Math.max(0, Math.round((e.clientX - rect.left) - state.draggingNote.offsetX));
-    const y = Math.max(0, Math.round((e.clientY - rect.top) - state.draggingNote.offsetY));
+    const p = canvasPos(e);
+    const x = Math.max(0, Math.round(p.x - state.draggingNote.offsetX));
+    const y = Math.max(0, Math.round(p.y - state.draggingNote.offsetY));
     node.style.left = x + 'px';
     node.style.top = y + 'px';
   });
@@ -502,8 +511,11 @@ async function createNoteAt(p) {
    ============================================================ */
 
 function canvasPos(e) {
-  const rect = el('canvasInner').getBoundingClientRect();
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  const rect = inner.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) / state.viewport.scale,
+    y: (e.clientY - rect.top) / state.viewport.scale,
+  };
 }
 
 function setStrokeStyle(width) {
@@ -516,7 +528,7 @@ function setStrokeStyle(width) {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
-  if (!state.board) return;
+  if (!state.board || state.activePointers.size >= 2) return;
   if (state.tool === 'pen') {
     canvas.setPointerCapture(e.pointerId);
     const p = canvasPos(e);
@@ -534,6 +546,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  if (state.activePointers.size >= 2) return;
   if (state.tool !== 'pen' || !state.drawing) return;
   const p = canvasPos(e);
   const last = state.drawing.points[state.drawing.points.length - 1];
@@ -594,6 +607,90 @@ async function eraseAt(p) {
     return;
   }
 }
+
+/* ============================================================
+   화면 확대/이동 (모바일 핀치 줌 + 2손가락 이동, 데스크톱 휠 이동)
+   ─────────────────────────────────────────────────────────────
+   canvasWrap에서 캡처링 단계로 모든 포인터를 추적한다 — 캔버스/스티키노트
+   각각의 pointerdown 핸들러보다 먼저 실행되므로, 손가락이 2개 이상이 되는
+   순간 진행 중이던 펜 드로잉/노트 드래그를 취소하고 화면 이동/확대 모드로
+   전환할 수 있다. (기존 버그: 펜 툴에서 두 손가락으로 드래그하면 각 손가락의
+   좌표가 하나의 stroke에 섞여 들어가 직선이 그려졌음)
+   ============================================================ */
+
+function applyViewportTransform() {
+  inner.style.transform = `translate(${state.viewport.x}px, ${state.viewport.y}px) scale(${state.viewport.scale})`;
+}
+
+function resetViewport() {
+  state.viewport = { scale: 1, x: 0, y: 0 };
+  applyViewportTransform();
+}
+
+function pointerDistance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function pointerMidpoint(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+function cancelActiveDrawing() {
+  if (state.drawing) { state.drawing = null; renderStrokes(); }
+  if (state.draggingNote) {
+    state.draggingNote.node.classList.remove('dragging');
+    state.draggingNote = null;
+    renderNotes(); // 진행 중이던 이동은 취소하고 마지막 저장 위치로 되돌린다
+  }
+}
+
+function startPinch() {
+  const pts = [...state.activePointers.values()].slice(0, 2);
+  state.pinch = {
+    startDist: pointerDistance(pts[0], pts[1]),
+    startMid: pointerMidpoint(pts[0], pts[1]),
+    startScale: state.viewport.scale,
+    startX: state.viewport.x,
+    startY: state.viewport.y,
+  };
+}
+
+wrap.addEventListener('pointerdown', (e) => {
+  state.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (state.activePointers.size === 2) {
+    cancelActiveDrawing();
+    startPinch();
+  } else if (state.activePointers.size > 2 && !state.pinch) {
+    startPinch();
+  }
+}, true);
+
+wrap.addEventListener('pointermove', (e) => {
+  if (!state.activePointers.has(e.pointerId)) return;
+  state.activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (state.activePointers.size >= 2 && state.pinch) {
+    const pts = [...state.activePointers.values()].slice(0, 2);
+    const dist = pointerDistance(pts[0], pts[1]);
+    const mid = pointerMidpoint(pts[0], pts[1]);
+    state.viewport.scale = Math.max(0.4, Math.min(3, state.pinch.startScale * (dist / state.pinch.startDist)));
+    state.viewport.x = state.pinch.startX + (mid.x - state.pinch.startMid.x);
+    state.viewport.y = state.pinch.startY + (mid.y - state.pinch.startMid.y);
+    applyViewportTransform();
+  }
+}, true);
+
+function releasePointer(e) {
+  state.activePointers.delete(e.pointerId);
+  if (state.activePointers.size < 2) state.pinch = null;
+}
+wrap.addEventListener('pointerup', releasePointer, true);
+wrap.addEventListener('pointercancel', releasePointer, true);
+
+// 데스크톱: 트랙패드/휠 스크롤로 이동 (canvas-wrap이 overflow:hidden이라 네이티브
+// 스크롤 대신 동일한 viewport 이동으로 처리 — 확대 배율과 함께 동작하려면 필요)
+wrap.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  state.viewport.x -= e.deltaX;
+  state.viewport.y -= e.deltaY;
+  applyViewportTransform();
+}, { passive: false });
+
+el('btnResetView').addEventListener('click', resetViewport);
 
 /* ============================================================
    툴바 / 보드 관리

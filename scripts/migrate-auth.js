@@ -15,6 +15,9 @@
  *  7. camp_items.user_id FK를 camp_users(id) → platform_users(id)로 재지정
  *     (campchecklist 로그인이 platform 계정을 쓰게 되면서, camp_users에 없는 신규 platform
  *     사용자가 품목을 등록하면 기존 FK가 위반됨 — id가 1:1로 보존되므로 안전하게 재지정 가능)
+ *  8. '/whiteboard'에 대한 권한이 하나도 없으면(최초 배포 시) 전체 계정에 개방 ('*' 와일드카드) —
+ *     채널형 앱이라 기본값이 공개. 이후 admin이 권한을 직접 조정하면 그 상태를 그대로 존중하고
+ *     (grants 개수가 1 이상이 되므로) 다시 열지 않는다.
  */
 
 const bcrypt = require('bcryptjs');
@@ -198,12 +201,27 @@ async function ensureSelfRecipient(client) {
   console.log(`[migrate-auth] notify_recipients 'self' 수신자 자동 생성됨 (name: ${PLATFORM_ADMIN_ID}) — admin 콘솔 알림 탭에서 텔레그램/디스코드 등 채널을 연결하세요`);
 }
 
+/** '/whiteboard' 권한이 하나도 없으면(최초 배포 시) 전체 계정에 개방 — 채널형 앱이라 기본값을 공개로 둔다.
+ *  이후 admin이 권한을 직접 조정해도(와일드카드 제거 등) 그 상태를 존중하고 다시 열지 않는다. */
+async function ensureWhiteboardOpenToAll(client) {
+  const { rows } = await client.query(
+    `SELECT COUNT(*)::int AS c FROM platform_app_grants WHERE app_prefix = '/whiteboard'`
+  );
+  if (rows[0].c > 0) return;
+
+  await client.query(
+    `INSERT INTO platform_app_grants (user_id, app_prefix, granted_by) VALUES ('*', '/whiteboard', 'migrate-auth')`
+  );
+  console.log(`[migrate-auth] '/whiteboard' 앱을 전체 계정에 개방함 (wildcard grant, 최초 1회)`);
+}
+
 async function run(pool) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await ensureAdmin(client);
     await ensureSelfRecipient(client);
+    await ensureWhiteboardOpenToAll(client);
     await migrateCampAccounts(client);
     await repointCampItemsFK(client);
     await backfillCampTripOwners(client);
