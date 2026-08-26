@@ -3,7 +3,7 @@ module.exports = {
   prefix:      '/wled-bridge',
   description: '',
   icon:        '🏦',
-  enabled:     true,
+  enabled:     false,
   spa:         true,
   public:      true,
 };
