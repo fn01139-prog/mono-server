@@ -282,6 +282,48 @@ CREATE INDEX IF NOT EXISTS idx_mindmap_relations_parent ON mindmap_relations(par
 CREATE INDEX IF NOT EXISTS idx_mindmap_relations_child  ON mindmap_relations(child_id);
 CREATE INDEX IF NOT EXISTS idx_mindmap_memos_object     ON mindmap_memos(object_id);
 
+/* ── whiteboard (공유 화이트보드 — 채널형 보드 + 작성자별 레이어) ────────────
+ * boards = 채널. layers = 보드에 참여한 사용자 1명당 1개, 작성자 구분/관리 단위
+ * (참여 시 자동 생성 — index.js의 ensureLayer 참고). elements = 실제 드로잉
+ * (stroke)/스티키노트(note), 레이어에 속함.
+ * 조회·참여(요소 등록)는 앱 접근 권한이 있는 로그인 사용자 전원, 보드 이름변경/삭제는
+ * 보드 소유자·admin만, 레이어(참여자) 삭제는 본인·보드소유자·admin, 개별 요소 수정/삭제는
+ * 작성자 본인·보드소유자·admin만 가능 (index.js에서 검사).
+ */
+CREATE TABLE IF NOT EXISTS whiteboard_boards (
+  id          SERIAL       PRIMARY KEY,
+  title       VARCHAR(200) NOT NULL,
+  description VARCHAR(500) NOT NULL DEFAULT '',
+  owner_id    VARCHAR(100) NOT NULL REFERENCES platform_users(id),
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_whiteboard_boards_owner ON whiteboard_boards(owner_id);
+
+CREATE TABLE IF NOT EXISTS whiteboard_layers (
+  id          SERIAL       PRIMARY KEY,
+  board_id    INTEGER      NOT NULL REFERENCES whiteboard_boards(id) ON DELETE CASCADE,
+  owner_id    VARCHAR(100) NOT NULL REFERENCES platform_users(id),
+  owner_name  VARCHAR(200) NOT NULL,
+  color       VARCHAR(20)  NOT NULL DEFAULT '#4a9eff',
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (board_id, owner_id)
+);
+CREATE INDEX IF NOT EXISTS idx_whiteboard_layers_board ON whiteboard_layers(board_id);
+
+CREATE TABLE IF NOT EXISTS whiteboard_elements (
+  id          SERIAL       PRIMARY KEY,
+  board_id    INTEGER      NOT NULL REFERENCES whiteboard_boards(id) ON DELETE CASCADE,
+  layer_id    INTEGER      NOT NULL REFERENCES whiteboard_layers(id) ON DELETE CASCADE,
+  author_id   VARCHAR(100) NOT NULL REFERENCES platform_users(id),
+  type        VARCHAR(20)  NOT NULL,
+  data        JSONB        NOT NULL,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_whiteboard_elements_board ON whiteboard_elements(board_id);
+CREATE INDEX IF NOT EXISTS idx_whiteboard_elements_layer ON whiteboard_elements(layer_id);
+
 /* ── totalprice (금/은 시세 캐시 — 비공식 외부 API 실패 시 폴백용 마지막 성공 응답)
  * 예전엔 로컬 파일(data/cache.json)에 저장했는데, Railway 같은 호스팅은 배포마다
  * 컨테이너가 새로 뜨는 임시 파일시스템이라 재배포 직후엔 캐시가 사라져 폴백이 무력화됐다 → DB로 이전.
