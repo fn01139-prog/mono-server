@@ -627,7 +627,25 @@ async function eraseAt(p) {
    기본 이동 수단으로 둔다.
    ============================================================ */
 
+// 캔버스(2400x1400)는 크기가 고정돼 있는데 팬 이동에는 제한이 없어서, 화면을 계속
+// 이동하면 캔버스 밖(그릴 수 없는 canvas-wrap 배경만 있는 영역)까지 보이던 문제가
+// 있었다 — 뷰포트가 캔버스 경계를 벗어나지 못하도록 매번 여기서 clamp한다.
+function clampViewport() {
+  const wrapRect = wrap.getBoundingClientRect();
+  const canvasW = CANVAS_W * state.viewport.scale;
+  const canvasH = CANVAS_H * state.viewport.scale;
+
+  state.viewport.x = canvasW <= wrapRect.width
+    ? (wrapRect.width - canvasW) / 2
+    : Math.min(0, Math.max(wrapRect.width - canvasW, state.viewport.x));
+
+  state.viewport.y = canvasH <= wrapRect.height
+    ? (wrapRect.height - canvasH) / 2
+    : Math.min(0, Math.max(wrapRect.height - canvasH, state.viewport.y));
+}
+
 function applyViewportTransform() {
+  clampViewport();
   inner.style.transform = `translate(${state.viewport.x}px, ${state.viewport.y}px) scale(${state.viewport.scale})`;
 }
 
@@ -714,6 +732,10 @@ wrap.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 el('btnResetView').addEventListener('click', resetViewport);
+
+// 창 크기/화면 회전이 바뀌면(모바일 세로↔가로 등) 뷰포트 경계도 다시 계산해야
+// 캔버스 밖 여백이 드러나지 않는다. 보드를 보고 있을 때만 의미가 있다.
+window.addEventListener('resize', () => { if (state.board) applyViewportTransform(); });
 
 /* ============================================================
    툴바 / 보드 관리
