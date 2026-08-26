@@ -9,8 +9,8 @@ const BASE = (() => {
   return parts.length ? '/' + parts[0] : '';
 })();
 
-const CANVAS_W = 2400;
-const CANVAS_H = 1400;
+const CANVAS_W = 4000;
+const CANVAS_H = 2500;
 const REFRESH_MS = 2500;
 
 const el = id => document.getElementById(id);
