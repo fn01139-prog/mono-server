@@ -92,6 +92,7 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 | `/campchecklist` | 캠핑 체크리스트 | **PostgreSQL** (`camp_*`); 생성자가 참여자를 초대하는 방식 — 본인이 만들었거나 초대된 일정만 조회 |
 | `/mindmap` | 마인드맵 | **PostgreSQL** (`mindmap_boards` 등); `owner_id` 격리 |
 | `/whiteboard` | 공유 화이트보드 | SPA mode; **PostgreSQL** (`whiteboard_boards`/`whiteboard_layers`/`whiteboard_elements`); 채널형 보드 — 이 앱 접근 권한이 있는 로그인 사용자 전원이 보드 목록 조회·참여(펜 드로잉/스티키노트) 가능, 보드 이름변경·삭제는 소유자/admin만; 참여자별로 `whiteboard_layers` 레이어가 자동 등록되어 누가 그렸는지 색으로 구분되고, 레이어(=참여자) 단위로 삭제 관리 가능(본인·보드소유자·admin); 동기화는 WebSocket이 아닌 배치 방식 — 내가 그리거나 수정한 내용은 로컬에만 쌓이다가 자동(1분 주기) 또는 새로고침 버튼 클릭 시 한꺼번에 push/pull; 화면 이동/확대(핀치·이동 툴·휠)는 뷰어별 로컬 상태 |
+| `/memo` | 대분류/중분류 체계의 사내 공유 문서함 | 조회는 로그인+앱 권한이 있는 사용자 전원(로그인 없이는 아예 접근 불가 — 원본의 "비로그인 공개 열람"과 다른 지점); 문서 작성/수정/삭제·대분류/중분류 관리는 admin만(`req.user.role`); admin이든 아니든 중분류별로 별도 설정한 열람 코드를 입력해야 하는 이중 게이트 유지(서명 쿠키, `MEMO_TOKEN_SECRET`); 콘텐츠(tree.json/문서 html/이미지)는 mdboard와 동일한 패턴으로 Railway 볼륨(`/data/contents/memo`, `projects/memo/lib/paths.js`)에 저장; 에디터(CKEditor5, `admin/editor.html`)는 `public/` 밖에서 admin 전용 라우트로만 서비스 |
 | `/totalprice` | 종합 시세: 금/은 시세 + 국내 주식 시세 | 금/은: 비공식 외부 API(`koreagoldx.co.kr`) 프록시, 메모리 캐시(10분 TTL)+**PostgreSQL**(`totalprice_gold_cache`) 폴백(파일 캐시 아님 — 배포마다 컨테이너가 새로 뜨는 호스팅에서도 유지); 주식: Npay 증권(`finance.naver.com`) 크롤링(일별/시간별 시세, 현재가 스냅샷, 종목뉴스), **PostgreSQL**(`totalprice_stocks` — 종목코드+명칭 마스터, `totalprice-stocklist-refresh` 배치잡이 주 1회 갱신); `/stocks/:code/insight`는 시세+뉴스를 Claude Haiku 4.5로 요약해 매수/매도 참고 자료 생성(투자자문 아님, `ANTHROPIC_API_KEY` 필요, 종목별 30분 캐시, `lib/insightService.js`); **PostgreSQL**(`totalprice_alerts` — 사용자별 AI 알림 예약: 종목/주기/시간/알림채널, `totalprice-alert-runner` 배치잡이 10분마다 스캔해 `shared/notify`로 발송) |
 
 모든 앱은 인증을 자체 구현하지 않는다 — `core/loader.js`가 마운트 시점에 로그인·앱 권한 가드를 자동으로 앞단에 삽입한다. 자세한 내용은 아래 "Authentication" 섹션 참고.
@@ -237,6 +238,8 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `PLATFORM_ADMIN_PW` | `admin1234` | 위 admin 계정의 초기 비밀번호 — 최초 로그인 후 반드시 변경 |
 | `MDBOARD_API_KEY` | (없음) | mdboard `/publish` API 키 (Claude Code 등 programmatic 접근용, 플랫폼 로그인과 무관) |
 | `MDBOARD_CONTENTS_DIR` | `/data/contents/mdboard` | mdboard 콘텐츠 저장 경로. Railway에서는 이 경로에 볼륨을 마운트해 영속화. 로컬 개발 등에서만 다른 경로로 오버라이드 |
+| `MEMO_CONTENTS_DIR` | `/data/contents/memo` | memo(대분류/중분류 문서함) 콘텐츠 저장 경로 — mdboard와 동일 패턴으로 Railway 볼륨 하위에 격리. 로컬 개발 등에서만 다른 경로로 오버라이드 |
+| `MEMO_TOKEN_SECRET` | (없음) | memo 중분류별 열람/작성 코드 잠금해제 쿠키 서명 키. 미설정 시 기동마다 랜덤 값으로 대체되어 재배포할 때마다 잠금해제 상태가 초기화됨(치명적이진 않음) |
 | `GOOGLE_SERVICE_ACCOUNT` | (없음) | travellog Drive 서비스 계정 JSON (base64) |
 | `DRIVE_FOLDER_ID` | (없음) | travellog 사진 업로드 Drive 폴더 ID |
 | `GDRIVE_CLIENT_ID` | (없음) | mdboard Drive 백업용 OAuth2 클라이언트 ID |
