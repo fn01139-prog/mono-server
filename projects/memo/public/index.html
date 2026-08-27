@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<script src="/shared-assets/auth-guard.js"></script>
+<script src="/shared-assets/feedback-widget.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>메모 문서함</title>
+<!-- mono-server가 이 모듈을 /memo 가 아닌 다른 prefix로 마운트하면 이 한 줄만 바꾸면 됨 -->
+<base href="/memo/" />
+<link rel="stylesheet" href="css/common.css" />
+</head>
+<body>
+  <header id="app-header">
+    <div id="breadcrumb">문서를 선택하세요</div>
+    <div id="notice">업무 공유를 위해 공개된 문서입니다</div>
+    <div class="auth-area">
+      <span id="platformUserChip"></span>
+      <button id="btn-logout" type="button" class="admin-toggle">로그아웃</button>
+    </div>
+  </header>
+
+  <div id="layout">
+    <nav id="sidebar">
+      <div id="sidebar-toolbar" class="owner-only" style="display:none">
+        <button id="btn-add-major" type="button">+ 대분류</button>
+      </div>
+      <ul id="tree"><li class="empty">불러오는 중...</li></ul>
+    </nav>
+    <div id="resizer"></div>
+    <main id="content">
+      <div id="placeholder">왼쪽 메뉴에서 문서를 선택하세요.</div>
+      <iframe id="docFrame" title="문서 보기" style="display:none"></iframe>
+      <iframe id="editorFrame" title="문서 편집" style="display:none"></iframe>
+    </main>
+  </div>
+
+  <!-- 대분류/중분류 이름·코드 입력 모달 (관리자 전용 UI는 JS에서 /auth/me 응답의 role로 판단) -->
+  <div id="modal-overlay" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <h3 id="modal-title"></h3>
+      <div id="modal-body"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" type="button">취소</button>
+        <button id="modal-ok" type="button">확인</button>
+      </div>
+      <p id="modal-error" class="modal-error"></p>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>문서 편집</title>
+<!-- 이 파일은 public/ 밖(admin/)에 있고, index.js의 GET /admin/editor 라우트
+     (auth.requireAdmin 적용, 실제 경로는 /memo/api/admin/editor)로만 서비스된다
+     — 정적 파일로는 노출되지 않는다. base href는 이 페이지가 그 경로에서
+     열려도 css/js/vendor 상대경로가 /memo/ 기준으로 항상 풀리게 해준다. -->
+<base href="/memo/" />
+<link rel="stylesheet" href="css/common.css" />
+<style>
+  body { padding: 12px; background: #fff; }
+  #editor-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  #doc-title { flex: 1; padding: 8px; font-size: 15px; border: 1px solid #ccc; border-radius: 4px; }
+  #editor-toolbar button { padding: 7px 16px; border-radius: 4px; border: 1px solid #ccc; background: #f7f7f7; cursor: pointer; }
+  #btn-save { background: #3355dd; color: #fff; border-color: #3355dd; }
+  #btn-source.active { background: #dfe6ff; border-color: #3355dd; }
+  #editor-status { font-size: 12px; color: #c0392b; margin-bottom: 8px; min-height: 14px; }
+  #html-source {
+    display: none;
+    width: 100%;
+    min-height: 400px;
+    font-family: "Consolas", "D2Coding", monospace;
+    font-size: 13px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    resize: vertical;
+  }
+</style>
+</head>
+<body>
+  <div id="editor-toolbar">
+    <input type="text" id="doc-title" placeholder="문서 제목" />
+    <button id="btn-source" type="button" title="이미지 크기 등 HTML을 직접 수정합니다">HTML 편집</button>
+    <button id="btn-cancel" type="button">취소</button>
+    <button id="btn-save" type="button">저장</button>
+  </div>
+  <div id="editor-status"></div>
+  <div id="editor"></div>
+  <textarea id="html-source" spellcheck="false"></textarea>
+
+  <script src="vendor/ckeditor5/ckeditor.js"></script>
+  <script src="js/editor.js"></script>
+</body>
+</html>
