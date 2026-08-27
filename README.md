@@ -59,7 +59,7 @@ npm run pm2        # PM2 프로세스 매니저
 
 | 경로 | 이름 | 설명 | DB |
 |------|------|------|----|
-| `/mdboard` | 📝 mdBoard | Markdown 문서 플랫폼 — 폴더 분류, CRUD, 이미지/HTML 업로드, Marp 내보내기, Google Drive 백업 | 파일시스템 |
+| `/mdboard` | 📝 mdBoard | Markdown 문서 플랫폼 — 폴더 분류, CRUD, 이미지/HTML 업로드, Marp 내보내기, Railway 볼륨 저장 + Google Drive 월간 백업 | 파일시스템(볼륨) |
 | `/portfolio` | 포트폴리오 | 개인 포트폴리오 페이지 빌더 (SPA) | PostgreSQL |
 | `/aptloan` | 🏠 아파트 대출 계산기 | 입주비용·중도금이자·대출 상환 시뮬레이터 (SPA) | — |
 | `/floorplan` | 🌐 평면도 | 평면도 그리기 — 관리자 토큰 인증, Google Drive 저장 (SPA) | PostgreSQL |
@@ -117,10 +117,11 @@ pm2 restart mono-server
 | `CAMP_ADMIN_ID` | `admin` | campchecklist 관리자 로그인 ID |
 | `GOOGLE_SERVICE_ACCOUNT` | (없음) | travellog Drive 서비스 계정 JSON (base64) |
 | `DRIVE_FOLDER_ID` | (없음) | travellog 사진 업로드 Drive 폴더 ID |
-| `GDRIVE_CLIENT_ID` | (없음) | mdboard/campchecklist Drive OAuth2 클라이언트 ID |
-| `GDRIVE_CLIENT_SECRET` | (없음) | mdboard/campchecklist Drive OAuth2 시크릿 |
-| `GDRIVE_REFRESH_TOKEN` | (없음) | mdboard/campchecklist Drive OAuth2 리프레시 토큰 |
-| `GDRIVE_FOLDER_ID` | (없음) | mdboard/campchecklist Drive 폴더 ID |
+| `MDBOARD_CONTENTS_DIR` | `/data/contents/mdboard` | mdboard 콘텐츠 저장 경로 (Railway 볼륨 마운트 경로) |
+| `GDRIVE_CLIENT_ID` | (없음) | mdboard Drive 백업용 OAuth2 클라이언트 ID |
+| `GDRIVE_CLIENT_SECRET` | (없음) | mdboard Drive 백업용 OAuth2 시크릿 |
+| `GDRIVE_REFRESH_TOKEN` | (없음) | mdboard Drive 백업용 OAuth2 리프레시 토큰 |
+| `MDBOARD_FOLDER_ID` | (없음) | mdboard 전용 Drive 백업 폴더 ID |
 
 ---
 
