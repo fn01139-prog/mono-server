@@ -9,7 +9,6 @@ const multer  = require('multer');
 const os      = require('os');
 const pool    = require('../../shared/db');
 const { Marp } = require('@marp-team/marp-core');
-const drive   = require('./drive');
 const perm    = require('./permissions');
 const mailer  = require('../../shared/mailer');
 const router  = express.Router();
@@ -21,13 +20,10 @@ const router  = express.Router();
  * programmatic 접근용, 기존 동작 유지).
  * ────────────────────────────────────────────────────────────────────── */
 
-const PROJECT_DIR  = __dirname;
-const CONTENTS_DIR = path.join(PROJECT_DIR, 'public', 'contents');
-const IMG_DIR      = path.join(CONTENTS_DIR, 'img');
-
-[CONTENTS_DIR, IMG_DIR].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-});
+// 콘텐츠는 Railway 볼륨(paths.js 참고, 디렉토리 생성도 거기서 처리)에 상시 저장된다.
+// Google Drive는 더 이상 실시간 동기화 대상이 아니고, scripts/mdboard-drive-migrate.js
+// (1회 이관)와 core/jobs/mdboard-drive-backup.js(월 1회 백업)에서만 별도로 사용한다.
+const { CONTENTS_DIR, IMG_DIR } = require('./paths');
 
 const storage = multer.diskStorage({
   destination: IMG_DIR,
@@ -181,11 +177,6 @@ router.get('/collaborators', async (req, res) => {
 /* ── 메일 발송 이력 조회 (GET /mail-logs) — shared/mailer.js 공통 라우터 ── */
 router.use(mailer.mailLogRouter('/mdboard'));
 
-// Drive Lazy Init
-router.use((req, res, next) => {
-  drive.ensureInit().then(() => next()).catch(() => next());
-});
-
 /* ── 파일 목록 (폴더 구조 포함) ────────────────────────────────────────── */
 router.get('/files', async (req, res) => {
   try {
@@ -294,14 +285,12 @@ router.post('/save', async (req, res) => {
       const oldAbs = safePath(origRelPath);
       if (oldAbs && fs.existsSync(oldAbs)) {
         fs.unlinkSync(oldAbs);
-        drive.deleteFile(origRelPath).catch(() => {});
       }
       await perm.renamePath(origRelPath, newRelPath);
     }
 
     fs.writeFileSync(newAbsPath, content, 'utf8');
     if (!targetExists) await perm.registerNew(newRelPath, 'md', req.user.userId);
-    drive.pushFile(newRelPath, content).catch(() => {});
     res.json({ success: true, name, folder: folder || null, path: newRelPath });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -319,7 +308,6 @@ router.delete('/file/*', async (req, res) => {
 
     fs.unlinkSync(filePath);
     await perm.deletePath(name);
-    drive.deleteFile(name).catch(() => {});
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -393,9 +381,6 @@ router.post('/move', async (req, res) => {
 
     fs.renameSync(fromAbs, toAbs);
     await perm.renamePath(fromRel, toRel);
-    const content = fs.readFileSync(toAbs, 'utf8');
-    drive.pushFile(toRel, content).catch(() => {});
-    drive.deleteFile(fromRel).catch(() => {});
     res.json({ success: true, path: toRel });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -475,9 +460,7 @@ router.post('/upload-html', (req, res) => {
       return res.status(400).json({ error: err.message });
     }
     if (!req.file) return res.status(400).json({ error: 'HTML 파일이 없습니다.' });
-    const htmlContent = fs.readFileSync(req.file.path, 'utf8');
     await perm.registerNew(req.file.filename, 'html', req.user.userId);
-    drive.pushFile(req.file.filename, htmlContent).catch(() => {});
     res.json({ success: true, filename: req.file.filename, size: req.file.size });
   });
 });
@@ -494,7 +477,6 @@ router.delete('/html-file/:filename', async (req, res) => {
 
     fs.unlinkSync(filePath);
     await perm.deletePath(req.params.filename);
-    drive.deleteFile(req.params.filename).catch(() => {});
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -537,7 +519,6 @@ router.post('/publish', async (req, res) => {
       const adminId = await perm.getAdminUserId();
       if (adminId) await perm.registerNew(relPath, 'md', adminId);
     }
-    drive.pushFile(relPath, content).catch(() => {});
 
     res.json({ success: true, title, folder: folder || null, path: relPath,
                url: `/mdboard#${encodeURIComponent(relPath)}` });

@@ -23,6 +23,9 @@ node scripts/migrate-auth.js
 
 # 기존 JSON 파일 → PostgreSQL 시딩 (최초 1회)
 node scripts/seed.js
+
+# mdboard: 기존 Google Drive 백업분 → Railway 볼륨(/data/contents/mdboard) 이관 (최초 1회, 볼륨이 마운트된 서버에서 실행)
+node scripts/mdboard-drive-migrate.js
 ```
 
 No test or lint scripts are configured.
@@ -81,7 +84,7 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 
 | Prefix | Description | Notes |
 |--------|-------------|-------|
-| `/mdboard` | Markdown document platform | 폴더 분류; 파일 CRUD + 이미지 업로드(multer); HTML 파일 업로드/뷰어; Marp HTML/PDF 내보내기; Google Drive 백업; **파일별 소유/공유 권한** (`mdboard_files`, `mdboard_file_grants`) |
+| `/mdboard` | Markdown document platform | 폴더 분류; 파일 CRUD + 이미지 업로드(multer); HTML 파일 업로드/뷰어; Marp HTML/PDF 내보내기; 콘텐츠는 Railway 볼륨(`/data/contents/mdboard`, `projects/mdboard/paths.js`)에 상시 저장 — Google Drive는 `mdboard-drive-backup` 배치잡으로 월 1회 백업만 담당(레거시 Drive 백업분은 `scripts/mdboard-drive-migrate.js`로 1회 이관); **파일별 소유/공유 권한** (`mdboard_files`, `mdboard_file_grants`) |
 | `/portfolio` | Personal portfolio page builder | SPA mode; **PostgreSQL** (`portfolio_pages`); `owner_id` 격리; `status='published'` 페이지는 비로그인 공개 조회 |
 | `/aptloan` | 아파트 대출 계산기 | SPA mode; 입주비용·중도금이자·대출 상환 시뮬레이터; 서버 데이터 없음 |
 | `/floorplan` | 평면도 그리기 | SPA mode; **PostgreSQL** (`floorplan_templates`, `floorplan_categories`); 조회는 로그인 사용자 전원, 수정은 소유자/admin만 |
@@ -182,7 +185,7 @@ customRoutes: [
 - `core/jobs/*.js`를 자동 스캔해 `node-cron`으로 등록 (projects/ 자동 로딩과 동일한 패턴). 각 파일은 `{ id, name, schedule, description, run(pool) }`을 export
 - 실행 이력은 `platform_batch_log`에, 활성화 여부/마지막 실행 상태는 `platform_batch_jobs`에 저장
 - 활성화 스위치는 "자동 스케줄 실행"만 제어 — admin 콘솔의 "지금 실행"은 비활성 상태여도 항상 동작
-- 기본 등록된 잡: `mail-log-cleanup`(90일 지난 메일 로그 정리), `batch-log-cleanup`(180일 지난 배치 로그 정리)
+- 기본 등록된 잡: `mail-log-cleanup`(90일 지난 메일 로그 정리), `batch-log-cleanup`(180일 지난 배치 로그 정리), `mdboard-drive-backup`(mdboard 볼륨 콘텐츠를 매월 1일 Google Drive로 백업)
 - admin API: `GET/PUT /auth/admin/batch/jobs(/:id)`, `POST /auth/admin/batch/jobs/:id/run`, `GET /auth/admin/batch/logs`
 
 **시스템 점검 (`GET /auth/admin/system/check`)**
@@ -191,7 +194,13 @@ customRoutes: [
 
 ### mdboard 폴더 구조
 
-`projects/mdboard/public/contents/` 하위 디렉토리가 폴더 단위이며, 루트의 `.md` 파일은 "기본" 폴더로 표시된다.
+콘텐츠 저장 경로는 `projects/mdboard/paths.js`에서 정의(`CONTENTS_DIR`): 기본값은 Railway 볼륨 경로 `/data/contents/mdboard`이고, `MDBOARD_CONTENTS_DIR` 환경변수로 다른 경로(로컬 개발 등)를 지정할 수 있다. 이 경로 하위 디렉토리가 폴더 단위이며, 루트의 `.md` 파일은 "기본" 폴더로 표시된다.
+
+**Google Drive 연동 (백업 전용, 실시간 동기화 아님)**
+- `projects/mdboard/driveClient.js` — Drive 접근 저수준 클라이언트 (index.js는 더 이상 사용하지 않음)
+- `scripts/mdboard-drive-migrate.js` — 레거시 Drive 백업분 → 볼륨 1회 이관 (최초 볼륨 세팅 시 1번만 실행)
+- `core/jobs/mdboard-drive-backup.js` — 볼륨 콘텐츠(md/html/이미지) → Drive 월 1회 백업(매월 1일 03:00, 삭제는 반영 안 함/누적 백업)
+- Drive 파일명에 `/`를 그대로 써서 하위 폴더 경로를 인코딩 (예: `folder/file.md`)
 
 - 파일 식별자: `폴더명/파일명.md` 또는 `파일명.md` (경로 기반 unique key)
 - API 경로 인코딩: `filePath.split('/').map(encodeURIComponent).join('/')` (슬래시는 경로 구분자로 유지)
@@ -227,12 +236,13 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `PLATFORM_ADMIN_ID` | `admin` | `platform_accounts`가 비어있을 때 자동 생성되는 최초 admin 계정의 로그인ID (구 `CAMP_ADMIN_ID`도 폴백으로 인식) |
 | `PLATFORM_ADMIN_PW` | `admin1234` | 위 admin 계정의 초기 비밀번호 — 최초 로그인 후 반드시 변경 |
 | `MDBOARD_API_KEY` | (없음) | mdboard `/publish` API 키 (Claude Code 등 programmatic 접근용, 플랫폼 로그인과 무관) |
+| `MDBOARD_CONTENTS_DIR` | `/data/contents/mdboard` | mdboard 콘텐츠 저장 경로. Railway에서는 이 경로에 볼륨을 마운트해 영속화. 로컬 개발 등에서만 다른 경로로 오버라이드 |
 | `GOOGLE_SERVICE_ACCOUNT` | (없음) | travellog Drive 서비스 계정 JSON (base64) |
 | `DRIVE_FOLDER_ID` | (없음) | travellog 사진 업로드 Drive 폴더 ID |
-| `GDRIVE_CLIENT_ID` | (없음) | mdboard/campchecklist Drive OAuth2 클라이언트 ID |
-| `GDRIVE_CLIENT_SECRET` | (없음) | mdboard/campchecklist Drive OAuth2 시크릿 |
-| `GDRIVE_REFRESH_TOKEN` | (없음) | mdboard/campchecklist Drive OAuth2 리프레시 토큰 |
-| `GDRIVE_FOLDER_ID` | (없음) | mdboard/campchecklist Drive 폴더 ID |
+| `GDRIVE_CLIENT_ID` | (없음) | mdboard Drive 백업용 OAuth2 클라이언트 ID |
+| `GDRIVE_CLIENT_SECRET` | (없음) | mdboard Drive 백업용 OAuth2 시크릿 |
+| `GDRIVE_REFRESH_TOKEN` | (없음) | mdboard Drive 백업용 OAuth2 리프레시 토큰 |
+| `MDBOARD_FOLDER_ID` | (없음) | mdboard 전용 Drive 백업 폴더 ID (`mdboard-drive-backup` 배치잡/`mdboard-drive-migrate` 스크립트가 사용) |
 | `ANTHROPIC_API_KEY` | (없음) | Claude API 키. travellog(장소 추천), totalprice(종목 AI 참고 자료 생성)에서 사용. 미설정 시 해당 AI 기능만 에러 응답 |
 | `BREVO_API_KEY` | (없음) | 플랫폼 공통 메일 발송(`shared/mailer.js`)용 Brevo API 키. 미설정 시 발송 시도는 실패로 로그만 남음 |
 | `SMTP_FROM` | `SMTP_USER` 값 | 발신자 주소 — Brevo Senders에 인증된 주소여야 함 (변수명은 과거 SMTP 시절 그대로 유지) |

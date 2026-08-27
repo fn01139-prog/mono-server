@@ -77,6 +77,16 @@ function mount(app) {
     const apiGuard    = makeGuard(prefix, config, config.publicPaths);
     const staticGuard = makeGuard(prefix, config, config.publicStaticPaths || config.publicPaths);
 
+    // 볼륨 등 public/ 바깥의 데이터 디렉토리를 정적 서빙해야 하는 경우
+    // (예: mdboard 콘텐츠가 Railway 볼륨에 저장됨) — public/ 마운트보다 먼저 등록해 우선한다.
+    if (Array.isArray(config.staticMounts)) {
+      config.staticMounts.forEach(({ path: subPath, dir }) => {
+        if (dir && fs.existsSync(dir)) {
+          app.use(`${prefix}${subPath}`, staticGuard, require('express').static(dir));
+        }
+      });
+    }
+
     // 정적 파일 (public/ 폴더가 있을 경우)
     const publicDir = path.join(projectDir, 'public');
     if (fs.existsSync(publicDir)) {
