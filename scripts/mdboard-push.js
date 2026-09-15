@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * mdboard-push.js — Claude Code에서 md 파일을 mdboard에 바로 등록하는 CLI
+ * mdboard-push.js — Claude Code에서 md/html 파일을 mdboard에 바로 등록하는 CLI
  *
  * 사용법:
  *   node scripts/mdboard-push.js <파일경로> [폴더명] [--overwrite]
+ *
+ * 확장자가 .html/.htm이면 자동으로 /publish-html(콘텐츠 루트 전용, 폴더 인자 무시)을 호출한다.
  *
  * 환경변수:
  *   MDBOARD_URL      기본값: http://localhost:3000
@@ -12,6 +14,7 @@
  * 예시:
  *   node scripts/mdboard-push.js ./notes/summary.md
  *   node scripts/mdboard-push.js ./report.md "월간리포트" --overwrite
+ *   node scripts/mdboard-push.js ./page.html --overwrite
  */
 
 const fs   = require('fs');
@@ -41,7 +44,8 @@ if (!fs.existsSync(absPath)) {
 }
 
 const content   = fs.readFileSync(absPath, 'utf8');
-const title     = path.basename(absPath); // .md 포함
+const title     = path.basename(absPath); // 확장자 포함
+const isHtml    = /\.html?$/i.test(title);
 const baseUrl   = (process.env.MDBOARD_URL || 'http://localhost:3000').replace(/\/$/, '');
 const apiKey    = process.env.MDBOARD_API_KEY || '';
 
@@ -50,8 +54,15 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const body = JSON.stringify({ title, content, folder: folderArg || undefined, overwrite });
-const url  = new URL(`${baseUrl}/mdboard/api/publish`);
+if (isHtml && folderArg) {
+  console.error('HTML 파일은 폴더를 지정할 수 없습니다 (contents 루트에만 저장됩니다). 폴더 인자를 생략하세요.');
+  process.exit(1);
+}
+
+const body = isHtml
+  ? JSON.stringify({ title, content, overwrite })
+  : JSON.stringify({ title, content, folder: folderArg || undefined, overwrite });
+const url  = new URL(`${baseUrl}/mdboard/api/${isHtml ? 'publish-html' : 'publish'}`);
 
 const options = {
   hostname: url.hostname,

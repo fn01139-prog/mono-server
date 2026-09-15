@@ -225,6 +225,16 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 - 뷰어: `public/include/view-html.html` — 샌드박스 iframe으로 렌더링, 새 탭 열기/삭제 지원
 - 경로 보안: `safeHtmlPath()` — 루트 레벨만 허용, 서브디렉토리 탈출 불가
 
+**퍼블리시 API / MCP 서버 (`projects/mdboard/publish-routes.js`, `scripts/mdboard-mcp-server.js`)**
+
+로그인 없이 `x-api-key`(`MDBOARD_API_KEY`)만으로 콘텐츠를 등록하는 programmatic 전용 API. `core/loader.js`가 앱을 마운트할 때 붙이는 `requireLogin` 가드는 **쓰기 메서드(POST)를 `publicPaths`로도 우회할 수 없게** 설계돼 있어서, 이 API들은 `projects/mdboard/index.js`(로그인 가드가 걸리는 라우터) 안에 두면 안 되고 반드시 `app.js`에서 `loader.mount(app)`보다 먼저 직접 마운트해야 한다(`core/auth-routes.js`의 `/auth/feedback/batch/*`와 동일 패턴). 과거 `/publish`가 `index.js` 안에 있었을 때는 이 가드에 막혀 API 키만으로는 절대 도달할 수 없는 상태였다 — 새 엔드포인트를 추가할 때 이 구조를 다시 어기지 않도록 주의.
+
+- `POST /publish` — 마크다운 등록 `{ title, content, folder?, overwrite? }` (기존 `scripts/mdboard-push.js` CLI와 계약 동일)
+- `POST /publish-html` — HTML 등록 `{ title, content, overwrite? }` (콘텐츠 루트에만 저장, `/upload-html`과 동일 제약)
+- `GET /publish/folders` — 폴더 목록 (브라우저용 로그인 필요 `GET /folders`와 경로 충돌 방지를 위해 별도 경로 사용)
+- 경로 검증 로직(`safePath`/`safeHtmlPath`/`safeFolderPath`)은 `index.js`와 이 라우터가 공유하도록 `projects/mdboard/pathSafety.js`에 단일 정의돼 있다
+- `scripts/mdboard-mcp-server.js` — 위 API를 감싼 MCP(Model Context Protocol) stdio 서버. Claude Desktop 등 MCP 클라이언트에 등록하면 `mdboard_publish_markdown`/`mdboard_publish_html`/`mdboard_list_folders` 툴로 대화 중 정리한 내용을 바로 등록할 수 있다(파일시스템 접근이나 별도 CLI 실행 불필요). `@modelcontextprotocol/sdk` + `zod` 의존
+
 ### Environment Variables
 
 | Variable | Default | Purpose |
@@ -236,7 +246,7 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `JWT_SECRET` | `campcheck-dev-secret-change-in-prod` | **플랫폼 공통** JWT 서명 키. 프로덕션에서 기본값이면 기동 시 경고 로그 출력 |
 | `PLATFORM_ADMIN_ID` | `admin` | `platform_accounts`가 비어있을 때 자동 생성되는 최초 admin 계정의 로그인ID (구 `CAMP_ADMIN_ID`도 폴백으로 인식) |
 | `PLATFORM_ADMIN_PW` | `admin1234` | 위 admin 계정의 초기 비밀번호 — 최초 로그인 후 반드시 변경 |
-| `MDBOARD_API_KEY` | (없음) | mdboard `/publish` API 키 (Claude Code 등 programmatic 접근용, 플랫폼 로그인과 무관) |
+| `MDBOARD_API_KEY` | (없음) | mdboard `/publish`, `/publish-html`, `/publish/folders`, MCP 서버(`scripts/mdboard-mcp-server.js`) API 키 (Claude Code/Claude Desktop 등 programmatic 접근용, 플랫폼 로그인과 무관) |
 | `MDBOARD_CONTENTS_DIR` | `/data/contents/mdboard` | mdboard 콘텐츠 저장 경로. Railway에서는 이 경로에 볼륨을 마운트해 영속화. 로컬 개발 등에서만 다른 경로로 오버라이드 |
 | `MEMO_CONTENTS_DIR` | `/data/contents/memo` | memo(대분류/중분류 문서함) 콘텐츠 저장 경로 — mdboard와 동일 패턴으로 Railway 볼륨 하위에 격리. 로컬 개발 등에서만 다른 경로로 오버라이드 |
 | `MEMO_TOKEN_SECRET` | (없음) | memo 중분류별 열람/작성 코드 잠금해제 쿠키 서명 키. 미설정 시 기동마다 랜덤 값으로 대체되어 재배포할 때마다 잠금해제 상태가 초기화됨(치명적이진 않음) |

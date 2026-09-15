@@ -108,8 +108,8 @@ pm2 restart mono-server
 | `ALLOWED_ORIGINS` | `http://localhost:3000` | CORS 허용 도메인 (쉼표 구분) |
 | `DATABASE_URL` | (필수) | PostgreSQL 연결 문자열 |
 | `MDBOARD_PASSWORD` | (없음) | mdboard 에디터 인증 비밀번호 |
-| `MDBOARD_API_KEY` | (없음) | mdboard-push 스크립트 API 키 |
-| `MDBOARD_URL` | `http://localhost:3000` | mdboard-push 대상 서버 URL |
+| `MDBOARD_API_KEY` | (없음) | mdboard-push 스크립트 / mdboard MCP 서버 / `/publish`·`/publish-html` API 키 |
+| `MDBOARD_URL` | `http://localhost:3000` | mdboard-push·mdboard MCP 서버 대상 서버 URL |
 | `PORTFOLIO_PASSWORD` | (없음) | portfolio 관리자 인증 비밀번호 |
 | `FLOORPLAN_ADMIN_TOKENS` | (없음) | floorplan 관리자 토큰 (우선순위 높음) |
 | `ADMIN_TOKENS` | (없음) | floorplan 관리자 토큰 폴백 (쉼표 구분) |
@@ -179,12 +179,57 @@ Content-Type: application/json
 }
 ```
 
+HTML 문서를 올릴 때는 `/publish-html`을 사용합니다(콘텐츠 루트에만 저장, 서브폴더 없음):
+
+```http
+POST /mdboard/api/publish-html
+x-api-key: your_api_key_here
+Content-Type: application/json
+
+{
+  "title": "파일명.html",
+  "content": "<!DOCTYPE html>...",
+  "overwrite": false
+}
+```
+
+## 🔌 mdboard MCP 서버 — Claude Desktop 등에서 바로 등록
+
+`scripts/mdboard-mcp-server.js`는 위 퍼블리시 API를 감싼 MCP(Model Context Protocol) stdio 서버입니다. MCP를 지원하는 클라이언트(Claude Desktop, Claude Code 등)에 등록해두면 블로그용으로 정리한 마크다운/HTML을 대화 중 바로 mdboard에 반영할 수 있습니다 — 파일 저장, CLI 실행, 별도 파일시스템 MCP 서버 구성이 모두 필요 없습니다.
+
+**제공 툴**
+- `mdboard_publish_markdown` — `{ title, content, folder?, overwrite? }`
+- `mdboard_publish_html` — `{ title, content, overwrite? }`
+- `mdboard_list_folders` — 등록된 폴더 목록 조회
+
+**Claude Desktop 설정** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "mdboard": {
+      "command": "node",
+      "args": ["/absolute/path/to/mono-server/scripts/mdboard-mcp-server.js"],
+      "env": {
+        "MDBOARD_URL": "https://fn0113.up.railway.app",
+        "MDBOARD_API_KEY": "your_api_key_here"
+      }
+    }
+  }
+}
+```
+
+**Claude Code 설정**:
+```bash
+claude mcp add mdboard -- node /absolute/path/to/mono-server/scripts/mdboard-mcp-server.js
+# 이후 MDBOARD_URL / MDBOARD_API_KEY 환경변수를 설정된 셸에서 실행하거나 .mcp.json의 env에 추가
+```
+
 ### Claude Code vs Claude Desktop
 
-| 환경 | 사용 가능 여부 | 조건 |
+| 환경 | 사용 가능 여부 | 방법 |
 |------|--------------|------|
-| **Claude Code (CLI)** | ✅ 바로 사용 가능 | `.env`에 `MDBOARD_API_KEY` 설정 |
-| **Claude Desktop** | ❌ 추가 설정 필요 | MCP 파일시스템 서버 구성 필요 |
+| **Claude Code (CLI)** | ✅ 바로 사용 가능 | `.env`에 `MDBOARD_API_KEY` 설정 후 `scripts/mdboard-push.js` 또는 `mdboard-publish` 스킬 |
+| **Claude Desktop / MCP 클라이언트 전반** | ✅ MCP 서버 등록만 하면 사용 가능 | 위 `mdboard-mcp-server.js`를 `mcpServers`에 등록 |
 
 > Claude Code는 `.claude/skills/mdboard-publish.md` 스킬을 자동으로 인식하므로,  
 > 대화 중 "mdboard에 등록해줘"라고 하면 파일명·폴더 제안 → 등록까지 자동 처리됩니다.
