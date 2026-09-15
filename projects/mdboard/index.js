@@ -16,8 +16,11 @@ const router  = express.Router();
 /* ── 인증 ─────────────────────────────────────────────────────────────── *
  * 접근 제어(로그인 여부)는 loader.js 가드가 담당한다. 이 라우터는
  * "이미 로그인된 사용자가 이 파일에 read/write 권한이 있는가"만 검사한다.
- * /publish만 예외적으로 x-api-key로 비로그인 접근을 허용한다(Claude Code 등
- * programmatic 접근용, 기존 동작 유지).
+ * x-api-key로 비로그인 접근을 허용하는 퍼블리시 API(/publish, /publish-html,
+ * MCP 서버용)는 loader.js의 requireLogin 가드보다 먼저 걸리도록 별도 라우터
+ * (publish-routes.js)로 분리해 app.js에 직접 마운트한다 — 이 라우터 안에 두면
+ * 쓰기 메서드(POST)는 항상 로그인이 먼저 요구돼(loader.js 참고) API 키만으로는
+ * 절대 도달할 수 없다.
  * ────────────────────────────────────────────────────────────────────── */
 
 // 콘텐츠는 Railway 볼륨(paths.js 참고, 디렉토리 생성도 거기서 처리)에 상시 저장된다.
@@ -66,37 +69,8 @@ const htmlUpload = multer({
   }
 });
 
-/* ── 경로 보안 헬퍼 ───────────────────────────────────────────────────── */
-// relPath: 'file.md' 또는 'folder/file.md' (최대 2단계)
-function safePath(relPath) {
-  if (!relPath) return null;
-  const parts = relPath.replace(/\\/g, '/').split('/').filter(p => p && p !== '..' && p !== '.');
-  if (parts.length === 0 || parts.length > 2) return null;
-  if (parts.length === 2 && parts[0] === 'img') return null;
-  const resolved = path.resolve(CONTENTS_DIR, ...parts);
-  const base = CONTENTS_DIR.endsWith(path.sep) ? CONTENTS_DIR : CONTENTS_DIR + path.sep;
-  return resolved.startsWith(base) ? resolved : null;
-}
-
-// HTML 파일명 검증 (루트 레벨만 허용)
-function safeHtmlPath(filename) {
-  if (!filename || typeof filename !== 'string') return null;
-  const base = path.basename(filename);
-  if (!/\.html?$/i.test(base)) return null;
-  const resolved = path.resolve(CONTENTS_DIR, base);
-  const contentsBase = CONTENTS_DIR.endsWith(path.sep) ? CONTENTS_DIR : CONTENTS_DIR + path.sep;
-  return resolved.startsWith(contentsBase) ? resolved : null;
-}
-
-// 폴더명 검증 (슬래시, '..' 등 불허)
-function safeFolderPath(name) {
-  if (!name || typeof name !== 'string') return null;
-  const cleaned = name.trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '');
-  if (!cleaned || cleaned === 'img' || cleaned === '.' || cleaned === '..') return null;
-  const resolved = path.resolve(CONTENTS_DIR, cleaned);
-  const base = CONTENTS_DIR.endsWith(path.sep) ? CONTENTS_DIR : CONTENTS_DIR + path.sep;
-  return resolved.startsWith(base) ? resolved : null;
-}
+/* ── 경로 보안 헬퍼 (publish-routes.js와 공용, pathSafety.js에 단일 정의) ── */
+const { safePath, safeHtmlPath, safeFolderPath } = require('./pathSafety');
 
 /* ── 파일 정보 ────────────────────────────────────────────────────────── */
 function getFileInfo(filename, folder = null) {
@@ -478,50 +452,6 @@ router.delete('/html-file/:filename', async (req, res) => {
     fs.unlinkSync(filePath);
     await perm.deletePath(req.params.filename);
     res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-/* ── Claude 퍼블리시 (API 키 전용) ─────────────────────────────────────── */
-// POST /publish  { title, content, folder?, overwrite? }
-// x-api-key 헤더로만 접근 가능 (비밀번호 인증 불허)
-router.post('/publish', async (req, res) => {
-  const apiKey = process.env.MDBOARD_API_KEY || '';
-  if (!apiKey || req.headers['x-api-key'] !== apiKey)
-    return res.status(401).json({ success: false, error: 'API 키가 필요합니다.' });
-
-  try {
-    let { title, content, folder, overwrite } = req.body;
-    if (!title || content === undefined)
-      return res.status(400).json({ error: 'title과 content가 필요합니다.' });
-
-    title  = title.trim().replace(/[<>:"/\\|?*]/g, '_');
-    if (!title.endsWith('.md')) title += '.md';
-    folder = folder ? folder.trim().replace(/[<>:"/\\|?*]/g, '_') : null;
-
-    if (folder) {
-      const fp = safeFolderPath(folder);
-      if (!fp) return res.status(403).json({ error: '유효하지 않은 폴더명입니다.' });
-      if (!fs.existsSync(fp)) fs.mkdirSync(fp, { recursive: true });
-    }
-
-    const relPath = folder ? `${folder}/${title}` : title;
-    const absPath = safePath(relPath);
-    if (!absPath) return res.status(403).json({ error: 'Forbidden' });
-
-    if (fs.existsSync(absPath) && !overwrite)
-      return res.status(409).json({ success: false, error: '이미 존재하는 파일입니다. overwrite: true 로 덮어쓸 수 있습니다.', path: relPath });
-
-    const fileExisted = fs.existsSync(absPath);
-    fs.writeFileSync(absPath, content, 'utf8');
-    if (!fileExisted) {
-      const adminId = await perm.getAdminUserId();
-      if (adminId) await perm.registerNew(relPath, 'md', adminId);
-    }
-
-    res.json({ success: true, title, folder: folder || null, path: relPath,
-               url: `/mdboard#${encodeURIComponent(relPath)}` });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

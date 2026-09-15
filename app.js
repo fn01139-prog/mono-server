@@ -54,6 +54,12 @@ app.get('/sw.js', (req, res) => {
   res.sendFile(path.join(__dirname, 'shared/public/sw.js'));
 });
 
+/* ── mdboard 퍼블리시 API (x-api-key 전용, 로그인 불필요) ──
+ * loader.mount()가 붙이는 requireLogin 가드보다 먼저 등록해야
+ * API 키만으로 접근 가능하다 — /auth/feedback/batch/* 와 동일 패턴.
+ * 매칭되지 않는 경로는 그대로 다음 미들웨어(로그인 가드가 걸린 mdboard 라우터)로 넘어간다. */
+app.use('/mdboard/api', require('./projects/mdboard/publish-routes'));
+
 /* ── 프로젝트 자동 로딩 ── */
 loader.mount(app);
 
