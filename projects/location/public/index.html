@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <script src="/shared-assets/auth-guard.js"></script>
+  <script src="/shared-assets/feedback-widget.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>위치 일정</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px 16px 48px; background: #0f0f0f; color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+    main { max-width: 560px; margin: 0 auto; }
+    h1 { font-size: 1.4rem; margin: 0 0 4px; color: #fff; }
+    p.sub { color: #888; font-size: .85rem; margin: 0 0 20px; }
+    h2 { font-size: .8rem; color: #888; font-weight: 600; margin: 24px 0 8px; }
+    input[type=date] { padding: 9px 10px; border-radius: 8px; border: 1px solid #2a2a2a;
+      background: #1a1a1a; color: #e0e0e0; font-size: .95rem; }
+    .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 14px 16px; margin-top: 12px; }
+    .entry { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #2a2a2a; }
+    .entry:last-child { border-bottom: 0; }
+    .t { color: #4a9eff; font-weight: 600; min-width: 48px; font-variant-numeric: tabular-nums; }
+    .n { color: #888; font-size: .82rem; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    button { padding: 9px 14px; border-radius: 8px; border: 1px solid #2a2a2a; background: #1a1a1a;
+      color: #e0e0e0; font-size: .85rem; cursor: pointer; }
+    button.primary { background: #4a9eff; border-color: #4a9eff; color: #fff; }
+    button.danger { color: #ff7b72; }
+    .recent { display: flex; flex-wrap: wrap; gap: 6px; }
+    .empty { color: #666; font-size: .85rem; }
+    #msg { min-height: 18px; font-size: .8rem; color: #4a9eff; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>📍 위치 일정</h1>
+  <p class="sub">일정은 Claude 대화(음성 입력)로 등록하고, 여기서 확인·공유합니다. 직접 수정 화면은 추후 추가 예정.</p>
+
+  <input type="date" id="date">
+  <div id="plan"></div>
+  <div id="msg" role="status"></div>
+
+  <h2>최근 일정</h2>
+  <div class="recent" id="recent"></div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const kstToday = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+  let current = null;
+
+  function say(t) { $('msg').textContent = t; setTimeout(() => { if ($('msg').textContent === t) $('msg').textContent = ''; }, 2500); }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  async function api(path, opts) {
+    const res = await fetch('/location/api' + path, { credentials: 'include', ...opts });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw Object.assign(new Error(json.error || ('HTTP ' + res.status)), { status: res.status });
+    return json.data;
+  }
+
+  function shareUrl(p) { return location.origin + p.sharePath; }
+  function shareText(p) {
+    const lines = ['📅 ' + p.date + ' 위치 일정', ''];
+    p.entries.forEach((e) => lines.push(e.time + ' - ' + e.place + (e.note ? ' (' + e.note + ')' : '')));
+    return lines.join('\n');
+  }
+
+  function render(p) {
+    current = p;
+    const box = $('plan'); box.textContent = '';
+    if (!p) { box.appendChild(el('div', 'card empty', '이 날짜에는 등록된 일정이 없어요.')); return; }
+    const card = el('div', 'card');
+    p.entries.forEach((e) => {
+      const row = el('div', 'entry');
+      row.appendChild(el('div', 't', e.time));
+      const body = el('div');
+      body.appendChild(el('div', null, e.place));
+      if (e.note) body.appendChild(el('div', 'n', e.note));
+      row.appendChild(body);
+      card.appendChild(row);
+    });
+    const actions = el('div', 'row');
+    const share = el('button', 'primary', '공유하기'); share.onclick = doShare;
+    const copy = el('button', null, '링크 복사'); copy.onclick = doCopy;
+    const open = el('button', null, '미리보기'); open.onclick = () => window.open(p.sharePath, '_blank');
+    const del = el('button', 'danger', '삭제'); del.onclick = doDelete;
+    [share, copy, open, del].forEach((b) => actions.appendChild(b));
+    card.appendChild(actions);
+    box.appendChild(card);
+  }
+
+  function doShare() {
+    if (navigator.share) navigator.share({ title: '위치 일정', text: shareText(current), url: shareUrl(current) }).catch(() => {});
+    else doCopy();
+  }
+  function doCopy() {
+    navigator.clipboard.writeText(shareText(current) + '\n' + shareUrl(current)).then(() => say('복사했어요.'), () => say('복사에 실패했어요.'));
+  }
+  async function doDelete() {
+    if (!confirm(current.date + ' 일정을 삭제할까요? 공유 링크도 함께 사라집니다.')) return;
+    await api('/plans/' + current.date, { method: 'DELETE' });
+    say('삭제했어요.'); await load($('date').value); await loadRecent();
+  }
+
+  async function load(date) {
+    try { render(await api('/plans/' + date)); }
+    catch (e) { if (e.status === 404) render(null); else say(e.message); }
+  }
+  async function loadRecent() {
+    const list = await api('/plans?limit=14');
+    const box = $('recent'); box.textContent = '';
+    if (!list.length) { box.appendChild(el('span', 'empty', '아직 없어요.')); return; }
+    list.forEach((p) => {
+      const b = el('button', null, p.date.slice(5) + ' · ' + p.entryCount + '건');
+      b.onclick = () => { $('date').value = p.date; load(p.date); };
+      box.appendChild(b);
+    });
+  }
+
+  $('date').value = kstToday();
+  $('date').onchange = () => load($('date').value);
+  load($('date').value); loadRecent().catch((e) => say(e.message));
+</script>
+</body>
+</html>
