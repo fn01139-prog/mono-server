@@ -94,6 +94,7 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 | `/whiteboard` | 공유 화이트보드 | SPA mode; **PostgreSQL** (`whiteboard_boards`/`whiteboard_layers`/`whiteboard_elements`); 채널형 보드 — 이 앱 접근 권한이 있는 로그인 사용자 전원이 보드 목록 조회·참여(펜 드로잉/스티키노트) 가능, 보드 이름변경·삭제는 소유자/admin만; 참여자별로 `whiteboard_layers` 레이어가 자동 등록되어 누가 그렸는지 색으로 구분되고, 레이어(=참여자) 단위로 삭제 관리 가능(본인·보드소유자·admin); 동기화는 WebSocket이 아닌 배치 방식 — 내가 그리거나 수정한 내용은 로컬에만 쌓이다가 자동(1분 주기) 또는 새로고침 버튼 클릭 시 한꺼번에 push/pull; 화면 이동/확대(핀치·이동 툴·휠)는 뷰어별 로컬 상태 |
 | `/memo` | 대분류/중분류 체계의 사내 공유 문서함 | 조회는 로그인+앱 권한이 있는 사용자 전원(로그인 없이는 아예 접근 불가 — 원본의 "비로그인 공개 열람"과 다른 지점); 문서 작성/수정/삭제·대분류/중분류 관리는 admin만(`req.user.role`); admin이든 아니든 중분류별로 별도 설정한 열람 코드를 입력해야 하는 이중 게이트 유지(서명 쿠키, `MEMO_TOKEN_SECRET`); 콘텐츠(tree.json/문서 html/이미지)는 mdboard와 동일한 패턴으로 Railway 볼륨(`/data/contents/memo`, `projects/memo/lib/paths.js`)에 저장; 에디터(CKEditor5, `admin/editor.html`)는 `public/` 밖에서 admin 전용 라우트로만 서비스 |
 | `/totalprice` | 종합 시세: 금/은 시세 + 국내 주식 시세 | 금/은: 비공식 외부 API(`koreagoldx.co.kr`) 프록시, 메모리 캐시(10분 TTL)+**PostgreSQL**(`totalprice_gold_cache`) 폴백(파일 캐시 아님 — 배포마다 컨테이너가 새로 뜨는 호스팅에서도 유지); 주식: Npay 증권(`finance.naver.com`) 크롤링(일별/시간별 시세, 현재가 스냅샷, 종목뉴스), **PostgreSQL**(`totalprice_stocks` — 종목코드+명칭 마스터, `totalprice-stocklist-refresh` 배치잡이 주 1회 갱신); `/stocks/:code/insight`는 시세+뉴스를 Claude Haiku 4.5로 요약해 매수/매도 참고 자료 생성(투자자문 아님, `ANTHROPIC_API_KEY` 필요, 종목별 30분 캐시, `lib/insightService.js`); **PostgreSQL**(`totalprice_alerts` — 사용자별 AI 알림 예약: 종목/주기/시간/알림채널, `totalprice-alert-runner` 배치잡이 10분마다 스캔해 `shared/notify`로 발송) |
+| `/location` | 시간별 위치 일정 등록·공유 | **PostgreSQL** (`location_plans`/`location_entries`/`location_favorites`); `owner_id` 격리, 날짜당 플랜 1개 + 고정 공유 토큰(같은 날짜를 수정해도 링크 유지); 등록은 스마트폰 Claude 앱 음성 입력 → **원격 MCP**(`/location/mcp`)가 담당하고, 브라우저 화면은 조회·공유·삭제만 제공(직접 수정 UI는 미구현 — `index.js`의 CRUD API는 이미 있음); 즐겨찾는 장소("집" 등)는 이름이 정확히 같으면 좌표 자동 채움 |
 
 모든 앱은 인증을 자체 구현하지 않는다 — `core/loader.js`가 마운트 시점에 로그인·앱 권한 가드를 자동으로 앞단에 삽입한다. 자세한 내용은 아래 "Authentication" 섹션 참고.
 
@@ -235,6 +236,22 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 - 경로 검증 로직(`safePath`/`safeHtmlPath`/`safeFolderPath`)은 `index.js`와 이 라우터가 공유하도록 `projects/mdboard/pathSafety.js`에 단일 정의돼 있다
 - `scripts/mdboard-mcp-server.js` — 위 API를 감싼 MCP(Model Context Protocol) stdio 서버. Claude Desktop 등 MCP 클라이언트에 등록하면 `mdboard_publish_markdown`/`mdboard_publish_html`/`mdboard_list_folders` 툴로 대화 중 정리한 내용을 바로 등록할 수 있다(파일시스템 접근이나 별도 CLI 실행 불필요). `@modelcontextprotocol/sdk` + `zod` 의존
 
+### location 외부 진입점 (`projects/location/`)
+
+`mdboard/publish-routes.js`와 같은 이유로, 로그인 없이 접근해야 하는 3개 진입점은 `app.js`에서 `loader.mount(app)`보다 먼저 직접 마운트한다. 각 라우터가 처리하지 않는 경로는 다음 미들웨어(로그인 가드가 걸린 `index.js`)로 그대로 넘어간다.
+
+| 파일 | 경로 | 인증 |
+|---|---|---|
+| `share-routes.js` | `GET /location/s/:token` — 서버 렌더링 공유 페이지 | 없음(토큰 = 비밀키, 12자 base64url). `noindex`/`no-store` 헤더 |
+| `publish-routes.js` | `POST /location/api/publish`, `GET /location/api/publish/:date` | `x-api-key` (`LOCATION_API_KEY`) — `requireApiKey`는 반드시 라우트별로 붙일 것(전역 `router.use` 금지, mdboard와 동일한 함정) |
+| `mcp-routes.js` | `POST /location/mcp` — 원격 MCP(Streamable HTTP, **stateless**) | `Authorization: Bearer <key>` 또는 `x-api-key` (`LOCATION_API_KEY`) |
+
+- 세 진입점과 로그인 API(`index.js`)가 모두 `lib/plans.js`를 공유한다 — 입력 검증·좌표 자동채움 규칙이 한 곳에만 있다.
+- **stateless MCP**: 요청마다 서버/트랜스포트를 새로 만든다. 세션을 메모리에 두지 않아 Railway 재배포 뒤에도 "invalid session" 오류가 없다. `scripts/mdboard-mcp-server.js`(stdio)는 Claude Desktop 전용이라 스마트폰 앱에서는 쓸 수 없어 별도로 원격 MCP를 뒀다.
+- MCP 툴: `location_register_plan`(하루 통째로 교체) / `location_add_entry` / `location_get_plan` / `location_update_entry` / `location_delete_entry` / `location_get_favorite` / `location_set_favorite`. 서버 `instructions`에 "파싱 → 사용자 확인 → 등록 → 링크 전달" 흐름이 들어 있다.
+- API 키 진입점의 데이터 소유자는 `LOCATION_OWNER_ID`, 없으면 가장 먼저 만들어진 활성 admin 계정이다.
+- `LOCATION_ALLOW_URL_KEY=1`이면 `?key=` 쿼리로도 인증된다 — 커넥터가 헤더를 못 붙일 때만 임시로 쓸 것(`morgan`이 URL을 로그에 남기므로 키가 노출됨).
+
 ### Environment Variables
 
 | Variable | Default | Purpose |
@@ -263,6 +280,10 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `DISCORD_BOT_TOKEN` | (없음) | 플랫폼 공통 메신저 알림(`shared/notify/`)용 디스코드 봇 토큰(`discord_dm` 채널 — 개인 DM 발송). `https://discord.com/developers/applications`에서 발급. 미설정 시 디스코드 DM 채널만 발송 실패(기존 웹훅 방식 `discord` 채널은 무관) |
 | `VAPID_SUBJECT` / `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | (없음) | 웹푸시 채널용 VAPID 키 (`node -e "console.log(require('web-push').generateVAPIDKeys())"`로 생성). admin 콘솔 알림 탭에서 브라우저 구독 가능 |
 | `FEEDBACK_API_KEY` | (없음) | 버그/개선요청 신고(`platform_feedback`) 배치 처리 API 키. `GET/PUT /auth/feedback/batch/*`에 `x-api-key` 헤더로 접근할 때 필요 (Claude 배치 등 programmatic 접근용, `MDBOARD_API_KEY`와 동일한 패턴) |
+| `LOCATION_API_KEY` | (없음) | location `POST /location/api/publish` 및 원격 MCP(`/location/mcp`) 인증 키. 미설정이면 두 진입점 모두 503으로 거부됨 |
+| `LOCATION_OWNER_ID` | (첫 admin) | 위 API 키 진입점이 데이터를 저장할 `platform_users.id`. 생략하면 가장 먼저 만들어진 활성 admin |
+| `PUBLIC_BASE_URL` | (요청 헤더에서 추정) | MCP/publish 응답에 담기는 공유 링크의 절대 주소 (예: `https://fn0113.up.railway.app`) |
+| `LOCATION_ALLOW_URL_KEY` | (꺼짐) | `1`이면 `?key=`로도 인증 허용 — 커넥터가 커스텀 헤더를 못 붙일 때만 임시 사용 |
 
 ### Deployment
 

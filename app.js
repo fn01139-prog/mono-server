@@ -60,6 +60,15 @@ app.get('/sw.js', (req, res) => {
  * 매칭되지 않는 경로는 그대로 다음 미들웨어(로그인 가드가 걸린 mdboard 라우터)로 넘어간다. */
 app.use('/mdboard/api', require('./projects/mdboard/publish-routes'));
 
+/* ── location 외부 진입점 (로그인 가드 밖) — loader.mount()보다 먼저 마운트 ──
+ * share-routes  : GET  /location/s/:token   공유 링크 (토큰이 곧 비밀키, 로그인 불필요)
+ * publish-routes: POST /location/api/publish (x-api-key, LOCATION_API_KEY)
+ * mcp-routes    : POST /location/mcp         원격 MCP — 스마트폰 Claude 앱에서 음성으로 등록
+ * 각 라우터가 처리하지 않는 경로는 다음 미들웨어(로그인 가드가 걸린 location 앱)로 넘어간다. */
+app.use('/location',     require('./projects/location/share-routes'));
+app.use('/location/api', require('./projects/location/publish-routes'));
+app.use('/location/mcp', require('./projects/location/mcp-routes'));
+
 /* ── 프로젝트 자동 로딩 ── */
 loader.mount(app);
 

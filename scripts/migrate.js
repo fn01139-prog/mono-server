@@ -543,6 +543,44 @@ CREATE TABLE IF NOT EXISTS platform_feedback (
 CREATE INDEX IF NOT EXISTS idx_platform_feedback_status    ON platform_feedback(status);
 CREATE INDEX IF NOT EXISTS idx_platform_feedback_created   ON platform_feedback(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_platform_feedback_requester ON platform_feedback(requester_id);
+
+/* ── location (시간별 위치 일정) ────────────────────────────────────── */
+-- 날짜당 1개 플랜(owner_id 격리). share_token은 최초 생성 시 정해져 이후 유지되므로
+-- 일정을 수정해도 이미 보낸 공유 링크가 계속 최신 상태를 보여준다.
+CREATE TABLE IF NOT EXISTS location_plans (
+  id          SERIAL       PRIMARY KEY,
+  owner_id    VARCHAR(100) NOT NULL REFERENCES platform_users(id),
+  plan_date   DATE         NOT NULL,
+  share_token VARCHAR(40)  NOT NULL UNIQUE,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (owner_id, plan_date)
+);
+
+CREATE TABLE IF NOT EXISTS location_entries (
+  id          SERIAL       PRIMARY KEY,
+  plan_id     INTEGER      NOT NULL REFERENCES location_plans(id) ON DELETE CASCADE,
+  entry_time  TIME         NOT NULL,
+  place       VARCHAR(200) NOT NULL,
+  note        TEXT,
+  lat         DOUBLE PRECISION,
+  lng         DOUBLE PRECISION,
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_location_entries_plan ON location_entries(plan_id, entry_time);
+
+-- "집", "사무실"처럼 자주 쓰는 장소 좌표 (등록 시 이름이 정확히 같으면 좌표 자동 채움)
+CREATE TABLE IF NOT EXISTS location_favorites (
+  id         SERIAL       PRIMARY KEY,
+  owner_id   VARCHAR(100) NOT NULL REFERENCES platform_users(id),
+  name       VARCHAR(100) NOT NULL,
+  lat        DOUBLE PRECISION NOT NULL,
+  lng        DOUBLE PRECISION NOT NULL,
+  address    VARCHAR(300),
+  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (owner_id, name)
+);
 `;
 
 async function run(pool) {

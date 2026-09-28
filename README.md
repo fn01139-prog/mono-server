@@ -28,7 +28,8 @@ mono-server/
     ├── floorplan/            # 평면도 그리기
     ├── travellog/            # 여행 계획 및 기록 관리
     ├── campchecklist/        # 캠핑 체크리스트
-    └── mindmap/              # 마인드맵
+    ├── mindmap/              # 마인드맵
+    └── location/             # 시간별 위치 일정 (음성 등록 → 공유 링크)
 ```
 
 ---
@@ -66,6 +67,7 @@ npm run pm2        # PM2 프로세스 매니저
 | `/travellog` | 여행로그 | 여행 계획 및 기록 관리 — 사진은 Google Drive (SPA) | PostgreSQL |
 | `/campchecklist` | 🏕️ CampCheck | 캠핑 짐 체크리스트 — 참여자별 품목 관리, 게시판, JWT 인증 | PostgreSQL |
 | `/mindmap` | 마인드맵 | 노드 기반 마인드맵 — 팬/줌, 인라인 편집, 다중 선택, Undo/Redo, HTML/PDF 내보내기 | PostgreSQL |
+| `/location` | 📍 위치 일정 | 시간별 위치 일정 — Claude 앱 음성 입력(원격 MCP)으로 등록, 공유 링크(`/location/s/:token`)를 문자/카톡으로 발송 | PostgreSQL |
 
 ---
 
