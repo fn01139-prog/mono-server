@@ -69,6 +69,10 @@ app.use('/location',     require('./projects/location/share-routes'));
 app.use('/location/api', require('./projects/location/publish-routes'));
 app.use('/location/mcp', require('./projects/location/mcp-routes'));
 
+/* ── babylog 웹 화면 (자체 인증 앱, 보안 헤더 포함) — loader.mount()보다 먼저 ──
+ * API(/babylog/api)는 loader가 projects/babylog/index.js 로 자동 마운트한다. */
+app.use('/babylog', require('./projects/babylog/web'));
+
 /* ── 프로젝트 자동 로딩 ── */
 loader.mount(app);
 

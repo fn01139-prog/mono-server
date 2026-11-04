@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f1ea">
+<link rel="manifest" href="manifest.json">
+<title>아기 기록</title>
+<style>
+  :root {
+    --bg: #f6f1ea; --card: #fffdf9; --ink: #2b2622; --muted: #8a8079; --line: #e6ddd2;
+    --accent: #d8693a; --accent-ink: #fff; --ok: #3d7d5a; --warn: #b7791f; --err: #b3402e; --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1d1a17; --card: #27231f; --ink: #f1ebe4; --muted: #a39890; --line: #3a342e; --accent: #e8814f; --err: #e0735f; }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 16px 16px 120px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; }
+  input, select { font: inherit; }
+  .field { width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--ink); font-size: 16px; }
+  .btn { padding: 12px 16px; border: 0; border-radius: var(--radius); background: var(--accent); color: var(--accent-ink); font-size: 16px; font-weight: 600; }
+  .btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  .err { color: var(--err); font-size: 14px; min-height: 20px; }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  /* 로그인 */
+  #authView { max-width: 400px; margin: 10vh auto 0; padding: 0 16px; }
+  #authView h1 { font-size: 26px; margin-bottom: 4px; }
+  .tabs { display: flex; gap: 8px; margin: 20px 0 12px; }
+  .tabs button { flex: 1; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); color: var(--muted); font-size: 15px; }
+  .tabs button.on { color: var(--ink); border-color: var(--ink); font-weight: 600; }
+  #authForm { display: flex; flex-direction: column; gap: 10px; }
+
+  /* 메인 */
+  #baby { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font-size: 16px; font-weight: 600; max-width: 160px; }
+  .icon-btn { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 10px; padding: 8px 12px; font-size: 15px; }
+  .mic-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 20px 0 16px; }
+  #mic { width: 132px; height: 132px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 18px; font-weight: 600; touch-action: manipulation; }
+  #mic.listening { animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  #status { font-size: 13px; color: var(--muted); min-height: 20px; text-align: center; }
+  .input-row { display: flex; gap: 8px; }
+  .input-row .field { flex: 1; }
+  h2 { font-size: 15px; color: var(--muted); font-weight: 600; margin: 24px 0 8px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; }
+  .card.low { border-color: var(--warn); }
+  .card .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .card .tag { font-weight: 600; }
+  .warn { font-size: 12px; color: var(--warn); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+  .grid input, .grid select { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font-size: 15px; width: 100%; }
+  .grid .full { grid-column: 1 / -1; }
+  .x { border: 0; background: none; color: var(--muted); font-size: 20px; line-height: 1; }
+  details { margin-top: 8px; font-size: 12px; color: var(--muted); }
+  pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; background: var(--bg); padding: 8px; border-radius: 8px; }
+  .savebar { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
+  .savebar button { width: 100%; max-width: 520px; display: block; margin: 0 auto; padding: 14px; border: 0; border-radius: var(--radius); background: var(--ok); color: #fff; font-size: 17px; font-weight: 600; }
+  .savebar button:disabled { opacity: .4; }
+  .log { display: flex; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .log time { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 48px; }
+  .log .what { flex: 1; }
+  .log .who { color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); font-size: 14px; }
+  #queue { font-size: 12px; color: var(--warn); }
+
+  /* 설정 */
+  #settings { margin-bottom: 16px; }
+  #settings section { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  #settings section:last-child { border-bottom: 0; }
+  #settings h3 { font-size: 14px; margin: 0 0 8px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row .field { flex: 1; min-width: 120px; padding: 10px; }
+  .code { font: 600 18px ui-monospace, monospace; letter-spacing: 2px; }
+  .baby-item { display: flex; justify-content: space-between; padding: 6px 0; font-size: 15px; }
+</style>
+</head>
+<body>
+
+<!-- 로그인 / 가입 -->
+<div id="authView" hidden>
+  <h1>아기 기록</h1>
+  <p class="muted">말로 수유·기저귀·수면을 기록하세요.</p>
+  <div class="tabs">
+    <button type="button" data-mode="login" class="on">로그인</button>
+    <button type="button" data-mode="register">가입</button>
+  </div>
+  <form id="authForm" novalidate>
+    <input class="field" name="email" type="email" placeholder="이메일" autocomplete="email" required>
+    <input class="field" name="password" type="password" placeholder="비밀번호 (8자 이상)" autocomplete="current-password" required>
+    <input class="field reg" name="name" placeholder="이름 (예: 엄마, 아빠)" hidden>
+    <input class="field reg" name="inviteCode" placeholder="초대 코드 (가족이 이미 가입했다면)" autocapitalize="characters" hidden>
+    <div class="err" id="authErr"></div>
+    <button class="btn" type="submit" id="authBtn">로그인</button>
+  </form>
+</div>
+
+<!-- 메인 -->
+<div id="appView" hidden>
+<main>
+  <header>
+    <h1>아기 기록</h1>
+    <div class="row">
+      <select id="baby" aria-label="아기 선택"></select>
+      <a class="icon-btn" href="summary.html" style="text-decoration:none">요약</a>
+      <button class="icon-btn" id="settingsBtn" aria-label="설정">설정</button>
+    </div>
+  </header>
+
+  <div class="card" id="settings" hidden>
+    <section>
+      <h3 id="famName">가족</h3>
+      <div class="row"><span class="muted">초대 코드</span> <span class="code" id="famCode"></span>
+        <button class="icon-btn" id="copyCode">복사</button></div>
+      <p class="muted" style="margin:6px 0 0">가족이 가입할 때 이 코드를 입력하면 같은 아기를 함께 기록합니다.</p>
+    </section>
+    <section>
+      <h3>아기</h3>
+      <div id="babyList"></div>
+      <form class="row" id="babyForm" style="margin-top:8px">
+        <input class="field" name="name" placeholder="이름" required maxlength="20">
+        <input class="field" name="birth_date" type="date" aria-label="생일">
+        <button class="btn" type="submit">추가</button>
+      </form>
+      <div class="err" id="babyErr"></div>
+    </section>
+    <section>
+      <h3>다른 가족에 합류</h3>
+      <form class="row" id="joinForm">
+        <input class="field" name="inviteCode" placeholder="초대 코드" autocapitalize="characters">
+        <button class="btn ghost" type="submit">합류</button>
+      </form>
+      <div class="err" id="joinErr"></div>
+    </section>
+    <section class="row" style="justify-content:space-between">
+      <span class="muted" id="meName"></span>
+      <button class="btn ghost" id="logoutBtn">로그아웃</button>
+    </section>
+  </div>
+
+  <div class="mic-wrap">
+    <button id="mic" aria-label="말하기">눌러서<br>말하기</button>
+    <div id="status">기록: "30분 전에 분유 160 먹였어" · 질문: "마지막으로 언제 먹였어?"</div>
+    <div class="card" id="answer" hidden style="width:100%;font-size:17px;line-height:1.6"></div>
+  </div>
+
+  <div class="input-row">
+    <input class="field" id="text" placeholder="직접 입력해도 됩니다" enterkeyhint="go">
+    <button class="btn ghost" id="parseBtn">변환</button>
+  </div>
+
+  <h2>확인 후 저장</h2>
+  <div id="cards"><p class="empty">아직 인식된 기록이 없어요.</p></div>
+  <details><summary>JSON 보기</summary><pre id="json">[]</pre></details>
+
+  <h2><span id="recentTitle">최근 기록</span> <span id="queue"></span></h2>
+  <div id="recent"><p class="empty">불러오는 중…</p></div>
+</main>
+<div class="savebar"><button id="saveBtn" disabled>저장</button></div>
+</div>
+
+<script src="parser.js"></script>
+<script src="question.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "아기 기록",
+  "short_name": "아기기록",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f1ea",
+  "theme_color": "#f6f1ea",
+  "lang": "ko"
+}

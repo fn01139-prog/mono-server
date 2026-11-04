@@ -96,7 +96,9 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 | `/totalprice` | 종합 시세: 금/은 시세 + 국내 주식 시세 | 금/은: 비공식 외부 API(`koreagoldx.co.kr`) 프록시, 메모리 캐시(10분 TTL)+**PostgreSQL**(`totalprice_gold_cache`) 폴백(파일 캐시 아님 — 배포마다 컨테이너가 새로 뜨는 호스팅에서도 유지); 주식: Npay 증권(`finance.naver.com`) 크롤링(일별/시간별 시세, 현재가 스냅샷, 종목뉴스), **PostgreSQL**(`totalprice_stocks` — 종목코드+명칭 마스터, `totalprice-stocklist-refresh` 배치잡이 주 1회 갱신); `/stocks/:code/insight`는 시세+뉴스를 Claude Haiku 4.5로 요약해 매수/매도 참고 자료 생성(투자자문 아님, `ANTHROPIC_API_KEY` 필요, 종목별 30분 캐시, `lib/insightService.js`); **PostgreSQL**(`totalprice_alerts` — 사용자별 AI 알림 예약: 종목/주기/시간/알림채널, `totalprice-alert-runner` 배치잡이 10분마다 스캔해 `shared/notify`로 발송) |
 | `/location` | 시간별 위치 일정 등록·공유 | **PostgreSQL** (`location_plans`/`location_entries`/`location_favorites`); `owner_id` 격리, 날짜당 플랜 1개 + 고정 공유 토큰(같은 날짜를 수정해도 링크 유지); 등록은 스마트폰 Claude 앱 음성 입력 → **원격 MCP**(`/location/mcp`)가 담당하고, 브라우저 화면은 조회·공유·삭제만 제공(직접 수정 UI는 미구현 — `index.js`의 CRUD API는 이미 있음); 즐겨찾는 장소("집" 등)는 이름이 정확히 같으면 좌표 자동 채움 |
 
-모든 앱은 인증을 자체 구현하지 않는다 — `core/loader.js`가 마운트 시점에 로그인·앱 권한 가드를 자동으로 앞단에 삽입한다. 자세한 내용은 아래 "Authentication" 섹션 참고.
+| `/babylog` | 음성 육아 기록 (baby-log) | **예외: 자체 인증 앱** (`public: true`). 가족이 초대 코드로 직접 가입하고 모바일 앱(Expo)이 Bearer 토큰으로 접속하는 구조라 플랫폼 로그인을 쓰지 않음 — 비밀키는 `BABYLOG_JWT_SECRET`(플랫폼 `JWT_SECRET`과 같으면 `attachUser`가 baby-log 토큰을 플랫폼 로그인으로 받아들이므로 모듈이 기동 거부). **PostgreSQL `babylog` 스키마**(`search_path`)로 테이블 격리. **원본은 별도 baby-log 저장소** — `projects/babylog/lib/`는 그쪽 `npm run sync-mono`로 복사한 생성물이니 직접 수정 금지. 웹은 `web.js`가 `app.js`에서 `loader.mount()` 전에 `/babylog`로 서빙(보안 헤더·슬래시 리다이렉트), API는 loader가 `/babylog/api`로 마운트. 설정 누락·DB 오류 시 이 앱만 503, 서버 전체는 계속 동작. 1분 주기 알림 스케줄러(Expo 푸시)는 자체 `setInterval` |
+
+모든 앱은 인증을 자체 구현하지 않는다(`/babylog`만 예외) — `core/loader.js`가 마운트 시점에 로그인·앱 권한 가드를 자동으로 앞단에 삽입한다. 자세한 내용은 아래 "Authentication" 섹션 참고.
 
 ### Custom Routes (`config.customRoutes`)
 
@@ -283,6 +285,8 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `LOCATION_API_KEY` | (없음) | location `POST /location/api/publish` 및 원격 MCP(`/location/mcp`) 인증 키. 미설정이면 두 진입점 모두 503으로 거부됨 |
 | `LOCATION_OWNER_ID` | (첫 admin) | 위 API 키 진입점이 데이터를 저장할 `platform_users.id`. 생략하면 가장 먼저 만들어진 활성 admin |
 | `PUBLIC_BASE_URL` | (요청 헤더에서 추정) | MCP/publish 응답에 담기는 공유 링크의 절대 주소 (예: `https://fn0113.up.railway.app`) |
+| `BABYLOG_JWT_SECRET` | (없음) | babylog 전용 JWT 서명 키(32자+, 플랫폼 `JWT_SECRET`과 달라야 함). 미설정이면 `/babylog`만 503 |
+| `BABYLOG_DB_SCHEMA` | `babylog` | babylog 테이블 스키마 |
 | `LOCATION_ALLOW_URL_KEY` | (꺼짐) | `1`이면 `?key=`로도 인증 허용 — 커넥터가 커스텀 헤더를 못 붙일 때만 임시 사용 |
 
 ### Deployment
