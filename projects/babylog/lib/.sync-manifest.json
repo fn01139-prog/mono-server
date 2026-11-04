@@ -1,0 +1,23 @@
+{
+  "note": "npm run sync-mono 가 생성 — 수정 금지",
+  "files": {
+    "ai-parse.js": "4069d17d5fafd7f0e4125fdbad1eb647c05142b9b7fb81fee4ca8cb4da65427b",
+    "auth.js": "b733a81ee2cf184d5ca7f27f9b50f573f84b5f7dbb38b55fd1a5bb94528655fc",
+    "db.js": "05c089db17799af761317226f3f2f48d8de96cedc03c59b4c9a843d65dfa9ba6",
+    "extras.js": "1b7501f8d40a786b18f07a6c60e37ce5ab3d2a9dff64cdaf96766287254351b7",
+    "growth.js": "0b437cf4f62c3e990cd8215a7a53c451c8d4354d2f126eb66a6f5eeeac302fb4",
+    "health-schedule.js": "0d7b6399badebc8589914b380ff87d1dd36fdc1e6060d6c22227a9baf1e85253",
+    "notifier.js": "14b31573c2fbbf22c7b525f3b12bfa712856dabbf8412a780a5f8313342dfa31",
+    "public/app.js": "2f256c7a17884ebd0ce169635da98aaf4a9084d879cea87a88ed671aed354036",
+    "public/index.html": "eaad95d24cf177da157517d327bcb6e365fcbbff3498568b5396f53fe3f828e5",
+    "public/manifest.json": "e75935b0c329eb9f10bab8ec79c905891f0ce547305ea77029b9cd0e8fa169f9",
+    "public/parser.js": "06b2db601c34255411ebcf1c94ebe56c95b171dff088197917a1acdfa742b7e7",
+    "public/question.js": "c705792aeecf080122d1baac8c8b1871ca8d01f52746ba2149b25d60c81e61e9",
+    "public/summary.html": "7198fe714c7e1d93b02647e0e123ae823a8be0919d7e832a1ae27f124feb912d",
+    "public/summary.js": "aca7547b6a7672c92b2d56216c5bf75013a344ddfc635c41eeb1220322dc9a03",
+    "reminders.js": "6ab910120406d28c72ea7a1ab0f0760a07a7af7b2b64a66282bc2d7d7ec31339",
+    "schema.sql": "bcb6e5bce6330111031648301c0a65ec9d4b693b79da9fd5d4f999c7a31db1ce",
+    "server.js": "2365c365a3d79108d92df65a0e57e867139988f97fb09faf665210c625cb1b7f",
+    "summary.js": "b1c876bc3939d509d71672df31f3d872176a25b9e2d07b99b3853ca2f80c4688"
+  }
+}
