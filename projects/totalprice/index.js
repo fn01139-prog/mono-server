@@ -11,6 +11,7 @@ const { fetchGoldPrice } = require('./lib/koreagoldx');
 const { buildReport } = require('./lib/report');
 const { fetchDaily, fetchIntraday, fetchSnapshot } = require('./lib/naverStock');
 const insightService = require('./lib/insightService');
+const notify = require('../../shared/notify');
 const notifyDb = require('../../shared/notify/db');
 const { nowInKst, currentBucket, isDue, ALERT_CATEGORY_KEY } = require('../../core/jobs/totalprice-alert-runner');
 
@@ -49,6 +50,29 @@ async function writeGoldDbCache(cacheKey, fetched) {
   );
 }
 
+// koreagoldx는 비공식 API라 사이트 개편으로 조용히 깨질 수 있다(#32, #47에서 반복 신고됨).
+// 사용자가 "실시간 조회 실패" 배너를 보고 매번 신고하지 않아도 되도록, 실패가 감지되면
+// admin에게 한 번 알림을 보낸다 — 단, 장애 중엔 요청마다(페이지 로드마다) 재시도하므로
+// 쿨다운 없이 보내면 스팸이 된다. 쿨다운 동안은 조용히 캐시 폴백만 한다.
+const GOLD_FAILURE_NOTIFY_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6시간에 한 번만
+let lastGoldFailureNotifyAt = 0;
+
+async function notifyGoldFetchFailure(err) {
+  const now = Date.now();
+  if (now - lastGoldFailureNotifyAt < GOLD_FAILURE_NOTIFY_COOLDOWN_MS) return;
+  lastGoldFailureNotifyAt = now;
+  try {
+    await notify.registerCategory('totalprice-gold-api-failure', '금시세 API 장애 알림', '/totalprice');
+    await notify.send({
+      category: 'totalprice-gold-api-failure',
+      title: '⚠️ 금시세 API(koreagoldx) 조회 실패',
+      body: `금/은 시세 실시간 조회가 실패해 캐시로 폴백 중입니다.\n사유: ${err.message}`,
+    });
+  } catch (e) {
+    console.warn('[totalprice] 금시세 장애 알림 발송 실패:', e.message);
+  }
+}
+
 router.get('/gold/report', asyncHandler(async (req, res) => {
   const { type, start, end } = req.query;
   const cacheKey = `${type || 'Au'}:${start || ''}:${end || ''}`;
@@ -64,6 +88,7 @@ router.get('/gold/report', asyncHandler(async (req, res) => {
     return ok(res, buildReport(fetched.list));
   } catch (err) {
     console.warn('[totalprice] 금시세 실시간 조회 실패, DB 캐시로 폴백:', err.message);
+    notifyGoldFetchFailure(err).catch(() => {}); // 응답을 막지 않도록 fire-and-forget
     const fallbackList = await readGoldDbCache(cacheKey).catch(() => null);
     if (fallbackList) {
       return ok(res, { ...buildReport(fallbackList), stale: true, error: err.message });
