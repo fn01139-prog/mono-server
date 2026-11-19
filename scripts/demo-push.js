@@ -2,6 +2,8 @@
 /**
  * demo-push.js — 웹데모(/demo)에 HTML 등을 재배포 없이 바로 게시하는 CLI
  *
+ * HTML(.html, .htm)만 업로드할 수 있다. 브라우저에서는 /demo/ 화면에서 로그인 후 업로드.
+ *
  * 사용법:
  *   node scripts/demo-push.js <로컬파일> [원격경로]
  *   node scripts/demo-push.js --delete <원격경로>
@@ -11,7 +13,7 @@
  *
  * 환경변수:
  *   DEMO_URL      기본값: http://localhost:3000   (운영: https://fn0113.up.railway.app)
- *   DEMO_API_KEY  필수 (Railway 서비스 변수와 동일한 값)
+ *   DEMO_API_KEY  필수 (Railway 서비스 변수와 동일한 값 — 로그인 대신 쓰는 CLI 전용 인증)
  *
  * 예시:
  *   node scripts/demo-push.js ./schedule.html sap/schedule.html

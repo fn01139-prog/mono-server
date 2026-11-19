@@ -7,40 +7,173 @@
 <style>
   body{margin:0;padding:40px 24px;font-family:"맑은 고딕","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#222;background:#fff}
   .wrap{max-width:860px;margin:0 auto}
+  .top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
   h1{font-size:22px;margin:0 0 4px}
   .desc{color:#666;font-size:13px;margin:0 0 24px}
+  .who{font-size:12px;color:#666;white-space:nowrap;padding-top:6px}
   h2{font-size:15px;margin:26px 0 8px;padding-bottom:6px;border-bottom:1px solid #ddd}
   ul{list-style:none;margin:0;padding:0}
-  li{display:flex;justify-content:space-between;align-items:center;padding:9px 4px;border-bottom:1px solid #f0f0f0;font-size:14px}
+  li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid #f0f0f0;font-size:14px}
   a{color:#1f3a5f;text-decoration:none}
   a:hover{text-decoration:underline}
-  .meta{color:#999;font-size:12px}
+  .meta{color:#999;font-size:12px;display:flex;align-items:center;gap:8px;white-space:nowrap}
   .empty{color:#999;font-size:13px;padding:20px 0}
+
+  .up{border:1px solid #ddd;border-radius:6px;padding:16px;margin-bottom:8px;background:#fafafa}
+  .up h3{font-size:14px;margin:0 0 10px}
+  .drop{border:1px dashed #aab;border-radius:4px;padding:18px;text-align:center;font-size:13px;color:#666;cursor:pointer;background:#fff}
+  .drop.over{background:#eef3fa;border-color:#1f3a5f}
+  .drop b{color:#222}
+  .row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;font-size:13px}
+  .row label{color:#555;width:58px}
+  .row input[type=text]{flex:1;min-width:160px;height:30px;border:1px solid #ccc;border-radius:4px;padding:0 8px;font-size:13px}
+  .row .hint{color:#999;font-size:12px;width:100%;padding-left:66px}
+  button{height:30px;border:1px solid #1f3a5f;background:#1f3a5f;color:#fff;border-radius:4px;padding:0 14px;font-size:13px;cursor:pointer}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.del{height:22px;padding:0 8px;font-size:11px;background:#fff;color:#a33;border-color:#d9b3b3}
+  .msg{font-size:13px;margin-top:10px;min-height:18px}
+  .msg.ok{color:#1e7b5a} .msg.err{color:#b03a2e}
+  .notice{font-size:13px;color:#666;border:1px solid #eee;border-radius:6px;padding:12px 14px;margin-bottom:8px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>웹데모</h1>
-  <p class="desc">간단한 웹화면 데모 모음집 · 모든 화면은 가상 데이터로 동작합니다.</p>
+  <div class="top">
+    <div>
+      <h1>웹데모</h1>
+      <p class="desc">간단한 웹화면 데모 모음집 · 모든 화면은 가상 데이터로 동작합니다.</p>
+    </div>
+    <div class="who" id="who"></div>
+  </div>
+
+  <div id="upArea"></div>
   <div id="list"><p class="empty">불러오는 중…</p></div>
 </div>
+
 <script>
 const TITLES = {
   'hrsync/snapshot.html':    'ERP 기준 스냅샷 조회',
   'hrsync/action.html':      '불일치 유형별 조치',
   'hrsync/role-matrix.html': '역할별 권한 매트릭스',
 };
+const NAME_RE = /^[\w\-.가-힣]+$/;
+const DROP_TXT = '<b>HTML 파일</b>을 끌어다 놓거나 클릭해서 선택하세요 (.html, .htm만 가능)';
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-fetch('/demo/api/list').then(r => r.json()).then(({ files }) => {
-  if (!files || !files.length) { document.getElementById('list').innerHTML = '<p class="empty">등록된 데모가 없습니다.</p>'; return; }
+const $ = id => document.getElementById(id);
+const apiPath = p => '/demo/api/files/' + p.split('/').map(encodeURIComponent).join('/');
+let ME = { loggedIn:false, canUpload:false }, FILES = [], picked = null;
+
+/* ── 목록 ── */
+async function loadList(){
+  try{
+    const { files } = await (await fetch('/demo/api/list', { cache:'no-store' })).json();
+    FILES = files || [];
+  }catch{ $('list').innerHTML = '<p class="empty">목록을 불러오지 못했습니다.</p>'; return; }
+  if(!FILES.length){ $('list').innerHTML = '<p class="empty">등록된 데모가 없습니다.</p>'; return; }
   const groups = {};
-  files.forEach(f => { const g = f.path.includes('/') ? f.path.split('/')[0] : '기타'; (groups[g] = groups[g] || []).push(f); });
-  document.getElementById('list').innerHTML = Object.keys(groups).sort().map(g =>
+  FILES.forEach(f => { const g = f.path.includes('/') ? f.path.split('/')[0] : '기타'; (groups[g] = groups[g] || []).push(f); });
+  $('list').innerHTML = Object.keys(groups).sort().map(g =>
     `<h2>${esc(g)}</h2><ul>` + groups[g].map(f =>
       `<li><a href="/demo/${esc(f.path)}">${esc(TITLES[f.path] || f.path.split('/').pop())}</a>
-       <span class="meta">${esc(f.path)} · ${new Date(f.mtime).toLocaleDateString('ko-KR')}</span></li>`).join('') + '</ul>'
+       <span class="meta">${esc(f.path)} · ${new Date(f.mtime).toLocaleDateString('ko-KR')}
+       ${ME.canUpload && f.source === 'volume' ? `<button class="del" data-p="${esc(f.path)}">삭제</button>` : ''}</span></li>`).join('') + '</ul>'
   ).join('');
-}).catch(() => { document.getElementById('list').innerHTML = '<p class="empty">목록을 불러오지 못했습니다.</p>'; });
+  document.querySelectorAll('button.del').forEach(b => b.onclick = () => del(b.dataset.p));
+}
+
+/* ── 로그인 / 권한 ── */
+async function loadMe(){
+  try{ ME = await (await fetch('/demo/api/me', { cache:'no-store', credentials:'same-origin' })).json(); }catch{}
+  const next = encodeURIComponent('/demo/');
+  $('who').innerHTML = ME.loggedIn ? `${esc(ME.name || '사용자')}님` : `<a href="/login?next=${next}">로그인</a>`;
+  if(!ME.loggedIn)
+    $('upArea').innerHTML = `<div class="notice">HTML 데모를 업로드하려면 <a href="/login?next=${next}">로그인</a>하세요.</div>`;
+  else if(!ME.canUpload)
+    $('upArea').innerHTML = `<div class="notice">업로드 권한이 없습니다. 관리자에게 웹데모(/demo) 앱 권한을 요청하세요.</div>`;
+  else
+    renderUpload();
+}
+
+/* ── 업로드 UI ── */
+function renderUpload(){
+  $('upArea').innerHTML = `
+    <div class="up">
+      <h3>HTML 업로드</h3>
+      <div class="drop" id="drop">${DROP_TXT}</div>
+      <input type="file" id="file" accept=".html,.htm,text/html" hidden>
+      <div class="row"><label>폴더</label><input type="text" id="folder" placeholder="예: sap (비우면 루트)"></div>
+      <div class="row"><label>파일명</label><input type="text" id="fname" placeholder="예: schedule.html">
+        <button id="btnUp" disabled>업로드</button>
+        <span class="hint">영문·숫자·한글·- _ . 만 사용 · 같은 경로가 있으면 덮어씁니다</span>
+      </div>
+      <div class="msg" id="msg"></div>
+    </div>`;
+  const drop = $('drop'), file = $('file');
+  drop.onclick = () => file.click();
+  file.onchange = () => pick(file.files[0]);
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+  drop.ondragleave = () => drop.classList.remove('over');
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
+  $('fname').oninput = $('folder').oninput = validate;
+  $('btnUp').onclick = upload;
+}
+
+function msg(t, cls){ const m = $('msg'); if(m){ m.textContent = t; m.className = 'msg ' + (cls || ''); } }
+
+function pick(f){
+  picked = null;
+  if(!f) return validate();
+  if(!/\.html?$/i.test(f.name)){ $('drop').innerHTML = DROP_TXT; msg(`"${f.name}" — HTML 파일(.html, .htm)만 업로드할 수 있습니다.`, 'err'); $('btnUp').disabled = true; return; }
+  if(f.size > 10 * 1024 * 1024){ msg('10MB 이하 파일만 업로드할 수 있습니다.', 'err'); $('btnUp').disabled = true; return; }
+  picked = f;
+  $('drop').innerHTML = `선택됨: <b>${esc(f.name)}</b> (${(f.size/1024).toFixed(1)}KB) · 다른 파일을 놓으면 교체`;
+  if(!$('fname').value) $('fname').value = f.name;
+  validate();
+}
+
+function targetPath(){
+  const folder = $('folder').value.trim().replace(/^\/+|\/+$/g, '');
+  const name = $('fname').value.trim();
+  return folder ? `${folder}/${name}` : name;
+}
+
+function validate(){
+  const name = $('fname').value.trim(), folder = $('folder').value.trim().replace(/^\/+|\/+$/g, '');
+  let err = '';
+  if(name && !/\.html?$/i.test(name)) err = '파일명은 .html 또는 .htm으로 끝나야 합니다.';
+  else if(name && !NAME_RE.test(name)) err = '파일명에 사용할 수 없는 문자가 있습니다.';
+  else if(folder && folder.split('/').some(s => !s || s.startsWith('.') || !NAME_RE.test(s))) err = '폴더명에 사용할 수 없는 문자가 있습니다.';
+  else if(!folder && name.toLowerCase() === 'index.html') err = 'index.html은 목록 페이지라 사용할 수 없습니다.';
+  msg(err, err ? 'err' : '');
+  $('btnUp').disabled = !!err || !picked || !name;
+}
+
+async function upload(){
+  const p = targetPath();
+  if(FILES.find(f => f.path === p) && !confirm(`"${p}"이(가) 이미 있습니다. 덮어쓸까요?`)) return;
+  $('btnUp').disabled = true; msg('업로드 중…');
+  try{
+    const res = await fetch(apiPath(p), {
+      method:'PUT', credentials:'same-origin', headers:{ 'content-type':'text/html; charset=utf-8' }, body: picked,
+    });
+    const body = await res.json().catch(() => ({}));
+    if(!res.ok || !body.success) throw new Error(body.error || `업로드 실패 (${res.status})`);
+    msg(`게시 완료${body.overwritten ? '(덮어씀)' : ''}: `, 'ok');
+    $('msg').insertAdjacentHTML('beforeend', `<a href="${esc(body.url)}" target="_blank">${esc(location.origin + body.url)}</a>`);
+    picked = null; $('file').value = ''; $('fname').value = ''; $('drop').innerHTML = DROP_TXT;
+    loadList();
+  }catch(e){ msg(e.message, 'err'); $('btnUp').disabled = false; }
+}
+
+async function del(p){
+  if(!confirm(`"${p}"을(를) 삭제할까요?`)) return;
+  const res = await fetch(apiPath(p), { method:'DELETE', credentials:'same-origin' });
+  const body = await res.json().catch(() => ({}));
+  if(!res.ok || !body.success) return alert(body.error || '삭제 실패');
+  loadList();
+}
+
+loadMe().then(loadList);
 </script>
 </body>
 </html>
