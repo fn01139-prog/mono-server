@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>웹데모</title>
+<style>
+  body{margin:0;padding:40px 24px;font-family:"맑은 고딕","Malgun Gothic","Apple SD Gothic Neo",sans-serif;color:#222;background:#fff}
+  .wrap{max-width:860px;margin:0 auto}
+  h1{font-size:22px;margin:0 0 4px}
+  .desc{color:#666;font-size:13px;margin:0 0 24px}
+  h2{font-size:15px;margin:26px 0 8px;padding-bottom:6px;border-bottom:1px solid #ddd}
+  ul{list-style:none;margin:0;padding:0}
+  li{display:flex;justify-content:space-between;align-items:center;padding:9px 4px;border-bottom:1px solid #f0f0f0;font-size:14px}
+  a{color:#1f3a5f;text-decoration:none}
+  a:hover{text-decoration:underline}
+  .meta{color:#999;font-size:12px}
+  .empty{color:#999;font-size:13px;padding:20px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>웹데모</h1>
+  <p class="desc">간단한 웹화면 데모 모음집 · 모든 화면은 가상 데이터로 동작합니다.</p>
+  <div id="list"><p class="empty">불러오는 중…</p></div>
+</div>
+<script>
+const TITLES = {
+  'hrsync/snapshot.html':    'ERP 기준 스냅샷 조회',
+  'hrsync/action.html':      '불일치 유형별 조치',
+  'hrsync/role-matrix.html': '역할별 권한 매트릭스',
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+fetch('/demo/api/list').then(r => r.json()).then(({ files }) => {
+  if (!files || !files.length) { document.getElementById('list').innerHTML = '<p class="empty">등록된 데모가 없습니다.</p>'; return; }
+  const groups = {};
+  files.forEach(f => { const g = f.path.includes('/') ? f.path.split('/')[0] : '기타'; (groups[g] = groups[g] || []).push(f); });
+  document.getElementById('list').innerHTML = Object.keys(groups).sort().map(g =>
+    `<h2>${esc(g)}</h2><ul>` + groups[g].map(f =>
+      `<li><a href="/demo/${esc(f.path)}">${esc(TITLES[f.path] || f.path.split('/').pop())}</a>
+       <span class="meta">${esc(f.path)} · ${new Date(f.mtime).toLocaleDateString('ko-KR')}</span></li>`).join('') + '</ul>'
+  ).join('');
+}).catch(() => { document.getElementById('list').innerHTML = '<p class="empty">목록을 불러오지 못했습니다.</p>'; });
+</script>
+</body>
+</html>

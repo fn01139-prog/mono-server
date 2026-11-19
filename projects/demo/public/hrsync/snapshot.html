@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>기준정보 정합성 점검 - ERP 기준 스냅샷 조회</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#fff; --line:#e3e7ee; --text:#1f2937; --sub:#6b7280;
+    --pri:#1d4ed8; --pri-l:#e8efff;
+    --ok:#15803d; --ok-l:#e7f6ec;
+    --diff:#b45309; --diff-l:#fff4e0;
+    --miss:#b91c1c; --miss-l:#fdecec;
+    --orph:#6d28d9; --orph-l:#f1eafe;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Pretendard","Malgun Gothic","Apple SD Gothic Neo",sans-serif;background:var(--bg);color:var(--text);font-size:13px}
+  header{background:#0f2a5c;color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+  header h1{margin:0;font-size:17px;font-weight:700}
+  header .meta{font-size:12px;opacity:.8}
+  main{padding:18px 24px;max-width:1500px;margin:0 auto}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+  .cond{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+  .fld{display:flex;flex-direction:column;gap:5px}
+  .fld label{font-size:12px;color:var(--sub);font-weight:600}
+  .fld label .step{display:inline-block;background:var(--pri);color:#fff;border-radius:10px;padding:0 7px;margin-right:4px;font-size:11px}
+  select,input[type=date],input[type=text]{height:34px;border:1px solid #cfd6e1;border-radius:6px;padding:0 10px;font-size:13px;background:#fff;min-width:190px}
+  select:disabled{background:#f1f3f6;color:#9aa3b0}
+  button{height:34px;border:0;border-radius:6px;padding:0 16px;font-size:13px;cursor:pointer;font-weight:600}
+  .btn-pri{background:var(--pri);color:#fff}
+  .btn-pri:disabled{background:#9db3e8;cursor:not-allowed}
+  .btn-line{background:#fff;border:1px solid #cfd6e1;color:var(--text)}
+  .btn-xs{height:24px;padding:0 9px;font-size:11px;border-radius:4px}
+  .hint{font-size:12px;color:var(--sub);margin-top:10px}
+  .hint b{color:var(--text)}
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 14px;cursor:pointer;transition:.15s}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,.06)}
+  .card.on{outline:2px solid var(--pri)}
+  .card .t{font-size:12px;color:var(--sub)}
+  .card .v{font-size:22px;font-weight:700;margin-top:4px}
+  .card.ok .v{color:var(--ok)} .card.diff .v{color:var(--diff)} .card.miss .v{color:var(--miss)} .card.orph .v{color:var(--orph)}
+  .card.rate .v{color:var(--pri)}
+  .bar{height:5px;background:#eef1f5;border-radius:3px;margin-top:8px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--pri)}
+  .toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;flex-wrap:wrap}
+  .toolbar .left{display:flex;gap:8px;align-items:center}
+  .snapinfo{font-size:12px;color:var(--sub)}
+  .snapinfo span{margin-right:14px}
+  .tbl-wrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:6px}
+  table{border-collapse:collapse;width:100%;white-space:nowrap}
+  thead th{position:sticky;top:0;background:#f7f9fc;border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;font-size:12px;z-index:1}
+  thead th .sap{display:block;font-weight:400;color:#8a93a3;font-size:10.5px;font-family:Consolas,monospace}
+  tbody td{border-bottom:1px solid #f0f2f5;padding:7px 10px}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:#fafbfe}
+  tbody tr.sel{background:var(--pri-l)}
+  tr.r-MISSING td{background:#fffafa} tr.r-ORPHAN td{background:#fcfaff}
+  .key{font-family:Consolas,monospace;font-weight:600}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700}
+  .b-MATCH{background:var(--ok-l);color:var(--ok)} .b-DIFF{background:var(--diff-l);color:var(--diff)}
+  .b-MISSING{background:var(--miss-l);color:var(--miss)} .b-ORPHAN{background:var(--orph-l);color:var(--orph)}
+  .cell-diff{background:var(--diff-l);border-radius:4px;padding:2px 6px}
+  .cell-diff .o{color:var(--sub);text-decoration:line-through;margin-right:4px}
+  .cell-diff .n{color:var(--diff);font-weight:700}
+  .muted{color:#a0a7b4}
+  .nm{color:var(--sub);font-size:11px;margin-left:3px}
+  .empty{padding:60px;text-align:center;color:var(--sub)}
+  .layout{display:grid;grid-template-columns:1fr 0;gap:0;transition:.2s}
+  .layout.open{grid-template-columns:1fr 400px;gap:14px}
+  .detail{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px;overflow:auto;max-height:640px;display:none}
+  .layout.open .detail{display:block}
+  .detail h3{margin:0 0 4px;font-size:15px}
+  .detail .x{float:right;background:none;border:0;font-size:18px;height:auto;padding:0;color:var(--sub)}
+  .detail table{white-space:normal;margin-top:10px}
+  .detail td,.detail th{border-bottom:1px solid #f0f2f5;padding:6px 6px;font-size:12px;vertical-align:top}
+  .detail .hash{font-family:Consolas,monospace;font-size:11px;background:#f7f9fc;border-radius:6px;padding:8px;margin-top:10px;line-height:1.7}
+  .detail .act{margin-top:12px;display:flex;gap:6px}
+  .ico-ok{color:var(--ok);font-weight:700} .ico-x{color:var(--diff);font-weight:700}
+  .toast{position:fixed;right:24px;bottom:24px;background:#111827;color:#fff;padding:10px 16px;border-radius:6px;opacity:0;transition:.3s;pointer-events:none}
+  .toast.show{opacity:1}
+  .legend{display:flex;gap:12px;font-size:12px;color:var(--sub);margin-top:8px}
+  @media(max-width:1100px){.cards{grid-template-columns:repeat(3,1fr)}.layout.open{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>기준정보 정합성 점검 · ERP 기준 스냅샷 조회</h1>
+  <div class="meta">SAP HCM(마스터) ↔ 연계 시스템 대사 | 가상 데이터 예시 화면</div>
+</header>
+
+<main>
+  <!-- 조회 조건 -->
+  <section class="panel">
+    <div class="cond">
+      <div class="fld">
+        <label><span class="step">1</span>연계 시스템</label>
+        <select id="selSys">
+          <option value="">-- 시스템 선택 --</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label><span class="step">2</span>점검 항목</label>
+        <select id="selCat" disabled>
+          <option value="">-- 항목 선택 --</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>기준일자</label>
+        <input type="date" id="baseDate" value="2027-01-02">
+      </div>
+      <div class="fld">
+        <label>회사코드 (BUKRS)</label>
+        <select id="selBukrs"><option value="1000">1000 가상주식회사</option></select>
+      </div>
+      <button class="btn-pri" id="btnQuery" disabled>조회</button>
+    </div>
+    <div class="hint" id="hint">① 연계 시스템을 먼저 선택하면 해당 시스템이 수신하는 점검 항목이 활성화됩니다.</div>
+  </section>
+
+  <!-- 결과 -->
+  <section id="result" style="display:none">
+    <div class="cards" id="cards"></div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <div class="left">
+          <input type="text" id="kw" placeholder="키 / 성명 / 조직명 검색">
+          <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="onlyBad"> 불일치만 보기</label>
+        </div>
+        <div class="left">
+          <div class="snapinfo" id="snapinfo"></div>
+          <button class="btn-line" id="btnCsv">CSV 다운로드</button>
+          <button class="btn-line" id="btnResendAll">불일치 일괄 재전송</button>
+        </div>
+      </div>
+
+      <div class="layout" id="layout">
+        <div class="tbl-wrap"><table id="tbl"></table></div>
+        <aside class="detail" id="detail"></aside>
+      </div>
+      <div class="legend">
+        <span><span class="badge b-MATCH">일치</span> ERP = 대상 시스템</span>
+        <span><span class="badge b-DIFF">값 불일치</span> 키는 존재, 필드 값 상이</span>
+        <span><span class="badge b-MISSING">대상 누락</span> ERP에만 존재 (미전송/수신실패)</span>
+        <span><span class="badge b-ORPHAN">대상 잉여</span> 대상 시스템에만 존재 (미회수)</span>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+ *  1. 메타 정의 : 연계 시스템 / 점검 항목 / SAP HR 비교 필드
+ * ========================================================= */
+const SYSTEMS = {
+  PORTAL: { name:'사내 포탈 (EP)',         cats:['ORG','EMP','CHIEF'] },
+  GW:     { name:'그룹웨어 (GW)',          cats:['ORG','EMP','CHIEF','CONCUR'] },
+  APPR:   { name:'전자결재 시스템',         cats:['ORG','EMP','CHIEF','CONCUR'] },
+  EXP:    { name:'경비/결제 시스템',        cats:['ORG','EMP','CHIEF'] },
+};
+
+const CATS = {
+  ORG: { name:'조직 정보', key:'OBJID', fields:[
+    {id:'OBJID', label:'조직코드',   sap:'HRP1000-OBJID (OTYPE=O)'},
+    {id:'STEXT', label:'조직명',     sap:'HRP1000-STEXT'},
+    {id:'UPPER', label:'상위조직',   sap:'HRP1001-SOBID (A002)', ref:'org'},
+    {id:'ZLEVEL',label:'조직레벨',   sap:'HRP9xxx-ZLEVEL', pool:['회사','본부','팀']},
+    {id:'BEGDA', label:'유효시작일', sap:'HRP1000-BEGDA', date:true},
+    {id:'ENDDA', label:'유효종료일', sap:'HRP1000-ENDDA', date:true},
+  ]},
+  EMP: { name:'인사 정보', key:'PERNR', fields:[
+    {id:'PERNR', label:'사번',       sap:'PA0001-PERNR'},
+    {id:'ENAME', label:'성명',       sap:'PA0001-ENAME'},
+    {id:'STAT2', label:'재직상태',   sap:'PA0000-STAT2', pool:['3','1','0'], code:{'3':'재직','1':'휴직','0':'퇴직'}},
+    {id:'ORGEH', label:'소속조직',   sap:'PA0001-ORGEH', ref:'org'},
+    {id:'PLANS', label:'직위',       sap:'PA0001-PLANS'},
+    {id:'STELL', label:'직무',       sap:'PA0001-STELL', pool:null},
+    {id:'TITL2', label:'직급',       sap:'PA0002-TITL2', pool:['사원','대리','과장','차장','부장']},
+    {id:'PERSG', label:'사원그룹',   sap:'PA0001-PERSG', pool:['1','2'], code:{'1':'정규직','2':'계약직'}},
+    {id:'EMAIL', label:'이메일',     sap:'PA0105-USRID_LONG (0010)'},
+    {id:'BEGDA', label:'발령일',     sap:'PA0000-BEGDA', date:true},
+  ]},
+  CHIEF: { name:'직책자 (조직장)', key:'ORGEH', fields:[
+    {id:'ORGEH', label:'조직코드',   sap:'HRP1001-OBJID (O)', ref:'org'},
+    {id:'PLANS', label:'직책 직위',  sap:'HRP1001-SOBID (B012)'},
+    {id:'ZPOSI', label:'직책',       sap:'HRP1000-STEXT (S)', pool:['대표이사','본부장','팀장','팀장(대행)']},
+    {id:'PERNR', label:'직책자 사번',sap:'HRP1001-SOBID (A008)', ref:'emp'},
+    {id:'BEGDA', label:'보임일',     sap:'HRP1001-BEGDA', date:true},
+    {id:'ENDDA', label:'보임종료일', sap:'HRP1001-ENDDA', date:true},
+  ]},
+  CONCUR: { name:'겸직 · 직무대행', key:'KEY', fields:[
+    {id:'KEY',   label:'키(사번-조직)', sap:'PERNR + ORGEH'},
+    {id:'PERNR', label:'사번',       sap:'HRP1001-SOBID (A008)', ref:'emp'},
+    {id:'MAINO', label:'주소속',     sap:'PA0001-ORGEH', ref:'org'},
+    {id:'ORGEH', label:'겸직조직',   sap:'HRP1001-OBJID', ref:'org'},
+    {id:'ZTYPE', label:'구분',       sap:'HRP1001-PROZT / ZTYPE', pool:['겸직','직무대행','파견']},
+    {id:'BEGDA', label:'시작일',     sap:'HRP1001-BEGDA', date:true},
+    {id:'ENDDA', label:'종료일',     sap:'HRP1001-ENDDA', date:true},
+  ]},
+};
+
+/* =========================================================
+ *  2. 가상 ERP 마스터 데이터 생성 (SAP HR 기준)
+ * ========================================================= */
+const ORGS = [
+  ['50000000','가상주식회사','', '회사','2015-01-01'],
+  ['50001000','경영지원본부','50000000','본부','2015-01-01'],
+  ['50001100','인사팀','50001000','팀','2015-01-01'],
+  ['50001200','재무팀','50001000','팀','2015-01-01'],
+  ['50001300','총무팀','50001000','팀','2018-07-01'],
+  ['50002000','생산본부','50000000','본부','2015-01-01'],
+  ['50002100','생산1팀','50002000','팀','2015-01-01'],
+  ['50002200','생산2팀','50002000','팀','2019-01-01'],
+  ['50002300','품질관리팀','50002000','팀','2015-01-01'],
+  ['50003000','영업본부','50000000','본부','2015-01-01'],
+  ['50003100','국내영업팀','50003000','팀','2015-01-01'],
+  ['50003200','해외영업팀','50003000','팀','2021-01-01'],
+  ['50004000','디지털전략본부','50000000','본부','2027-01-01'],
+  ['50004100','IT기획팀','50004000','팀','2027-01-01'],
+  ['50004200','데이터플랫폼팀','50004000','팀','2027-01-01'],
+].map(o=>({OBJID:o[0],STEXT:o[1],UPPER:o[2],ZLEVEL:o[3],BEGDA:o[4],ENDDA:'9999-12-31'}));
+const ORG_NM = Object.fromEntries(ORGS.map(o=>[o.OBJID,o.STEXT]));
+
+const JOB = {
+  '50001100':['인사운영','급여','교육'], '50001200':['재무회계','자금'], '50001300':['총무','구매'],
+  '50002100':['생산관리'], '50002200':['생산관리'], '50002300':['품질보증'],
+  '50003100':['국내영업'], '50003200':['해외영업'], '50004100':['IT기획'], '50004200':['데이터엔지니어'],
+};
+const NAMES = ['김민준','이서연','박도윤','최지우','정하준','강서윤','조은우','윤지민','장예준','임수아',
+  '한시우','오하은','서지호','신채원','권유준','황다은','안건우','송지아','전우진','홍서현',
+  '유도현','고나연','문준서','양소윤','손태윤','배하린','백승민','허윤아','남지훈','심가은',
+  '노현우','하예린','곽재원','성민서','차은호','주아린','우성진','구소율','민재희','진하람'];
+const RANKS = ['사원','대리','과장','차장','부장'];
+
+const EMPS = []; let seq = 10001001, ni = 0;
+const teamOrgs = Object.keys(JOB);
+teamOrgs.forEach((org,ti)=>{
+  const cnt = org.startsWith('500042') ? 2 : 3 + (ti%2);
+  for(let i=0;i<cnt;i++){
+    const nm = NAMES[ni++ % NAMES.length];
+    const pernr = String(seq++);
+    const rank = i===0 ? '부장' : RANKS[(ti+i)%4];
+    EMPS.push({
+      PERNR:pernr, ENAME:nm,
+      STAT2: (ni===7||ni===23) ? '0' : (ni===15 ? '1' : '3'),
+      ORGEH:org, PLANS:String(30000000+ti*10+i), STELL:JOB[org][i%JOB[org].length],
+      TITL2:rank, PERSG: (ni%9===0)?'2':'1',
+      EMAIL:`user${pernr.slice(-4)}@virtual-corp.co.kr`,
+      BEGDA: org.startsWith('50004') ? '2027-01-01' : `20${18+(ni%8)}-0${1+(ni%9)}-01`,
+    });
+  }
+});
+// 본부장 / 대표
+[['50000000','대표이사','가상대표'],['50001000','본부장','이경영'],['50002000','본부장','박생산'],
+ ['50003000','본부장','최영업'],['50004000','본부장','정디지털']].forEach(([org,pos,nm],i)=>{
+  EMPS.push({PERNR:String(10000001+i),ENAME:nm,STAT2:'3',ORGEH:org,PLANS:String(30009000+i),
+    STELL:'경영관리',TITL2:i===0?'대표이사':'상무',PERSG:'1',
+    EMAIL:`exec${i+1}@virtual-corp.co.kr`,BEGDA: org==='50004000'?'2027-01-01':'2020-01-01'});
+});
+const EMP_NM = Object.fromEntries(EMPS.map(e=>[e.PERNR,e.ENAME]));
+
+const CHIEFS = ORGS.map(o=>{
+  const head = EMPS.find(e=>e.ORGEH===o.OBJID && (e.TITL2==='부장'||e.TITL2==='상무'||e.TITL2==='대표이사'));
+  const lv = o.ZLEVEL==='회사'?'대표이사':o.ZLEVEL==='본부'?'본부장':'팀장';
+  return {ORGEH:o.OBJID, PLANS:String(39000000+ORGS.indexOf(o)), ZPOSI:lv,
+          PERNR: head?head.PERNR:'', BEGDA: head?head.BEGDA:'', ENDDA:'9999-12-31'};
+});
+
+const CONCURS = [
+  ['10001001','50001100','50001300','겸직','2026-07-01','2027-06-30'],
+  ['10001007','50002100','50002200','직무대행','2026-12-01','2027-02-28'],
+  ['10001020','50003100','50003200','겸직','2026-03-01','2026-12-31'],
+  ['10000005','50004000','50004100','겸직','2027-01-01','2027-12-31'],
+  ['10001012','50002300','50002200','파견','2027-01-01','2027-03-31'],
+].map(c=>({KEY:c[0]+'-'+c[2],PERNR:c[0],MAINO:c[1],ORGEH:c[2],ZTYPE:c[3],BEGDA:c[4],ENDDA:c[5]}));
+
+const ERP = { ORG:ORGS, EMP:EMPS, CHIEF:CHIEFS, CONCUR:CONCURS };
+
+/* =========================================================
+ *  3. 대상 시스템 가상 스냅샷 생성 (seed 기반 변형)
+ * ========================================================= */
+function rng(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed);
+  t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function hashStr(s){ let h=0x811c9dc5; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619);} return (h>>>0).toString(16).padStart(8,'0'); }
+
+function altValue(f, v, r){
+  if(f.id==='STAT2') return v==='0' ? '3' : (v==='1'?'3':'1');      // 퇴직자 활성 / 휴직 미반영
+  if(f.date) return v ? (+v.slice(0,4)-1)+v.slice(4) : '2026-12-31';
+  if(f.ref==='org'){ const c=ORGS.filter(o=>o.OBJID!==v && o.BEGDA<'2027-01-01'); return c[Math.floor(r()*c.length)].OBJID; }
+  if(f.ref==='emp'){ const c=EMPS.filter(e=>e.PERNR!==v); return c[Math.floor(r()*c.length)].PERNR; }
+  if(f.pool){ const c=f.pool.filter(p=>p!==v); return c[Math.floor(r()*c.length)]; }
+  if(f.id==='EMAIL') return v.replace('virtual-corp','old-corp');
+  if(f.id==='STEXT') return v.replace('팀','파트');
+  if(f.id==='PLANS') return String(+v+1);
+  return v+' (구)';
+}
+
+function buildTarget(sys, cat){
+  const r = rng(hashStr(sys+cat).split('').reduce((a,c)=>a+c.charCodeAt(0),0)*97);
+  const def = CATS[cat], key = def.key, out = [];
+  ERP[cat].forEach(rec=>{
+    // 효력일 2027-01-01 미래발령/신설조직은 대상 누락 확률 ↑ (연초 시나리오)
+    const future = rec.BEGDA==='2027-01-01';
+    const x = r();
+    if(x < (future?0.45:0.05)) return;                // 대상 누락
+    const t = {...rec};
+    if(x < (future?0.6:0.2)){                         // 값 불일치
+      const cand = def.fields.filter(f=>f.id!==key && f.id!=='KEY');
+      const n = r()<0.25?2:1;
+      for(let i=0;i<n;i++){ const f=cand[Math.floor(r()*cand.length)]; t[f.id]=altValue(f,t[f.id],r); }
+    }
+    out.push(t);
+  });
+  // 대상 잉여 (ERP 미존재 / 미회수)
+  const orphans = {
+    ORG:[{OBJID:'50002400',STEXT:'생산3팀',UPPER:'50002000',ZLEVEL:'팀',BEGDA:'2016-01-01',ENDDA:'9999-12-31'}],
+    EMP:[{PERNR:'10000977',ENAME:'퇴직자A',STAT2:'3',ORGEH:'50003100',PLANS:'30000977',STELL:'국내영업',TITL2:'과장',PERSG:'1',EMAIL:'user0977@virtual-corp.co.kr',BEGDA:'2019-03-01'},
+         {PERNR:'10000981',ENAME:'계약만료B',STAT2:'3',ORGEH:'50002100',PLANS:'30000981',STELL:'생산관리',TITL2:'사원',PERSG:'2',EMAIL:'user0981@virtual-corp.co.kr',BEGDA:'2025-01-01'}],
+    CHIEF:[{ORGEH:'50002400',PLANS:'39000099',ZPOSI:'팀장',PERNR:'10001009',BEGDA:'2022-01-01',ENDDA:'9999-12-31'}],
+    CONCUR:[{KEY:'10001003-50001200',PERNR:'10001003',MAINO:'50001100',ORGEH:'50001200',ZTYPE:'직무대행',BEGDA:'2026-01-01',ENDDA:'9999-12-31'}],
+  };
+  const take = Math.max(1, Math.floor(r()*orphans[cat].length)+ (sys==='GW'?1:0));
+  return out.concat(orphans[cat].slice(0,take));
+}
+
+/* =========================================================
+ *  4. 비교 (사번/조직 Key 기준 + 필드 Hash)
+ * ========================================================= */
+function compare(sys, cat){
+  const def = CATS[cat], key = def.key;
+  const tgt = buildTarget(sys,cat);
+  const tMap = new Map(tgt.map(t=>[t[key],t]));
+  const rows = [];
+  const rowHash = o => o ? hashStr(def.fields.map(f=>o[f.id]??'').join('|')) : '-';
+  ERP[cat].forEach(e=>{
+    const t = tMap.get(e[key]);
+    if(!t){ rows.push({status:'MISSING',key:e[key],erp:e,tgt:null,diffs:[]}); return; }
+    tMap.delete(e[key]);
+    const diffs = def.fields.filter(f=>(e[f.id]??'')!==(t[f.id]??'')).map(f=>f.id);
+    rows.push({status:diffs.length?'DIFF':'MATCH',key:e[key],erp:e,tgt:t,diffs});
+  });
+  tMap.forEach(t=>rows.push({status:'ORPHAN',key:t[key],erp:null,tgt:t,diffs:[]}));
+  rows.forEach(r=>{ r.hE=rowHash(r.erp); r.hT=rowHash(r.tgt); });
+  return rows;
+}
+
+/* =========================================================
+ *  5. 화면 처리
+ * ========================================================= */
+const $ = id=>document.getElementById(id);
+const ST = {MATCH:'일치',DIFF:'값 불일치',MISSING:'대상 누락',ORPHAN:'대상 잉여'};
+let cur = {sys:'',cat:'',rows:[],filter:'ALL',sel:null};
+
+Object.entries(SYSTEMS).forEach(([k,v])=>$('selSys').insertAdjacentHTML('beforeend',`<option value="${k}">${v.name}</option>`));
+
+$('selSys').onchange = ()=>{
+  const s = $('selSys').value, sc = $('selCat');
+  sc.innerHTML = '<option value="">-- 항목 선택 --</option>';
+  if(!s){ sc.disabled=true; $('btnQuery').disabled=true; $('hint').innerHTML='① 연계 시스템을 먼저 선택하면 해당 시스템이 수신하는 점검 항목이 활성화됩니다.'; return; }
+  Object.entries(CATS).forEach(([k,v])=>{
+    const ok = SYSTEMS[s].cats.includes(k);
+    sc.insertAdjacentHTML('beforeend',`<option value="${k}" ${ok?'':'disabled'}>${v.name}${ok?'':' (미연계)'}</option>`);
+  });
+  sc.disabled=false; $('btnQuery').disabled=true;
+  $('hint').innerHTML = `② <b>${SYSTEMS[s].name}</b> 수신 항목: ${SYSTEMS[s].cats.map(c=>CATS[c].name).join(', ')}`;
+};
+$('selCat').onchange = ()=>{ $('btnQuery').disabled = !$('selCat').value; };
+
+$('btnQuery').onclick = ()=>{
+  cur.sys=$('selSys').value; cur.cat=$('selCat').value; cur.filter='ALL'; cur.sel=null;
+  cur.rows = compare(cur.sys,cur.cat);
+  $('result').style.display='block'; $('layout').classList.remove('open');
+  $('kw').value=''; $('onlyBad').checked=false;
+  const now = new Date();
+  const ts = d=>d.toISOString().slice(0,16).replace('T',' ');
+  $('snapinfo').innerHTML = `<span>ERP 스냅샷: ${ts(new Date(now-1000*60*42))}</span><span>대상 수집: ${ts(new Date(now-1000*60*38))}</span><span>비교키: ${CATS[cur.cat].key}</span>`;
+  renderCards(); renderTable();
+};
+
+function renderCards(){
+  const c = {ALL:cur.rows.length,MATCH:0,DIFF:0,MISSING:0,ORPHAN:0};
+  cur.rows.forEach(r=>c[r.status]++);
+  const rate = c.ALL ? (c.MATCH/c.ALL*100).toFixed(1) : '0.0';
+  const card = (k,t,cls,v)=>`<div class="card ${cls} ${cur.filter===k?'on':''}" data-f="${k}"><div class="t">${t}</div><div class="v">${v}</div></div>`;
+  $('cards').innerHTML =
+    `<div class="card rate"><div class="t">정합률</div><div class="v">${rate}%</div><div class="bar"><i style="width:${rate}%"></i></div></div>`+
+    card('ALL','전체 대상','',c.ALL)+card('MATCH','일치','ok',c.MATCH)+card('DIFF','값 불일치','diff',c.DIFF)+
+    card('MISSING','대상 누락','miss',c.MISSING)+card('ORPHAN','대상 잉여','orph',c.ORPHAN);
+  document.querySelectorAll('.card[data-f]').forEach(el=>el.onclick=()=>{cur.filter=el.dataset.f;renderCards();renderTable();});
+}
+
+function fmt(f, v){
+  if(v===undefined||v===null||v==='') return '<span class="muted">-</span>';
+  if(f.code) return `${f.code[v]||v}<span class="nm">(${v})</span>`;
+  if(f.ref==='org') return `${v}<span class="nm">${ORG_NM[v]||'미존재'}</span>`;
+  if(f.ref==='emp') return `${v}<span class="nm">${EMP_NM[v]||'미존재'}</span>`;
+  return v;
+}
+
+function filtered(){
+  const kw = $('kw').value.trim(), bad = $('onlyBad').checked;
+  return cur.rows.filter(r=>{
+    if(cur.filter!=='ALL' && r.status!==cur.filter) return false;
+    if(bad && r.status==='MATCH') return false;
+    if(kw){ const o=r.erp||r.tgt; const s=Object.values(o).join(' ')+' '+(ORG_NM[o.ORGEH]||'')+' '+(EMP_NM[o.PERNR]||''); if(!s.includes(kw)) return false; }
+    return true;
+  });
+}
+
+function renderTable(){
+  const def = CATS[cur.cat], rows = filtered();
+  let h = `<thead><tr><th>상태</th>${def.fields.map(f=>`<th>${f.label}<span class="sap">${f.sap}</span></th>`).join('')}<th>조치</th></tr></thead><tbody>`;
+  if(!rows.length) h += `<tr><td colspan="${def.fields.length+2}" class="empty">조회 결과가 없습니다.</td></tr>`;
+  rows.forEach((r,i)=>{
+    const src = r.erp||r.tgt;
+    h += `<tr class="r-${r.status} ${cur.sel===r?'sel':''}" data-i="${cur.rows.indexOf(r)}"><td><span class="badge b-${r.status}">${ST[r.status]}</span></td>`;
+    def.fields.forEach(f=>{
+      const isKey = f.id===def.key;
+      if(r.status==='DIFF' && r.diffs.includes(f.id))
+        h += `<td><span class="cell-diff"><span class="o">${fmt(f,r.erp[f.id])}</span>→ <span class="n">${fmt(f,r.tgt[f.id])}</span></span></td>`;
+      else h += `<td class="${isKey?'key':''} ${r.status==='MISSING'&&!isKey?'muted':''}">${fmt(f,src[f.id])}</td>`;
+    });
+    const act = r.status==='MATCH' ? '<span class="muted">-</span>'
+      : r.status==='ORPHAN' ? `<button class="btn-line btn-xs" data-act="revoke">비활성화 요청</button>`
+      : `<button class="btn-line btn-xs" data-act="resend">재전송</button>`;
+    h += `<td>${act}</td></tr>`;
+  });
+  $('tbl').innerHTML = h+'</tbody>';
+  $('tbl').querySelectorAll('tbody tr[data-i]').forEach(tr=>{
+    tr.onclick = e=>{
+      const r = cur.rows[+tr.dataset.i];
+      if(e.target.dataset.act){ e.stopPropagation(); doAction(e.target.dataset.act,[r]); return; }
+      cur.sel=r; renderTable(); renderDetail(r);
+    };
+  });
+}
+
+function renderDetail(r){
+  const def = CATS[cur.cat];
+  const title = r.erp ? (r.erp.ENAME||r.erp.STEXT||ORG_NM[r.erp.ORGEH]||'') : (r.tgt.ENAME||r.tgt.STEXT||'');
+  let h = `<button class="x" onclick="closeDetail()">×</button><h3>${r.key} ${title}</h3>
+    <span class="badge b-${r.status}">${ST[r.status]}</span> <span class="muted" style="font-size:12px">${SYSTEMS[cur.sys].name} · ${def.name}</span>
+    <table><thead><tr><th>필드</th><th>ERP (마스터)</th><th>대상 시스템</th><th></th></tr></thead><tbody>`;
+  def.fields.forEach(f=>{
+    const ev = r.erp?r.erp[f.id]:undefined, tv = r.tgt?r.tgt[f.id]:undefined;
+    const same = r.erp && r.tgt && (ev??'')===(tv??'');
+    h += `<tr><td><b>${f.label}</b><br><span class="muted" style="font-family:Consolas;font-size:10.5px">${f.sap}</span></td>
+      <td>${r.erp?fmt(f,ev):'<span class="muted">없음</span>'}</td><td>${r.tgt?fmt(f,tv):'<span class="muted">없음</span>'}</td>
+      <td>${same?'<span class="ico-ok">✓</span>':'<span class="ico-x">✕</span>'}</td></tr>`;
+  });
+  const reason = {
+    MATCH:'정상 동기화 상태입니다.',
+    DIFF:`불일치 필드 ${r.diffs.length}건 - 최종 변경분 미반영 또는 대상 시스템 수기 수정 가능성.`,
+    MISSING: (r.erp.BEGDA==='2027-01-01'?'효력일(2027-01-01) 미래 발령/신설 조직 미전송 의심.':'인터페이스 수신 실패 또는 전송 대상 누락.'),
+    ORPHAN:'ERP에 존재하지 않는 데이터 - 퇴직/폐지 후 회수(비활성화) 누락 의심.',
+  }[r.status];
+  h += `</tbody></table>
+    <div class="hash">ERP Hash&nbsp;&nbsp;: ${r.hE}<br>대상 Hash : ${r.hT}<br><span class="muted">판정 사유: ${reason}</span></div>
+    <div class="act">${r.status==='ORPHAN'?'<button class="btn-pri btn-xs" onclick="doAction(\'revoke\',[cur.sel])">비활성화 요청</button>'
+      : r.status==='MATCH'?'' : '<button class="btn-pri btn-xs" onclick="doAction(\'resend\',[cur.sel])">ERP 기준 재전송</button>'}
+      <button class="btn-line btn-xs" onclick="toast('인터페이스 전송 이력 조회 (예시)')">전송 이력</button></div>`;
+  $('detail').innerHTML = h; $('layout').classList.add('open');
+}
+function closeDetail(){ $('layout').classList.remove('open'); cur.sel=null; renderTable(); }
+
+function doAction(act, rows){
+  rows = rows.filter(r=>r.status!=='MATCH');
+  if(!rows.length){ toast('처리할 대상이 없습니다.'); return; }
+  rows.forEach(r=>{ r.status='MATCH'; r.tgt = r.erp?{...r.erp}:null; r.diffs=[]; r.hT=r.hE; });
+  cur.rows = cur.rows.filter(r=>r.tgt);           // 비활성화된 잉여건 제외
+  toast(`${rows.length}건 ${act==='revoke'?'비활성화 요청':'재전송'} 완료 (예시 처리)`);
+  cur.sel=null; $('layout').classList.remove('open'); renderCards(); renderTable();
+}
+$('btnResendAll').onclick = ()=>doAction('resend', cur.rows.filter(r=>r.status==='DIFF'||r.status==='MISSING'));
+$('kw').oninput = renderTable; $('onlyBad').onchange = renderTable;
+
+$('btnCsv').onclick = ()=>{
+  const def = CATS[cur.cat], rows = filtered();
+  const head = ['상태',...def.fields.flatMap(f=>[`${f.label}(ERP)`,`${f.label}(대상)`])];
+  const lines = [head.join(',')].concat(rows.map(r=>[ST[r.status],...def.fields.flatMap(f=>[r.erp?.[f.id]??'',r.tgt?.[f.id]??''])].map(v=>`"${v}"`).join(',')));
+  const blob = new Blob(['﻿'+lines.join('\n')],{type:'text/csv'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`recon_${cur.sys}_${cur.cat}_${$('baseDate').value}.csv`; a.click();
+};
+
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2200); }
+</script>
+</body>
+</html>

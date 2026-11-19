@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>역할별 권한 기준</title>
+<style>
+  body{margin:0;padding:40px;background:#fff;font-family:"맑은 고딕","Malgun Gothic",sans-serif;color:#222}
+  .wrap{width:960px}
+  .title{font-size:18px;font-weight:bold;margin:0 0 4px}
+  .desc{font-size:12px;color:#666;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;font-size:13px;border-top:2px solid #333}
+  th,td{border:1px solid #c8c8c8;padding:8px 10px;text-align:center}
+  th{background:#f2f2f2;font-weight:bold}
+  thead tr:first-child th{border-top:0}
+  td.l{text-align:left}
+  td.dot{font-size:12px}
+  .foot{font-size:11px;color:#666;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="title">역할별 권한 기준</p>
+  <p class="desc">조직 범위 · 직무 · 기능 기준 권한 매트릭스</p>
+  <table>
+    <colgroup>
+      <col style="width:20%"><col style="width:20%"><col style="width:18%">
+      <col style="width:14%"><col style="width:14%"><col style="width:14%">
+    </colgroup>
+    <thead>
+      <tr><th rowspan="2">역할</th><th rowspan="2">조직 범위</th><th rowspan="2">직무</th><th colspan="3">기능</th></tr>
+      <tr><th>조회</th><th>저장</th><th>삭제</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="l">전사 인사담당자</td><td>전사</td><td>인사</td><td class="dot">●</td><td class="dot">●</td><td class="dot">●</td></tr>
+      <tr><td class="l">본부 인사담당자</td><td>본부</td><td>인사</td><td class="dot">●</td><td class="dot">●</td><td class="dot">●</td></tr>
+      <tr><td class="l">급여담당자</td><td>전사</td><td>급여, 근태</td><td class="dot">●</td><td class="dot">●</td><td class="dot">●</td></tr>
+      <tr><td class="l">근태담당자</td><td>전사</td><td>근태</td><td class="dot">●</td><td class="dot">●</td><td class="dot">●</td></tr>
+      <tr><td class="l">본부 근태담당자</td><td>본부</td><td>근태</td><td class="dot">●</td><td class="dot">●</td><td class="dot">●</td></tr>
+      <tr><td class="l">일반부서장</td><td>본인 조직</td><td>인사</td><td class="dot">●</td><td>-</td><td>-</td></tr>
+      <tr><td class="l" rowspan="2">지원부서</td><td rowspan="2">본인 담당 조직</td><td>인사</td><td class="dot">●</td><td>-</td><td>-</td></tr>
+      <tr><td>근태</td><td class="dot">●</td><td class="dot">●</td><td>-</td></tr>
+    </tbody>
+  </table>
+  <p class="foot">● 권한 부여 &nbsp; - 권한 없음</p>
+</div>
+</body>
+</html>

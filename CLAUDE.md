@@ -26,6 +26,10 @@ node scripts/seed.js
 
 # mdboard: 기존 Google Drive 백업분 → Railway 볼륨(/data/contents/mdboard) 이관 (최초 1회, 볼륨이 마운트된 서버에서 실행)
 node scripts/mdboard-drive-migrate.js
+
+# 웹데모: HTML을 재배포 없이 /demo 에 게시/삭제 (DEMO_URL, DEMO_API_KEY 필요)
+node scripts/demo-push.js ./page.html 폴더/page.html
+node scripts/demo-push.js --delete 폴더/page.html
 ```
 
 No test or lint scripts are configured.
@@ -96,6 +100,7 @@ Create `projects/<name>/index.js` exporting an Express Router, and optionally a 
 | `/totalprice` | 종합 시세: 금/은 시세 + 국내 주식 시세 | 금/은: 비공식 외부 API(`koreagoldx.co.kr`) 프록시, 메모리 캐시(10분 TTL)+**PostgreSQL**(`totalprice_gold_cache`) 폴백(파일 캐시 아님 — 배포마다 컨테이너가 새로 뜨는 호스팅에서도 유지); 주식: Npay 증권(`finance.naver.com`) 크롤링(일별/시간별 시세, 현재가 스냅샷, 종목뉴스), **PostgreSQL**(`totalprice_stocks` — 종목코드+명칭 마스터, `totalprice-stocklist-refresh` 배치잡이 주 1회 갱신); `/stocks/:code/insight`는 시세+뉴스를 Claude Haiku 4.5로 요약해 매수/매도 참고 자료 생성(투자자문 아님, `ANTHROPIC_API_KEY` 필요, 종목별 30분 캐시, `lib/insightService.js`); **PostgreSQL**(`totalprice_alerts` — 사용자별 AI 알림 예약: 종목/주기/시간/알림채널, `totalprice-alert-runner` 배치잡이 10분마다 스캔해 `shared/notify`로 발송) |
 | `/location` | 시간별 위치 일정 등록·공유 | **PostgreSQL** (`location_plans`/`location_entries`/`location_favorites`); `owner_id` 격리, 날짜당 플랜 1개 + 고정 공유 토큰(같은 날짜를 수정해도 링크 유지); 등록은 스마트폰 Claude 앱 음성 입력 → **원격 MCP**(`/location/mcp`)가 담당하고, 브라우저 화면은 조회·공유·삭제만 제공(직접 수정 UI는 미구현 — `index.js`의 CRUD API는 이미 있음); 즐겨찾는 장소("집" 등)는 이름이 정확히 같으면 좌표 자동 채움 |
 
+| `/demo` | 웹데모: 간단한 웹화면 데모 모음집 | **전면 공개** (`public: true`) — 가상 데이터로만 동작하는 정적 화면 설계/데모 모음. 고정 데모는 `projects/demo/public/<주제>/*.html`(배포 필요), 수시 게시분은 Railway 볼륨(`/data/contents/demo`, `projects/demo/paths.js`)에 저장되어 **재배포·재기동 없이 즉시 반영** — `PUT/DELETE /demo/api/files/<경로>`(`x-api-key`: `DEMO_API_KEY`), CLI `scripts/demo-push.js`. 같은 경로면 볼륨 파일이 저장소 파일보다 우선. `/demo/`는 `GET /demo/api/list`로 목록 자동 생성. 실제 회사 데이터는 올리지 말 것(공개 URL + public 저장소) |
 | `/babylog` | 음성 육아 기록 (baby-log) | **예외: 자체 인증 앱** (`public: true`). 가족이 초대 코드로 직접 가입하고 모바일 앱(Expo)이 Bearer 토큰으로 접속하는 구조라 플랫폼 로그인을 쓰지 않음 — 비밀키는 `BABYLOG_JWT_SECRET`(플랫폼 `JWT_SECRET`과 같으면 `attachUser`가 baby-log 토큰을 플랫폼 로그인으로 받아들이므로 모듈이 기동 거부). **PostgreSQL `babylog` 스키마**(`search_path`)로 테이블 격리. **원본은 별도 baby-log 저장소** — `projects/babylog/lib/`는 그쪽 `npm run sync-mono`로 복사한 생성물이니 직접 수정 금지. 웹은 `web.js`가 `app.js`에서 `loader.mount()` 전에 `/babylog`로 서빙(보안 헤더·슬래시 리다이렉트), API는 loader가 `/babylog/api`로 마운트. 설정 누락·DB 오류 시 이 앱만 503, 서버 전체는 계속 동작. 1분 주기 알림 스케줄러(Expo 푸시)는 자체 `setInterval` |
 
 모든 앱은 인증을 자체 구현하지 않는다(`/babylog`만 예외) — `core/loader.js`가 마운트 시점에 로그인·앱 권한 가드를 자동으로 앞단에 삽입한다. 자세한 내용은 아래 "Authentication" 섹션 참고.
@@ -269,6 +274,8 @@ HTML 파일은 `contents/` 루트에만 저장되며 (서브폴더 없음), 사�
 | `MDBOARD_CONTENTS_DIR` | `/data/contents/mdboard` | mdboard 콘텐츠 저장 경로. Railway에서는 이 경로에 볼륨을 마운트해 영속화. 로컬 개발 등에서만 다른 경로로 오버라이드 |
 | `MEMO_CONTENTS_DIR` | `/data/contents/memo` | memo(대분류/중분류 문서함) 콘텐츠 저장 경로 — mdboard와 동일 패턴으로 Railway 볼륨 하위에 격리. 로컬 개발 등에서만 다른 경로로 오버라이드 |
 | `MEMO_TOKEN_SECRET` | (없음) | memo 중분류별 열람/작성 코드 잠금해제 쿠키 서명 키. 미설정 시 기동마다 랜덤 값으로 대체되어 재배포할 때마다 잠금해제 상태가 초기화됨(치명적이진 않음) |
+| `DEMO_API_KEY` | (없음) | 웹데모(`/demo`) 볼륨 게시/삭제 API 키 (`scripts/demo-push.js`). 미설정이면 쓰기 API가 401 — 조회는 공개 |
+| `DEMO_CONTENTS_DIR` | `/data/contents/demo` | 웹데모 수시 게시 저장 경로(Railway 볼륨). 디렉토리를 만들 수 없으면 볼륨 게시만 비활성화되고 서버는 정상 기동 |
 | `GOOGLE_SERVICE_ACCOUNT` | (없음) | travellog Drive 서비스 계정 JSON (base64) |
 | `DRIVE_FOLDER_ID` | (없음) | travellog 사진 업로드 Drive 폴더 ID |
 | `GDRIVE_CLIENT_ID` | (없음) | mdboard Drive 백업용 OAuth2 클라이언트 ID |
